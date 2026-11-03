@@ -669,6 +669,21 @@ function vRep(){
 function bRep(){const s=$('#repT');if(s)s.onchange=e=>{S.repTeacher=e.target.value;render();};}
 
 /* ================= ADMIN: TEACHERS ================= */
+/* One pasted line -> teacher. Works with Excel columns (tabs, empty cells allowed) or commas.
+   Finds the shift (Morning/Noon) and designation (PGT/TGT/PRT…) wherever they are; every other cell after the name is a subject. */
+function parseTeacherLine(line){
+  const cells=(line.includes('\t')?line.split('\t'):line.split(',')).map(x=>x.trim()).filter(Boolean);
+  if(!cells.length) return null;
+  let shift='Morning', desig='';
+  const rest=[];
+  cells.forEach(c=>{ const u=c.toUpperCase();
+    if(/^(MORNING|NOON|AFTERNOON|DAY)$/.test(u)) shift=(u==='MORNING'?'Morning':'Noon');
+    else if(!desig && /^(PGT|TGT|PRT|NTT|PET|PTI|HM|PRINCIPAL|VICE PRINCIPAL|LIBRARIAN|LAB ASST\.?|CLERK|COUNSELLOR)$/.test(u)) desig=c.toUpperCase().length<=4?c.toUpperCase():c;
+    else if(/^\d+$/.test(c) && !rest.length) {/* serial number column – skip */}
+    else rest.push(c); });
+  if(!rest.length) return null;
+  return {name:rest[0], desig, subject:rest.slice(1).join(' / '), shift};
+}
 const ordOf=(code,f)=>{const n=parseFloat(String(code||'').replace(/[^\d.]/g,''));return isNaN(n)?f:n;};
 const saveT=(id,t)=>fs.collection('att_teachers').doc(id).set(t);
 function vTeach(){
@@ -686,9 +701,10 @@ function bTeach(){
       const {id,...rest}=t; batch.set(fs.collection('att_teachers').doc(t.id),{...rest,uid,email:l.email||''}); batch.set(fs.doc('att_staff/'+uid),{teacherId:t.id,email:l.email||''}); await batch.commit(); toast(t.name+' confirmed'); }catch(e){fbErr(e);} });
   $('#addT').onclick=async()=>{const name=$('#nName').value.trim();if(!name){toast('Enter the name');return;}const code=$('#nCode').value.trim();
     try{await saveT(newId(),{code,name,desig:$('#nDesig').value.trim(),subject:$('#nSub').value.trim(),shift:$('#nShift').value,active:true,order:ordOf(code,S.teachers.length+1)});toast(name+' added');}catch(e){fbErr(e);}};
-  $('#bulkT').onclick=()=>{modal(`<h3>Paste a list of teachers</h3><p class="sub">One per line: <b>Name, Designation, Subject, Shift</b> (Morning/Noon). Only the name is required. You can copy columns from Excel.</p><textarea class="inp" id="bt" rows="9" style="width:100%"></textarea><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" id="mC">Cancel</button><button class="btn pri" id="mO">Add all</button></div>`);
+  $('#bulkT').onclick=()=>{modal(`<h3>Paste a list of teachers</h3><p class="sub">Copy the rows straight from Excel (Name, Designation, Subjects…, Shift) and paste here, or type one per line: <b>Name, Designation, Subject, Shift</b>. Extra subject columns are joined automatically.</p><textarea class="inp" id="bt" rows="9" style="width:100%"></textarea><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" id="mC">Cancel</button><button class="btn pri" id="mO">Add all</button></div>`);
     $('#mC').onclick=closeModal;$('#mO').onclick=async()=>{const lines=$('#bt').value.split('\n').map(x=>x.trim()).filter(Boolean);if(!lines.length)return;$('#mO').disabled=true;const base=S.teachers.length;
-      try{const batch=fs.batch();lines.slice(0,400).forEach((l,i)=>{const p=l.split(/\t|,/).map(x=>x.trim());batch.set(fs.collection('att_teachers').doc(newId()+i),{code:pad(base+i+1),name:p[0],desig:p[1]||'',subject:p[2]||'',shift:(p[3]||'').toLowerCase()==='noon'?'Noon':'Morning',active:true,order:base+i+1});});await batch.commit();closeModal();toast(lines.length+' teacher(s) added');}catch(e){closeModal();fbErr(e);}};};
+      const rows=lines.map(parseTeacherLine).filter(r=>r&&r.name);
+      try{const batch=fs.batch();rows.slice(0,400).forEach((r,i)=>{batch.set(fs.collection('att_teachers').doc(newId()+i),{code:pad(base+i+1),name:r.name,desig:r.desig,subject:r.subject,shift:r.shift,active:true,order:base+i+1});});await batch.commit();closeModal();toast(rows.length+' teacher(s) added');}catch(e){closeModal();fbErr(e);}};};
   document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{const t=S.teachers.find(x=>x.id===b.dataset.edit);
     modal(`<h3>Edit teacher</h3><div class="grid2"><label class="f">Sl. No.<input class="inp" id="eCode" value="${esc(t.code||'')}"></label><label class="f">Name<input class="inp" id="eName" value="${esc(t.name)}"></label><label class="f">Designation<input class="inp" id="eDesig" value="${esc(t.desig||'')}"></label><label class="f">Subject<input class="inp" id="eSub" value="${esc(t.subject||'')}"></label><label class="f">Shift<select class="inp" id="eShift">${['Morning','Noon'].map(s=>`<option ${t.shift===s?'selected':''}>${s}</option>`).join('')}</select></label></div>
       <label class="chk" style="margin-top:10px"><input type="checkbox" id="eAct" ${t.active!==false?'checked':''}> Active</label>${t.uid?`<label class="chk" style="margin-top:10px"><input type="checkbox" id="eUn"> Remove the email link (${esc(t.email||'')})</label>`:''}
