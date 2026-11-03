@@ -1,0 +1,106 @@
+rules_version = '2';
+service cloud_firestore {
+  match /databases/{database}/documents {
+
+    // ===== The Admin email(s). Use the same email(s) for both apps. =====
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email in [
+        'PUT-ADMIN-EMAIL-HERE@gmail.com'
+      ];
+    }
+    function signedIn() { return request.auth != null; }
+    // Staff = the Admin, or a teacher the Admin has confirmed in Teachers → Confirm.
+    function isStaff() {
+      return isAdmin() || (signedIn() && exists(/databases/$(database)/documents/att_staff/$(request.auth.uid)));
+    }
+
+    // ===== SJS Time Table (same as before) =====
+    match /sjs_tt/{doc}     { allow read: if true; allow write: if isAdmin(); }
+    match /sjs_tt_adj/{doc} { allow read: if true; allow write: if isAdmin(); }
+
+    // ===== Student Attendance (classes, students, AM/PM attendance, fines) =====
+    // Only confirmed staff can open or change it.
+    match /cfg/{doc}                 { allow read, write: if isStaff(); }
+    match /classes/{doc}             { allow read, write: if isStaff(); }
+    match /c/{cid}/{sub}/{doc}       { allow read, write: if isStaff(); }
+
+    // ===== Notice Board: staff read, only the Admin posts =====
+    match /att_notices/{doc} { allow read: if isStaff(); allow write: if isAdmin(); }
+
+    // ===== Confirmed staff list (written by the Admin when confirming a teacher) =====
+    match /att_staff/{uid} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow write: if isAdmin();
+    }
+
+    // ===== SJS Teacher Attendance =====
+    // Settings and the teacher list: everyone signed in reads, only the Admin changes.
+    match /att_config/{doc}   { allow read: if signedIn(); allow write: if isAdmin(); }
+    match /att_teachers/{doc} { allow read: if signedIn(); allow write: if isAdmin(); }
+
+    // "This is me" requests: a teacher writes only their own; the Admin reads all.
+    match /att_links/{uid} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['teacherId', 'email', 'requestedAt'])
+        && request.resource.data.teacherId is string;
+      allow delete: if isAdmin();
+    }
+
+    // Today's date in India (server time, not the phone's clock).
+    function isTodayIST(d) {
+      let ist = request.time + duration.value(330, 'm');
+      let p = d.split('-');
+      return p.size() == 3
+        && int(p[0]) == ist.year() && int(p[1]) == ist.month() && int(p[2]) == ist.day();
+    }
+
+    // Attendance marks.
+    // - A teacher can add ONE mark, for TODAY only, for THEMSELVES only.
+    // - The time saved is Google's server time.
+    // - Nobody (teacher, Principal or Admin) can change or delete a mark afterwards.
+    match /att_marks/{id} {
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && id == request.resource.data.date + '_' + request.auth.uid
+        && isTodayIST(request.resource.data.date)
+        && request.resource.data.at == request.time
+        && request.resource.data.keys().hasOnly(['uid', 'date', 'at', 'r'])
+        && (!('r' in request.resource.data)
+            || (request.resource.data.r is string && request.resource.data.r.size() <= 120));
+      allow update, delete: if false;
+    }
+
+    // Leave / On duty applications (CL, ML, OD …).
+    // - Only the teacher can apply, for themselves. They can withdraw it while it is still pending.
+    // - Nobody can edit an application.
+    function isDate(d) { return d is string && d.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'); }
+    match /att_leaves/{id} {
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'type', 'from', 'to', 'reason', 'at'])
+        && request.resource.data.type is string && request.resource.data.type.size() <= 4
+        && isDate(request.resource.data.from) && isDate(request.resource.data.to)
+        && request.resource.data.from <= request.resource.data.to
+        && request.resource.data.reason is string && request.resource.data.reason.size() <= 200
+        && request.resource.data.at == request.time;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid
+        && !exists(/databases/$(database)/documents/att_leave_ok/$(id));
+      allow update: if false;
+    }
+
+    // The Admin's decision on an application (approve / reject). Final: it cannot be changed or deleted.
+    match /att_leave_ok/{id} {
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isAdmin()
+        && exists(/databases/$(database)/documents/att_leaves/$(id))
+        && request.resource.data.uid == get(/databases/$(database)/documents/att_leaves/$(id)).data.uid
+        && request.resource.data.keys().hasOnly(['uid', 'ok', 'note', 'by', 'at'])
+        && request.resource.data.ok is bool
+        && request.resource.data.at == request.time;
+      allow update, delete: if false;
+    }
+  }
+}
