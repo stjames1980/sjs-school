@@ -1,18 +1,38 @@
 {
-  "name": "SJS School – St. James H.S. School",
-  "short_name": "SJS School",
+  "name": "SJS App – St. James H.S. School",
+  "short_name": "SJS App",
   "description": "St. James H.S. School app: teacher attendance & leave, notices, student attendance and time table in one place.",
-  "id": "./",
-  "start_url": "./",
-  "scope": "./",
+  "id": "/sjs-school/",
+  "start_url": "/sjs-school/",
+  "scope": "/sjs-school/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#FFFFFF",
   "theme_color": "#13294B",
   "icons": [
-    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
-    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
-    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

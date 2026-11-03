@@ -1,5 +1,5 @@
-// SJS School app – offline cache for all sections. Change VERSION when you upload new app files.
-const VERSION = "sjs-school-v2";
+// SJS App – offline cache for all sections. Change VERSION when you upload new app files.
+const VERSION = "sjs-school-v4";
 const SHELL = ["./", "./index.html", "./manifest.json", "./config.js", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png", "./logo.png", "./favicon.png",
   "./timetable.html", "./attendance.html", "./chart.png"];
 const CDN = ["fonts.googleapis.com", "fonts.gstatic.com", "www.gstatic.com", "cdnjs.cloudflare.com"];

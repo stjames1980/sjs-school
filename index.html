@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SJS School – St. James H.S. School</title>
+<title>SJS App – St. James H.S. School</title>
 <meta name="theme-color" content="#13294b">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="SJS School">
+<meta name="apple-mobile-web-app-title" content="SJS App">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Merriweather:wght@700;900&display=swap" rel="stylesheet">
 <style>
@@ -225,7 +225,7 @@ h3.sec{margin:18px 2px 8px;font-size:13px;letter-spacing:1px;text-transform:uppe
       <span class="mode" id="hMode"><i></i>Connecting…</span>
     </div>
   </div>
-  <div class="title-strip" id="hTitle">SJS School App</div>
+  <div class="title-strip" id="hTitle">SJS App</div>
 </header>
 <nav class="nav hidden"><div class="nav-in" id="nav"></div></nav>
 <main id="main"><div class="banner info">Loading…</div></main>
@@ -402,7 +402,7 @@ function render(){
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
   if(!S.user){ $('#main').innerHTML=vLogin(); bLogin(); return; }
   const V={home:[vHome,bHome],notices:[vNotices,bNotices],me:[vMe,bMe],dash:[vDash,bDash],leave:[vLeave,bLeave],register:[vReg,bReg],report:[vRep,bRep],teachers:[vTeach,bTeach],settings:[vSet,bSet]}[S.view];
-  $('#main').innerHTML=V[0]()+`<div class="row" style="justify-content:center;margin-top:16px"><button class="btn sm" id="signOut">Sign out</button></div><div class="foot">${esc(c.school)} · SJS School · Session ${esc(c.session)}${c.principal?' · Principal: '+esc(c.principal):''}</div>`;
+  $('#main').innerHTML=V[0]()+`<div class="row" style="justify-content:center;margin-top:16px"><button class="btn sm" id="signOut">Sign out</button></div><div class="foot">${esc(c.school)} · SJS App · Session ${esc(c.session)}${c.principal?' · Principal: '+esc(c.principal):''}</div>`;
   V[1](); $('#signOut').onclick=()=>auth.signOut();
 }
 
@@ -734,7 +734,7 @@ function vSet(){
   <div class="row" style="margin-bottom:14px"><button class="btn pri" id="saveCfg">Save Settings</button></div>
   <div class="card"><h2>Holidays</h2><div class="row"><input type="date" class="inp" id="hF"><span class="tmeta">to</span><input type="date" class="inp" id="hT"><input class="inp grow" id="hN" placeholder="Holiday name" style="min-width:140px"><button class="btn pri" id="addH">Add</button></div>
     ${(c.holidays||[]).length?[...c.holidays].sort((a,b)=>a.from.localeCompare(b.from)).map(h=>`<div class="hol"><div><b>${esc(h.name)}</b><div class="tmeta">${fmtDate(h.from)}${h.to&&h.to!==h.from?' – '+fmtDate(h.to):''}</div></div><button class="btn sm danger" data-dh="${esc(h.from)}|${esc(h.name)}">Remove</button></div>`).join(''):'<div class="empty">No holidays yet.</div>'}</div>
-  <div class="card"><h2>Share the app with teachers</h2><p class="sub">Send this link to the staff WhatsApp group. Each teacher installs the SJS School app and creates their own account.</p><button class="btn gold" id="shApp">Share app link on WhatsApp</button></div>`;
+  <div class="card"><h2>Share the app with teachers</h2><p class="sub">Send this link to the staff WhatsApp group. Each teacher installs the SJS App and creates their own account.</p><button class="btn gold" id="shApp">Share app link on WhatsApp</button></div>`;
 }
 const saveCfg=cfg=>fs.doc('att_config/settings').set(cfg);
 function bSet(){
@@ -751,7 +751,7 @@ function bSet(){
   $('#addLT').onclick=()=>{$('#ltList').insertAdjacentHTML('beforeend',ltRow());bindRm();}; bindRm();
   $('#addH').onclick=async()=>{const from=$('#hF').value,to=$('#hT').value||from,name=$('#hN').value.trim()||'Holiday';if(!from){toast('Choose the date');return;}if(to<from){toast('End date is before start');return;}try{await saveCfg({...S.cfg,holidays:[...(S.cfg.holidays||[]),{from,to,name}]});toast('Holiday added');}catch(e){fbErr(e);}};
   document.querySelectorAll('[data-dh]').forEach(b=>b.onclick=async()=>{const[f,n]=b.dataset.dh.split('|');try{await saveCfg({...S.cfg,holidays:S.cfg.holidays.filter(h=>!(h.from===f&&h.name===n))});toast('Removed');}catch(e){fbErr(e);}});
-  $('#shApp').onclick=()=>{const link=location.origin+location.pathname;window.open('https://wa.me/?text='+encodeURIComponent(`*${S.cfg.school} – SJS School app*\n\n1. Open: ${link}\n2. Install it (Chrome ⋮ → Install app / iPhone Share → Add to Home Screen)\n3. Tap "New teacher – create account" with your email and a password\n4. Choose your name. After the Admin confirms you, you can use My Attendance, Notices, Student Attendance and the Time Table.`),'_blank');};
+  $('#shApp').onclick=()=>{const link=location.origin+location.pathname;window.open('https://wa.me/?text='+encodeURIComponent(`*${S.cfg.school} – SJS App*\n\n1. Open: ${link}\n2. Install it (Chrome ⋮ → Install app / iPhone Share → Add to Home Screen)\n3. Tap "New teacher – create account" with your email and a password\n4. Choose your name. After the Admin confirms you, you can use My Attendance, Notices, Student Attendance and the Time Table.`),'_blank');};
 }
 
 /* ================= Start ================= */
