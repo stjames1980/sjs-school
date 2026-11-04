@@ -1,11 +1,12 @@
 rules_version = '2';
-service cloud_firestore {
+service cloud.firestore {
   match /databases/{database}/documents {
 
     // ===== The Admin email(s). Use the same email(s) for both apps. =====
     function isAdmin() {
       return request.auth != null && request.auth.token.email in [
-        'PUT-ADMIN-EMAIL-HERE@gmail.com'
+        'ramalengman@gmail.com'
+        // , 'second-admin@gmail.com'  <- only for a second full Admin. (Principal and Exam In-Charge are set in the app: Teachers -> Edit -> Role.)
       ];
     }
     function signedIn() { return request.auth != null; }
@@ -13,16 +14,33 @@ service cloud_firestore {
     function isStaff() {
       return isAdmin() || (signedIn() && exists(/databases/$(database)/documents/att_staff/$(request.auth.uid)));
     }
+    // Principal / Examination In-Charge: set by the Admin in Teachers -> Edit -> Role.
+    function myRole() {
+      return signedIn() && exists(/databases/$(database)/documents/att_staff/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/att_staff/$(request.auth.uid)).data.get('role', 'teacher') : 'none';
+    }
+    function isViewer() { return isAdmin() || myRole() in ['principal', 'exam']; }
+    function isPrincipal() { return myRole() == 'principal'; }
 
     // ===== SJS Time Table (same as before) =====
     match /sjs_tt/{doc}     { allow read: if true; allow write: if isAdmin(); }
     match /sjs_tt_adj/{doc} { allow read: if true; allow write: if isAdmin(); }
 
     // ===== Student Attendance (classes, students, AM/PM attendance, fines) =====
-    // Only confirmed staff can open or change it.
-    match /cfg/{doc}                 { allow read, write: if isStaff(); }
-    match /classes/{doc}             { allow read, write: if isStaff(); }
-    match /c/{cid}/{sub}/{doc}       { allow read, write: if isStaff(); }
+    // All confirmed staff can VIEW every class.
+    // The Admin adds classes, chooses each class teacher and changes settings.
+    // A class's own teacher(s) + the Admin can edit its students and mark attendance / fines.
+    function isClassTeacher(cid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/classes/$(cid))
+        && request.auth.uid in get(/databases/$(database)/documents/classes/$(cid)).data.get('teacherUids', []);
+    }
+    function canClass(cid) { return isAdmin() || isClassTeacher(cid); }
+    match /cfg/{doc}                 { allow read: if isStaff(); allow write: if isAdmin(); }
+    match /classes/{doc}             { allow read: if isStaff(); allow write: if isAdmin(); }
+    match /c/{cid}/students/{doc}    { allow read: if isStaff(); allow write: if canClass(cid); }
+    match /c/{cid}/att/{doc}         { allow read: if isStaff(); allow write: if canClass(cid); }
+    match /c/{cid}/pay/{doc}         { allow read: if isStaff(); allow write: if canClass(cid); }
 
     // ===== Notice Board: staff read, only the Admin posts =====
     match /att_notices/{doc} { allow read: if isStaff(); allow write: if isAdmin(); }
@@ -56,17 +74,34 @@ service cloud_firestore {
     }
 
     // Attendance marks.
-    // - A teacher can add ONE mark, for TODAY only, for THEMSELVES only.
+    // - A teacher can add TWO signs a day (Morning + Afternoon '_PM'), for TODAY only, for THEMSELVES only.
     // - The time saved is Google's server time.
     // - Nobody (teacher, Principal or Admin) can change or delete a mark afterwards.
+    // GPS: when the Admin turns GPS on, the sign must come from inside the school radius.
+    function gpsOk(d) {
+      let c = get(/databases/$(database)/documents/att_config/settings).data;
+      return !c.get('gpsOn', false) || (
+        d.get('lat', null) is number && d.get('lng', null) is number
+        && math.pow((d.lat - c.gpsLat) * 110574.0, 2) + math.pow((d.lng - c.gpsLng) * 111320.0 * c.get('gpsCos', 1.0), 2)
+           <= math.pow(c.get('gpsR', 100) + 30, 2));
+    }
+    // Sign ids: <date>_<uid> = Morning IN, _AMO = Morning OUT, _PMI = Afternoon IN, _PM = Afternoon OUT.
+    function signIdOk(id, d) {
+      let base = d.date + '_' + request.auth.uid;
+      return (id == base && !('ses' in d))
+        || (id == base + '_PM' && d.get('ses', '') == 'PM')
+        || (id == base + '_AMO' && d.get('ses', '') == 'AMO')
+        || (id == base + '_PMI' && d.get('ses', '') == 'PMI');
+    }
     match /att_marks/{id} {
-      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow read: if isViewer() || (signedIn() && resource.data.uid == request.auth.uid);
       allow create: if signedIn()
         && request.resource.data.uid == request.auth.uid
-        && id == request.resource.data.date + '_' + request.auth.uid
+        && signIdOk(id, request.resource.data)
         && isTodayIST(request.resource.data.date)
         && request.resource.data.at == request.time
-        && request.resource.data.keys().hasOnly(['uid', 'date', 'at', 'r'])
+        && request.resource.data.keys().hasOnly(['uid', 'date', 'at', 'r', 'ses', 'lat', 'lng', 'acc', 'dist'])
+        && gpsOk(request.resource.data)
         && (!('r' in request.resource.data)
             || (request.resource.data.r is string && request.resource.data.r.size() <= 120));
       allow update, delete: if false;
@@ -77,7 +112,7 @@ service cloud_firestore {
     // - Nobody can edit an application.
     function isDate(d) { return d is string && d.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'); }
     match /att_leaves/{id} {
-      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow read: if isViewer() || (signedIn() && resource.data.uid == request.auth.uid);
       allow create: if signedIn()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.keys().hasOnly(['uid', 'type', 'from', 'to', 'reason', 'at'])
@@ -93,13 +128,25 @@ service cloud_firestore {
 
     // The Admin's decision on an application (approve / reject). Final: it cannot be changed or deleted.
     match /att_leave_ok/{id} {
-      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
-      allow create: if isAdmin()
+      allow read: if isViewer() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if (isAdmin() || isPrincipal())
         && exists(/databases/$(database)/documents/att_leaves/$(id))
         && request.resource.data.uid == get(/databases/$(database)/documents/att_leaves/$(id)).data.uid
         && request.resource.data.keys().hasOnly(['uid', 'ok', 'note', 'by', 'at'])
         && request.resource.data.ok is bool
         && request.resource.data.at == request.time;
+      allow update, delete: if false;
+    }
+
+    // Attendance corrections: only the Admin. Every change is also written to att_fix_log,
+    // which nobody can edit or delete (correction history).
+    match /att_fix/{id} {
+      allow read: if isViewer() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create, update, delete: if isAdmin();
+    }
+    match /att_fix_log/{id} {
+      allow read: if isViewer() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isAdmin() && request.resource.data.at == request.time;
       allow update, delete: if false;
     }
   }

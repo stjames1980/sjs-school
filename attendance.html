@@ -210,7 +210,7 @@ textarea.out{width:100%;min-height:120px;border:1px solid var(--line);border-rad
 "use strict";
 // ---------- state ----------
 const S = {
-  db: null, dl: null, canWrite: true, ready: false,
+  db: null, dl: null, canWrite: true, canEdit: false, ready: false,
   cfg: null, students: [], att: {}, pay: {},
   tab: "mark", date: todayISO(), session: new Date().getHours() < 12 ? "AM" : "PM",
   draft: null, draftKey: "", dirty: false, search: "",
@@ -218,6 +218,8 @@ const S = {
   cid: null, classes: [], unsub: [], got: {}
 };
 function P(coll){return "c/"+S.cid+"/"+coll}
+function myClass(k){k=k||S.classes.find(x=>x.id===S.cid);return !!(S.user&&k&&(k.teacherUids||[]).includes(S.user.uid))}
+function canClass(){return S.canEdit||(S.canWrite&&S.mode==="online"&&myClass())}
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
 function classLabel(k){return k?("Class "+(k.cls||"–")+(k.section?" - "+k.section:"")):""}
@@ -315,8 +317,8 @@ function render(){
   const v=document.getElementById("view");
   if(!S.ready){v.innerHTML=`<div class="empty">Loading the register…</div>`;hideSave();return}
   if(S.mode==="online"&&!S.user){viewLogin(v);return}
-  if(!k&&S.tab!=="more"){v.innerHTML=`<div class="card empty"><h3>No class yet</h3><p>Import your Excel attendance register, or add a class and paste the student list.</p><div class="btns" style="justify-content:center"><button class="btn green" id="firstImp">Import from Excel</button><button class="btn ghost" id="firstCls">Add class / section</button></div></div>`;hideSave();v.querySelector("#firstCls").onclick=()=>editClass(null);v.querySelector("#firstImp").onclick=importRegister;return}
-  if(!S.students.length){v.innerHTML=`<div class="card empty"><h3>No students yet</h3><p>Open the Students tab and tap “Paste list” or “Add student”.</p></div>`;hideSave();if(S.tab!=="students"&&S.tab!=="more")return}
+  if(!k&&S.tab!=="more"){v.innerHTML=`<div class="card empty"><h3>No class yet</h3>${S.canEdit?`<p>Import your Excel attendance register, or add a class and paste the student list.</p><div class="btns" style="justify-content:center"><button class="btn green" id="firstImp">Import from Excel</button><button class="btn ghost" id="firstCls">Add class / section</button></div>`:`<p>The Admin has not added any class yet. Please check again later.</p>`}</div>`;hideSave();if(S.canEdit){v.querySelector("#firstCls").onclick=()=>editClass(null);v.querySelector("#firstImp").onclick=importRegister}return}
+  if(!S.students.length){v.innerHTML=`<div class="card empty"><h3>No students yet</h3><p>${canClass()?"Open the Students tab and tap “Upload / Paste list” or “Add student”.":"The Admin has not added the students of this class yet."}</p></div>`;hideSave();if(S.tab!=="students"&&S.tab!=="more")return}
   ({mark:viewMark,dash:viewDash,students:viewStudents,fines:viewFines,more:viewMore})[S.tab](v);
 }
 function hideSave(){document.getElementById("savebar").hidden=true}
@@ -324,13 +326,14 @@ function hideSave(){document.getElementById("savebar").hidden=true}
 function viewMark(v){
   loadDraft();
   const st=status(S.date),a=S.att[S.date]||{};
-  const can=st==="W"&&S.canWrite;
+  const can=st==="W"&&canClass();
   const counts={P:0,A:0,L:0};S.students.forEach(s=>counts[draftCode(s.roll)]++);
   let banner="";
   if(st==="HOL")banner=`<div class="banner off">Holiday: ${esc(holidayName(S.date))}. Not counted.</div>`;
   else if(st==="OFF")banner=`<div class="banner off">Weekly off. Not counted.</div>`;
   else if(st==="FUT")banner=`<div class="banner off">This date is in the future.</div>`;
   else if(st==="OUT"||st==="PRE")banner=`<div class="banner off">Outside the counted session dates.</div>`;
+  else if(!canClass())banner=`<div class="banner off">View only. ${esc((S.classes.find(x=>x.id===S.cid)||{}).teacher||"The class teacher")} and the Admin can mark this class.</div>`;
   else if(!a["taken"+S.session])banner=`<div class="banner warn">${S.session} attendance not saved yet. Tap Absent or Leave students, then Save.</div>`;
   const q=S.search.trim().toLowerCase();
   const list=S.students.filter(s=>!q||s.name.toLowerCase().includes(q)||String(s.roll)===q);
@@ -454,7 +457,7 @@ function viewStudents(v){
   const c=C();
   const q=S.search.trim().toLowerCase();
   const rows=S.students.filter(s=>!q||s.name.toLowerCase().includes(q)||String(s.roll)===q).map(st=>({st,x:sessionStats(st.roll)}));
-  v.innerHTML=`<div class="row between" style="flex-wrap:wrap;gap:8px"><h2>Students (${S.students.length})</h2>${S.canWrite?`<div class="btns"><button class="btn ghost sm" id="bulkStu">Paste list</button><button class="btn sm" id="addStu">Add student</button></div>`:""}</div>
+  v.innerHTML=`<div class="row between" style="flex-wrap:wrap;gap:8px"><h2>Students (${S.students.length})</h2>${canClass()?`<div class="btns"><button class="btn ghost sm" id="bulkStu">Upload / Paste list</button><button class="btn sm" id="addStu">Add student</button></div>`:""}</div>
   ${S.students.length?`<div class="btns" style="margin:4px 0 8px"><button class="btn ghost sm" id="prnStu">Print list</button><button class="btn ghost sm" id="csvStu">Download for Excel</button></div>`:""}
   <input class="search" id="search" type="search" placeholder="Search name or roll number" value="${esc(S.search)}" aria-label="Search students">
   <div class="list">${rows.map(r=>`<button class="stu" data-open="${r.st.roll}"><span class="roll">${r.st.roll}</span><span><div class="nm">${esc(r.st.name)}</div><div class="meta">${esc([r.st.adm,r.st.gender==="M"?"Boy":r.st.gender==="F"?"Girl":""].filter(Boolean).join(" • "))}</div></span><span class="mark ${r.x.pct!=null&&r.x.pct<c.minPct?"m-A":"m-P"}">${pct(r.x.pct)}</span></button>`).join("")}</div>`;
@@ -661,27 +664,76 @@ function printStudentList(){
   const d=f.contentWindow.document;d.open();d.write(html);d.close();
   setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print()}catch(e){toast("Couldn't open print")}setTimeout(()=>f.remove(),60000)},300);
 }
-function bulkStudents(){
-  openSheet(`<h2>Paste student list</h2><p class="small muted">One student per line. Use either just the name, or <b>Roll, Adm. no, Name</b> (copied from Excel works too). Students without a roll number are numbered after the last roll.</p>
-  <textarea class="out" id="bulkTxt" placeholder="1, AD-01, Abraham Debbarma&#10;2, AD-02, Adrick Molsom&#10;or just:&#10;Abraham Debbarma"></textarea>
+/* ---------- bulk add students: paste from Excel, or upload an Excel/CSV file ---------- */
+const STU_COLS=["Roll No","Adm No","Student Name","Gender (M/F)","Contact No","Parent / Guardian"];
+function normGender(v){v=String(v||"").trim().toUpperCase();if(/^(M|MALE|BOY|B)$/.test(v))return "M";if(/^(F|FEMALE|GIRL|G)$/.test(v))return "F";return ""}
+function colKey(h){h=String(h||"").toLowerCase().replace(/[^a-z]/g,"");
+  if(/^(roll|rollno|rollnumber|rno|slno|sl|srno)$/.test(h))return "roll";
+  if(/^(adm|admno|admission|admissionno|admnumber|admissionnumber|regno)$/.test(h))return "adm";
+  if(/name/.test(h)&&!/parent|guardian|father|mother/.test(h))return "name";
+  if(/gender|sex/.test(h))return "gender";
+  if(/contact|phone|mobile|whatsapp/.test(h))return "phone";
+  if(/parent|guardian|father|mother/.test(h))return "parent";
+  return null}
+/* rows = array of arrays of cells (empty cells kept) -> student objects */
+function rowsToStudents(rows){
+  rows=rows.map(r=>r.map(c=>String(c==null?"":c).trim())).filter(r=>r.some(c=>c!==""));
+  let map=null,start=0;
+  for(let k=0;k<Math.min(rows.length,10);k++){const keys=rows[k].map(colKey);
+    if(keys.includes("name")){map={};keys.forEach((key,ci)=>{if(key&&map[key]==null)map[key]=ci});start=k+1;break}}
+  const out=[];
+  for(const r of rows.slice(start)){let st;
+    if(map){const g=k=>map[k]!=null?(r[map[k]]||""):"";st={roll:g("roll"),adm:g("adm"),name:g("name"),gender:g("gender"),phone:g("phone"),parent:g("parent")}}
+    else{const c=r.filter((x,ci)=>!(ci===0&&x===""&&r.length>6));
+      if(/^\d+$/.test(c[0]||"")){st={roll:c[0],adm:c[1]||"",name:c[2]||"",gender:c[3]||"",phone:c[4]||"",parent:c[5]||""};
+        if(!st.name&&st.adm&&!/\d/.test(st.adm)){st.name=st.adm;st.adm=""}}
+      else st={roll:"",adm:"",name:c.filter(Boolean).join(" "),gender:"",phone:"",parent:""}}
+    st.name=String(st.name).trim();if(!st.name)continue;
+    st.roll=/^\d+$/.test(String(st.roll).trim())?+st.roll:null;st.gender=normGender(st.gender);
+    st.phone=String(st.phone).replace(/\.0$/,"").trim();out.push(st)}
+  return out}
+function pasteRows(text){return text.split(/\r?\n/).filter(l=>l.trim()).map(l=>l.includes("\t")?l.split("\t"):l.split(","))}
+async function fileRows(file){
+  if(!window.XLSX)await loadScript("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js");
+  const wb=XLSX.read(await file.arrayBuffer(),{type:"array"});
+  const name=wb.SheetNames.find(n=>/student/i.test(n))||wb.SheetNames[0];
+  return XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:"",raw:false})}
+async function downloadStudentTemplate(){
+  try{if(!window.XLSX)await loadScript("https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js");
+    const ws=XLSX.utils.aoa_to_sheet([STU_COLS,[1,"AD-001","Abraham Debbarma","M","9876543210","Mr. John Debbarma"],[2,"AD-002","Esther Molsom","F","","Mrs. Mary Molsom"]]);
+    ws["!cols"]=[{wch:8},{wch:10},{wch:28},{wch:13},{wch:14},{wch:26}];
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Students");XLSX.writeFile(wb,"SJS_Students_Upload_Template.xlsx");
+    toast("Template downloaded")}catch(e){toast("Couldn't make the template – check the internet")}}
+function bulkStudents(){if(!canClass()){toast("Only this class's teacher or the Admin can add students");return}
+  openSheet(`<h2>Add many students</h2>
+  <p class="small muted">Columns in this order: <b>Roll No, Adm No, Student Name, Gender (M/F), Contact No, Parent / Guardian</b>. Only the name is needed. A roll number that already exists in this class is <b>updated</b>, not duplicated.</p>
+  <div class="btns" style="margin:6px 0 10px"><button class="btn ghost sm" id="tplBtn">⬇ Download Excel template</button>
+    <label class="btn ghost sm" style="cursor:pointer">📂 Upload Excel / CSV file<input type="file" id="stuFile" accept=".xlsx,.xls,.csv" hidden></label></div>
+  <p class="small muted" style="margin:0 0 4px">…or copy the rows in Excel and paste them here:</p>
+  <textarea class="out" id="bulkTxt" placeholder="1&#9;AD-001&#9;Abraham Debbarma&#9;M&#9;9876543210&#9;Mr. John Debbarma&#10;2&#9;AD-002&#9;Esther Molsom&#9;F&#10;or just names, one per line"></textarea>
+  <p class="small" id="bulkInfo" style="margin:6px 0"></p>
   <div class="btns"><button class="btn green" id="bulkGo">Add students</button><button class="btn ghost" data-close>Cancel</button></div>`);
+  let fromFile=null;const info=document.getElementById("bulkInfo"),ta=document.getElementById("bulkTxt");
+  const preview=list=>{const have=new Set(S.students.map(s=>s.roll));const up=list.filter(s=>s.roll&&have.has(s.roll)).length;
+    info.innerHTML=list.length?`<b>${list.length}</b> student(s) found · ${list.length-up} new${up?` · ${up} will be updated`:""}${list[0]?` · first: ${esc((list[0].roll?list[0].roll+". ":"")+list[0].name)}`:""}`:"No students found yet."};
+  document.getElementById("tplBtn").onclick=downloadStudentTemplate;
+  ta.oninput=()=>{fromFile=null;preview(rowsToStudents(pasteRows(ta.value)))};
+  document.getElementById("stuFile").onchange=async e=>{const f=e.target.files[0];if(!f)return;info.textContent="Reading "+f.name+"…";
+    try{fromFile=rowsToStudents(await fileRows(f));ta.value="";ta.placeholder="Using the file: "+f.name;preview(fromFile)}catch(err){fromFile=null;info.textContent="Couldn't read that file. Save it as .xlsx or .csv and try again."}};
   document.getElementById("bulkGo").onclick=async e=>{
-    const lines=document.getElementById("bulkTxt").value.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-    if(!lines.length){toast("Paste at least one name");return}
-    let next=S.students.reduce((a,s)=>Math.max(a,s.roll),0)+1;const taken=new Set(S.students.map(s=>s.roll));const out=[];
-    for(const l of lines){const parts=l.split(/\t|,/).map(x=>x.trim()).filter(x=>x!=="");
-      let roll=null,adm="",name="";
-      if(parts.length>=3&&/^\d+$/.test(parts[0])){roll=+parts[0];adm=parts[1];name=parts.slice(2).join(" ")}
-      else if(parts.length===2&&/^\d+$/.test(parts[0])){roll=+parts[0];name=parts[1]}
-      else name=parts.join(" ");
-      if(!name)continue;if(!roll||taken.has(roll)){while(taken.has(next))next++;roll=next}
-      taken.add(roll);out.push({roll,adm,name,gender:"",parent:"",phone:""})}
+    const list=fromFile||rowsToStudents(pasteRows(ta.value));
+    if(!list.length){toast("Paste rows or choose a file first");return}
+    const byRoll=new Map(S.students.map(s=>[s.roll,s]));let next=S.students.reduce((a,s)=>Math.max(a,s.roll),0)+1;const used=new Set();const out=[];
+    for(const s of list){let roll=s.roll;if(!roll||used.has(roll)){while(byRoll.has(next)||used.has(next))next++;roll=next}
+      used.add(roll);const old=byRoll.get(roll)||{};
+      out.push({roll,adm:s.adm||old.adm||"",name:s.name,gender:s.gender||old.gender||"",parent:s.parent||old.parent||"",phone:s.phone||old.phone||""})}
     e.target.disabled=true;let n=0;
-    for(const s of out){e.target.textContent=`Adding ${++n} of ${out.length}…`;
-      try{await S.db.doc(P("students")+"/r"+String(s.roll).padStart(3,"0")).set(s)}catch(err){toast("Stopped: couldn't save "+s.name);e.target.disabled=false;return}}
-    closeSheet();toast(out.length+" students added");
+    for(const s of out){e.target.textContent=`Saving ${++n} of ${out.length}…`;
+      try{await S.db.doc(P("students")+"/r"+String(s.roll).padStart(3,"0")).set(s)}catch(err){toast("Stopped: couldn't save "+s.name);e.target.disabled=false;e.target.textContent="Add students";return}}
+    closeSheet();toast(out.length+" students saved");
   };
 }
+
 function openStudent(roll){
   const st=S.students.find(s=>s.roll===roll);if(!st)return;const c=C();const ses=sessionStats(roll);
   const rows=months().map(m=>({m,x:statsFor(roll,m)})).filter(r=>r.x.W>0);
@@ -692,11 +744,11 @@ function openStudent(roll){
   <div class="card tablewrap"><table><thead><tr><th>Month</th><th>Days</th><th>Full A</th><th>Half</th><th>Leave</th><th>%</th><th>Fine</th></tr></thead><tbody>
   ${rows.map(r=>`<tr><td>${monthLabel(r.m)}</td><td>${r.x.present.toFixed(1)}/${r.x.W}</td><td>${r.x.full||"–"}</td><td>${r.x.half||"–"}</td><td>${r.x.ldays||"–"}</td><td class="${r.x.pct<c.minPct?"pct-low":""}">${pct(r.x.pct)}</td><td>${r.x.fine||"–"}${r.x.fine?(paidOn(r.m,roll)?" ✓":""):""}</td></tr>`).join("")}</tbody></table></div>
   ${st.parent||st.phone?`<div class="card"><div class="label">Parent / Guardian</div><div style="font-weight:600;margin-top:4px">${esc(st.parent||"")}</div><div class="row" style="margin-top:6px"><span style="user-select:all;font-variant-numeric:tabular-nums">${esc(st.phone||"")}</span>${st.phone?`<button class="btn ghost sm" id="cpPhone">Copy number</button>`:""}</div></div>`:""}
-  <div class="btns">${S.canWrite?`<button class="btn ghost" id="editS">Edit details</button>`:""}<button class="btn ghost" data-close>Close</button></div>`);
+  <div class="btns">${canClass()?`<button class="btn ghost" id="editS">Edit details</button>`:""}<button class="btn ghost" data-close>Close</button></div>`);
   const cp=document.getElementById("cpPhone");if(cp)cp.onclick=()=>copyText(String(st.phone));
   const ed=document.getElementById("editS");if(ed)ed.onclick=()=>editStudent(st);
 }
-function editStudent(st){
+function editStudent(st){if(!canClass()){toast("Only this class's teacher or the Admin can change students");return}
   const nextRoll=S.students.reduce((a,s)=>Math.max(a,s.roll),0)+1;
   const s=st||{roll:nextRoll,adm:"",name:"",gender:"",parent:"",phone:""};
   openSheet(`<h2>${st?"Edit student":"Add student"}</h2>
@@ -728,7 +780,7 @@ function viewFines(v){
   <div class="kpi k-good"><div class="label">Collected</div><b>Rs ${coll}</b></div>
   <div class="kpi k-bad"><div class="label">Session balance</div><b>Rs ${sesDue-sesColl}</b><div class="small muted">of Rs ${sesDue} due</div></div></div>
   ${rows.length?`<div class="list">${rows.map(r=>{const p=paidOn(ym,r.st.roll);return `<div class="stu" style="cursor:default"><span class="roll">${r.st.roll}</span><span><div class="nm">${esc(r.st.name)}</div><div class="meta">${[r.x.full?r.x.full+" full":"",r.x.half?r.x.half+" half":"",r.x.ldays?r.x.ldays+" leave":""].filter(Boolean).join(" • ")} → <b>Rs ${r.x.fine}</b>${p?" • paid "+esc(fmtDate(p).slice(5)):""}</div></span>
-    <span class="row" style="gap:6px">${p?`<button class="paid" data-unpay="${r.st.roll}" ${S.canWrite?"":"disabled"}>Paid ✓</button><button class="chip" data-rcpt="${r.st.roll}">Receipt</button>`:`<button class="due" data-pay="${r.st.roll}" ${S.canWrite?"":"disabled"}>Mark paid</button>`}</span></div>`}).join("")}</div>`
+    <span class="row" style="gap:6px">${p?`<button class="paid" data-unpay="${r.st.roll}" ${canClass()?"":"disabled"}>Paid ✓</button><button class="chip" data-rcpt="${r.st.roll}">Receipt</button>`:`<button class="due" data-pay="${r.st.roll}" ${canClass()?"":"disabled"}>Mark paid</button>`}</span></div>`}).join("")}</div>`
   :`<div class="card empty">No fines for ${monthLabel(ym)}.</div>`}
   <p class="small muted">Fines are worked out from the AM/PM marks: A in both sessions = full day, A in one = half day.</p>`;
   v.querySelectorAll("#fchips [data-m]").forEach(b=>b.onclick=()=>{S.fineMonth=b.dataset.m;render()});
@@ -750,8 +802,8 @@ function viewMore(v){
   const k=S.classes.find(x=>x.id===S.cid);
   v.innerHTML=`<h2>More</h2>
   ${dataCard()}
-  <div class="card"><div class="row between"><h3>Classes &amp; sections (${S.classes.length})</h3>${S.canWrite?`<button class="btn sm" id="addCls">Add class</button>`:""}</div>
-    <div class="list classlist" style="margin-top:10px">${S.classes.map(x=>`<div class="stu" style="cursor:default" ${x.id===S.cid?'aria-current="true"':""}><span class="roll">${esc(x.cls)}</span><span><div class="nm">${esc(classLabel(x))}</div><div class="meta">${esc(x.teacher||"No class teacher set")}</div></span><span class="row" style="gap:6px">${x.id===S.cid?`<span class="small muted">Open</span>`:`<button class="chip" data-switch="${esc(x.id)}">Open</button>`}${S.canWrite?`<button class="chip" data-editcls="${esc(x.id)}">Edit</button>`:""}</span></div>`).join("")||`<p class="muted">No classes yet.</p>`}</div></div>
+  <div class="card"><div class="row between"><h3>Classes &amp; sections (${S.classes.length})</h3>${S.canEdit?`<button class="btn sm" id="addCls">Add class</button>`:""}</div>
+    <div class="list classlist" style="margin-top:10px">${S.classes.map(x=>`<div class="stu" style="cursor:default" ${x.id===S.cid?'aria-current="true"':""}><span class="roll">${esc(x.cls)}</span><span><div class="nm">${esc(classLabel(x))}</div><div class="meta">${esc(x.teacher||"No class teacher set")}</div></span><span class="row" style="gap:6px">${x.id===S.cid?`<span class="small muted">Open</span>`:`<button class="chip" data-switch="${esc(x.id)}">Open</button>`}${S.canEdit?`<button class="chip" data-editcls="${esc(x.id)}">Edit</button>`:""}</span></div>`).join("")||`<p class="muted">No classes yet.</p>`}</div></div>
   ${k?`<div class="card"><h3>Send to Excel</h3>`:`<div hidden>`}<p class="small muted">Copies one month of AM/PM marks. In your Excel register (two-times version), open that month's sheet, click cell <b>C9</b> and paste.</p>
     ${monthChips(S.month,"xchips")}<div class="btns" style="margin-top:8px"><button class="btn" id="xCopy">Copy ${monthLabel(S.month)} for Excel</button><button class="btn ghost" id="xCsv">Download CSV</button></div></div>
   <div class="card"><h3>Academic session</h3>
@@ -763,7 +815,7 @@ function viewMore(v){
       <label class="field"><span class="label">Count attendance from</span><input id="sCount" type="date" value="${esc(c.countFrom||c.start)}"></label>
     </div>
     <p class="small muted" style="margin:10px 0 0">“Count attendance from” is the first day used for working days and %. Keep it the same as the start date unless you began marking later.</p>
-    ${S.canWrite?`<div class="btns" style="margin-top:12px"><button class="btn green" id="sesSave">Save session</button></div>`:""}</div>
+    ${S.canEdit?`<div class="btns" style="margin-top:12px"><button class="btn green" id="sesSave">Save session</button></div>`:""}</div>
   <div class="card"><h3>Settings</h3>
     <div class="grid2" style="margin-top:10px">
       <label class="field"><span class="label">Full-day fine (Rs)</span><input id="sA" type="number" min="0" value="${c.fineA}"></label>
@@ -776,10 +828,10 @@ function viewMore(v){
     <p class="small muted" style="margin:10px 0 0">These settings apply to every class. Class teacher is set per class above.</p>
     <label class="field" style="margin-top:10px"><span class="label">Principal</span><input id="sP" value="${esc(c.principal)}"></label>
     <label class="field" style="margin-top:10px"><span class="label">Principal's phone (WhatsApp / SMS)</span><input id="sPP" type="tel" inputmode="tel" placeholder="10-digit mobile number" value="${esc(c.principalPhone||"")}"></label>
-    ${S.canWrite?`<div class="btns" style="margin-top:12px"><button class="btn green" id="sSave">Save settings</button></div>`:""}</div>
+    ${S.canEdit?`<div class="btns" style="margin-top:12px"><button class="btn green" id="sSave">Save settings</button></div>`:""}</div>
   <div class="card"><h3>Holidays &amp; vacations</h3>
-    <div style="margin-top:8px">${(c.holidays||[]).slice().sort((a,b)=>a.from<b.from?-1:1).map((h,i)=>`<div class="hol"><span><b>${esc(h.name)}</b><br><span class="small muted">${esc(fmtDate(h.from))}${h.to&&h.to!==h.from?" – "+esc(fmtDate(h.to)):""}</span></span>${S.canWrite?`<button class="chip" data-delhol="${esc(h.from)}|${esc(h.name)}">Remove</button>`:""}</div>`).join("")||`<p class="muted">No holidays added.</p>`}</div>
-    ${S.canWrite?`<div class="grid2" style="margin-top:10px"><label class="field"><span class="label">From</span><input id="hF" type="date"></label><label class="field"><span class="label">To (optional)</span><input id="hT" type="date"></label></div>
+    <div style="margin-top:8px">${(c.holidays||[]).slice().sort((a,b)=>a.from<b.from?-1:1).map((h,i)=>`<div class="hol"><span><b>${esc(h.name)}</b><br><span class="small muted">${esc(fmtDate(h.from))}${h.to&&h.to!==h.from?" – "+esc(fmtDate(h.to)):""}</span></span>${S.canEdit?`<button class="chip" data-delhol="${esc(h.from)}|${esc(h.name)}">Remove</button>`:""}</div>`).join("")||`<p class="muted">No holidays added.</p>`}</div>
+    ${S.canEdit?`<div class="grid2" style="margin-top:10px"><label class="field"><span class="label">From</span><input id="hF" type="date"></label><label class="field"><span class="label">To (optional)</span><input id="hT" type="date"></label></div>
     <label class="field" style="margin-top:8px"><span class="label">Name</span><input id="hN" placeholder="e.g. Durga Puja vacation"></label>
     <div class="btns" style="margin-top:10px"><button class="btn" id="hAdd">Add holiday</button></div>`:""}</div>
   <p class="small muted">Session ${esc(c.year||sessionName(c.start,c.end))}: ${esc(fmtDate(c.start))} to ${esc(fmtDate(c.end))} • Counting from ${esc(fmtDate(c.countFrom||c.start))}</p>`;
@@ -815,7 +867,7 @@ function viewMore(v){
   v.querySelectorAll("[data-delhol]").forEach(b=>b.onclick=()=>{const [f,n]=b.dataset.delhol.split("|");saveCfg({holidays:(c.holidays||[]).filter(h=>!(h.from===f&&h.name===n))},"Holiday removed")});
 }
 function sessionName(st,en){if(!st)return "";const a=st.slice(0,4),b=(en||"").slice(0,4);return b&&b!==a?a+"-"+b.slice(2):a}
-async function saveCfg(patch,msg){
+async function saveCfg(patch,msg){if(!S.canEdit){toast("Only the Admin can add or change classes and students");return}
   const body=Object.assign({},S.cfg||DEF,patch);
   try{await S.db.doc("cfg/main").set(body);S.cfg=body;render();toast(msg)}catch(e){toast("Couldn't save settings")}
 }
@@ -852,26 +904,36 @@ function switchClass(cid){if(S.dirty&&!confirmLeave())return;closeSheet();if(cid
 function openClassPicker(){
   if(!S.ready)return;
   openSheet(`<div class="row between"><h2>Choose class</h2><button class="iconbtn" data-close aria-label="Close">✕</button></div>
-  <div class="list classlist">${S.classes.map(x=>`<button class="stu" data-pick="${esc(x.id)}" ${x.id===S.cid?'aria-current="true"':""}><span class="roll">${esc(x.cls)}</span><span><div class="nm">${esc(classLabel(x))}</div><div class="meta">${esc(x.teacher||"")}</div></span><span class="small muted">${x.id===S.cid?"Open":""}</span></button>`).join("")||`<p class="muted">No classes yet.</p>`}</div>
-  ${S.canWrite?`<button class="btn" id="pickAdd">Add class / section</button>`:""}`);
+  <div class="list classlist">${S.classes.map(x=>`<button class="stu" data-pick="${esc(x.id)}" ${x.id===S.cid?'aria-current="true"':""}><span class="roll">${esc(x.cls)}</span><span><div class="nm">${esc(classLabel(x))}</div><div class="meta">${myClass(x)?"★ Your class · ":""}${esc(x.teacher||"")}</div></span><span class="small muted">${x.id===S.cid?"Open":""}</span></button>`).join("")||`<p class="muted">No classes yet.</p>`}</div>
+  ${S.canEdit?`<button class="btn" id="pickAdd">Add class / section</button>`:""}`);
   document.querySelectorAll("[data-pick]").forEach(b=>b.onclick=()=>switchClass(b.dataset.pick));
   const a=document.getElementById("pickAdd");if(a)a.onclick=()=>editClass(null);
 }
-function editClass(k){
+function editClass(k){if(!S.canEdit){toast("Only the Admin can add or change classes and students");return}
   openSheet(`<h2>${k?"Edit class":"Add class / section"}</h2>
   <div class="grid2"><label class="field"><span class="label">Class</span><input id="cCls" value="${esc(k?k.cls:"")}" placeholder="e.g. VI"></label>
   <label class="field"><span class="label">Section</span><input id="cSec" value="${esc(k?k.section:"")}" placeholder="e.g. A (optional)"></label></div>
-  <label class="field"><span class="label">Class teacher</span><input id="cTch" value="${esc(k?k.teacher:"")}"></label>
-  ${k?"":`<p class="small muted">After saving, open the Students tab and use “Paste list” to add the whole class at once.</p>`}
+  <label class="field"><span class="label">Class teacher (name shown)</span><input id="cTch" value="${esc(k?k.teacher:"")}"></label>
+  <div class="grid2"><label class="field"><span class="label">Class teacher – app account</span><select id="cU1"><option value="">Loading…</option></select></label>
+  <label class="field"><span class="label">Co-class teacher (optional)</span><select id="cU2"><option value="">Loading…</option></select></label></div>
+  <p class="small muted">The chosen teachers can add/edit students and mark attendance & fines for this class. Only teachers who are confirmed in SJS App appear here.</p>
+  ${k?"":`<p class="small muted">After saving, open the Students tab and use “Upload / Paste list” to add the whole class at once.</p>`}
   <div class="btns"><button class="btn green" id="cSave">${k?"Save changes":"Add class"}</button><button class="btn ghost" data-close>Cancel</button></div>`);
+  const cur=(k&&k.teacherUids)||[];
+  (async()=>{let list=[];try{if(S.mode==="online"){const q=await firebase.firestore().collection("att_teachers").get();list=q.docs.map(d=>d.data()).filter(t=>t.uid&&t.active!==false).sort((a,b)=>String(a.name).localeCompare(String(b.name)))}}catch(e){}
+    ["cU1","cU2"].forEach((id,i)=>{const el=document.getElementById(id);if(!el)return;
+      el.innerHTML=`<option value="">${list.length?"– none –":"No confirmed teachers yet"}</option>`+list.map(t=>`<option value="${esc(t.uid)}" ${cur[i]===t.uid?"selected":""}>${esc(t.name)}</option>`).join("");
+      if(cur[i]&&!list.some(t=>t.uid===cur[i]))el.innerHTML+=`<option value="${esc(cur[i])}" selected>(current – not in list)</option>`});
+    const u1=document.getElementById("cU1");if(u1)u1.onchange=()=>{const t=document.getElementById("cTch");if(t&&!t.value.trim()&&u1.value)t.value=u1.options[u1.selectedIndex].text}})();
   document.getElementById("cSave").onclick=async()=>{
     const cls=document.getElementById("cCls").value.trim(),section=document.getElementById("cSec").value.trim(),teacher=document.getElementById("cTch").value.trim();
+    const teacherUids=[...new Set([document.getElementById("cU1").value,document.getElementById("cU2").value].filter(Boolean))];
     if(!cls){toast("Enter the class");return}
     const dup=S.classes.find(x=>x.cls.toLowerCase()===cls.toLowerCase()&&(x.section||"").toLowerCase()===section.toLowerCase()&&(!k||x.id!==k.id));
     if(dup){toast(classLabel(dup)+" already exists");return}
     let id=k?k.id:(cls+(section?"-"+section:"")).replace(/[^A-Za-z0-9_\-]/g,"").slice(0,40)||"class";
     if(!k){let base=id,i=2;while(S.classes.some(x=>x.id===id))id=base+"-"+(i++)}
-    try{await S.db.doc("classes/"+id).set({id,cls,section,teacher,order:k?(k.order||0):Date.now()});closeSheet();toast(k?"Class updated":"Added "+classLabel({cls,section}));if(!k)attachClass(id)}
+    try{await S.db.doc("classes/"+id).set({id,cls,section,teacher,teacherUids,order:k?(k.order||0):Date.now()});closeSheet();toast(k?"Class updated":"Added "+classLabel({cls,section}));if(!k)attachClass(id)}
     catch(e){toast("Couldn't save the class")}
   };
 }
@@ -956,7 +1018,7 @@ async function parseRegister(file){
     (pay[ym]=pay[ym]||{})[String(s.roll)]=cellISO(c)||todayISO();pays++}})}
   return {cfg,klass,students,att,pay,marks,pays};
 }
-async function importRegister(){
+async function importRegister(){if(!S.canEdit){toast("Only the Admin can add or change classes and students");return}
   const file=await pickFile(".xlsx,.xlsm");if(!file)return;
   let R;try{toast("Reading "+file.name+"…");R=await parseRegister(file)}catch(e){toast(e.message||"Couldn't read that file");return}
   const ex=S.classes.find(x=>x.cls.toLowerCase()===R.klass.cls.toLowerCase()&&(x.section||"").toLowerCase()===R.klass.section.toLowerCase());
@@ -983,13 +1045,13 @@ S.local=new LocalStore();S.mode="local";S.user=null;S.subs=[];S.installEvt=null;
 window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();S.installEvt=e;if(S.tab==="more")render()});
 window.addEventListener("appinstalled",()=>{S.installEvt=null;toast("App installed")});
 function stopData(){[...S.subs,...S.unsub].forEach(u=>{try{u()}catch(e){}});S.subs=[];S.unsub=[];S.db=null;S.cfg=null;S.classes=[];S.cid=null;S.students=[];S.att={};S.pay={};S.got={}}
-function startData(store){
+function startData(store){if(S.mode!=="online")S.canEdit=true;
   stopData();S.db=store;S.ready=false;
   S.subs.push(store.doc("cfg/main").onSnapshot(s=>{S.cfg=s.exists?s.data():null;S.got.cfg=true;checkReady()},()=>{S.got.cfg=true;checkReady()}));
   S.subs.push(store.collection("classes").onSnapshot(q=>{
     S.classes=q.docs.map(d=>d.data()).sort((a,b)=>(a.order||0)-(b.order||0)||String(a.cls).localeCompare(String(b.cls))||String(a.section).localeCompare(String(b.section)));
     S.got.cls=true;
-    const want=S.cid&&S.classes.some(x=>x.id===S.cid)?S.cid:(S.classes.some(x=>x.id===lsGet("sjs-class"))?lsGet("sjs-class"):(S.classes[0]||{}).id||null);
+    const mine=S.classes.find(x=>myClass(x));const want=S.cid&&S.classes.some(x=>x.id===S.cid)?S.cid:(mine&&!S.canEdit?mine.id:(S.classes.some(x=>x.id===lsGet("sjs-class"))?lsGet("sjs-class"):(mine||S.classes[0]||{}).id||null));
     if(want!==S.cid)attachClass(want);else checkReady();
   },()=>{S.got.cls=true;checkReady()}));
 }
@@ -1003,7 +1065,7 @@ async function boot(){
     if(!firebase.apps.length)firebase.initializeApp(cfg);
     const fs=firebase.firestore();try{await fs.enablePersistence({synchronizeTabs:true})}catch(e){}
     S.fs=fs;
-    firebase.auth().onAuthStateChanged(u=>{S.user=u;if(u){startData(new FbStore(fs))}else{stopData();S.ready=true;render()}});
+    firebase.auth().onAuthStateChanged(u=>{S.user=u;S.canEdit=false;if(u){fs.collection('att_links').limit(1).get().then(()=>{S.canEdit=true;render()}).catch(()=>{});startData(new FbStore(fs))}else{stopData();S.ready=true;render()}});
   }catch(e){
     S.mode="local";S.syncError=true;startData(S.local);
     setTimeout(()=>toast("No internet: online sync couldn't start. Showing this phone's own data."),600);

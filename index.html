@@ -191,6 +191,8 @@ table.reg{border-collapse:separate;border-spacing:0;font-size:12px;min-width:100
 .bigstate.wait{background:#eef3fc;color:#183a72}
 .bigstate.off{background:#f1f2f5;color:#4a5568}
 .bigbtn{display:block;width:100%;margin-top:12px;border:0;border-radius:14px;padding:18px;font-size:20px;font-weight:800;letter-spacing:.5px;color:#fff;background:linear-gradient(135deg,#0ca30c,#087a08);box-shadow:0 6px 18px rgba(12,163,12,.3)}
+.sign{display:flex;justify-content:space-between;gap:10px;align-items:center;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:14px}
+.sign.ok{background:var(--goodbg);color:#075f07}.sign.wait{background:#eef3fc;color:#183a72}.sign.abs{background:var(--critbg);color:#8f1f1f}
 .bigbtn:active{transform:scale(.98)}
 .nav.hidden{display:none}
 .tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
@@ -247,7 +249,9 @@ const DEFAULT_CFG={
   address:'Gongrai, PO. Kendraicherra, Dist-Sepahijala, Tripura-799102', principal:'',
   session:'2026-27', start:'2026-03', end:'2027-04', trackFrom:'2026-11-03',
   offSun:true, offSatAll:false, offSats:[], holidays:[],
-  mOpen:'06:00', mLate:'07:15', mClose:'10:00', nOpen:'10:00', nLate:'11:15', nClose:'13:30',
+  mOpen:'06:00', mLate:'07:15', mClose:'10:30', mPmOpen:'10:30', mPmClose:'13:30', nOpen:'10:00', nLate:'11:15', nClose:'14:00', nPmOpen:'15:00', nPmClose:'17:30',
+  signMode:'2', mAoOpen:'09:30', mAoClose:'10:30', mPiOpen:'10:00', mPiLate:'10:45', mPiClose:'12:00', nAoOpen:'12:30', nAoClose:'13:30', nPiOpen:'13:00', nPiLate:'13:45', nPiClose:'15:00',
+  gpsOn:false, gpsLat:'', gpsLng:'', gpsR:100,
   leaveTypes:[
     {code:'CL',name:'Casual Leave',quota:12,present:false},
     {code:'ML',name:'Medical Leave',quota:10,present:false},
@@ -270,7 +274,7 @@ const pct=(a,b)=>b?Math.round(a*1000/b)/10:0;
 const newId=()=>'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const okHM=v=>/^\d\d:\d\d$/.test(v||'');
 
-const S={cfg:{...DEFAULT_CFG},teachers:[],links:{},marks:{},leaves:{},dec:{},notices:{},noticeErr:false,user:null,isAdmin:false,myLink:null,
+const S={cfg:{...DEFAULT_CFG},teachers:[],links:{},marks:{},leaves:{},dec:{},notices:{},noticeErr:false,fixes:{},fixlog:{},role:'teacher',canView:false,user:null,isAdmin:false,myLink:null,
   view:'home',date:todayISO(),regMonth:null,repTeacher:null,busy:false,ready:false,err:''};
 let fs=null, auth=null, FV=null;
 
@@ -288,36 +292,65 @@ function offReason(ds){
 }
 const monthDates=ym=>{const n=daysIn(ym),o=[];for(let i=1;i<=n;i++)o.push(ym+'-'+pad(i));return o;};
 const countable=ds=>inSession(ds)&&ds>=(S.cfg.trackFrom||sessionStart())&&!offReason(ds)&&ds<=todayISO();
-const shiftTimes=sh=>sh==='Noon'?{open:S.cfg.nOpen,late:S.cfg.nLate,close:S.cfg.nClose}:{open:S.cfg.mOpen,late:S.cfg.mLate,close:S.cfg.mClose};
+const shiftTimes=sh=>{const c={...DEFAULT_CFG,...S.cfg};const n=sh==='Noon';const g=k=>c[(n?'n':'m')+k];
+  return {open:g('Open'),late:g('Late'),close:g('Close'),pmOpen:g('PmOpen'),pmClose:g('PmClose'),aoOpen:g('AoOpen'),aoClose:g('AoClose'),piOpen:g('PiOpen'),piLate:g('PiLate'),piClose:g('PiClose')};};
+const four=()=>String(S.cfg.signMode||'2')==='4';
+const SFX={AM:'',AMO:'_AMO',PMI:'_PMI',PM:'_PM'};
+/* The signs of one day, in order. Late is only checked on "IN" signs. */
+function slots(st){ return four()
+  ? [{k:'AM',icon:'🌅',label:'Morning IN',open:st.open,late:st.late,close:st.close},
+     {k:'AMO',icon:'🍱',label:'Morning OUT',open:st.aoOpen,close:st.aoClose},
+     {k:'PMI',icon:'🌤️',label:'Afternoon IN',open:st.piOpen,late:st.piLate,close:st.piClose},
+     {k:'PM',icon:'🌇',label:'Afternoon OUT',open:st.pmOpen,close:st.pmClose}]
+  : [{k:'AM',icon:'🌅',label:'Morning sign',open:st.open,late:st.late,close:st.close},
+     {k:'PM',icon:'🌇',label:'Afternoon sign',open:st.pmOpen,close:st.pmClose}]; }
 const activeTeachers=()=>S.teachers.filter(t=>t.active!==false);
 const sortT=l=>[...l].sort((a,b)=>(a.order??9999)-(b.order??9999)||String(a.name).localeCompare(String(b.name)));
 const markOf=(uid,ds)=>uid?S.marks[ds+'_'+uid]||null:null;
+const pmOf=(uid,ds)=>uid?S.marks[ds+'_'+uid+'_PM']||null:null;
+const punch=(uid,ds,k)=>{const m=uid?S.marks[ds+'_'+uid+SFX[k]]:null;return m&&m.hm?m:null;};
+const SHORT={AM:'In',AMO:'M-Out',PMI:'A-In',PM:'Out'};
+const signTimes=(uid,ds)=>{const ks=four()?['AM','AMO','PMI','PM']:['AM','PM'];return ks.map(k=>{const m=punch(uid,ds,k);return m?(four()?({AM:'M-In',AMO:'M-Out',PMI:'A-In',PM:'A-Out'})[k]:SHORT[k])+' '+m.hm:''}).filter(Boolean).join(' · ');};
+const fixOf=(uid,ds)=>uid?S.fixes[ds+'_'+uid]||null:null;
 /* ---- Leave / On duty ---- */
 const LT=()=>(S.cfg.leaveTypes&&S.cfg.leaveTypes.length?S.cfg.leaveTypes:DEFAULT_CFG.leaveTypes);
 const ltOf=code=>LT().find(x=>x.code===code)||{code,name:code,quota:0,present:false};
 const leaveState=id=>{const d=S.dec[id];return !d?'pending':d.ok?'approved':'rejected';};
 function leaveOn(uid,ds){ if(!uid) return null; for(const [id,l] of Object.entries(S.leaves)){ if(l.uid===uid&&ds>=l.from&&ds<=l.to&&leaveState(id)==='approved') return l.type; } return null; }
-const isLeaveCode=s=>!!s&&!['P','L','A','W','H',''].includes(s);
+const isLeaveCode=s=>!!s&&!['P','L','HD','A','W','H',''].includes(s);
 /* 'P' present, 'L' late, 'A' absent, 'W' today & still open, 'H' holiday, CL/ML/OD… approved leave, '' not counted */
 function statusOf(t,ds){
   if(!inSession(ds)) return ''; if(offReason(ds)) return 'H';
   if(ds<(S.cfg.trackFrom||sessionStart())) return '';
   const lv=leaveOn(t.uid,ds);
   if(ds>todayISO()) return lv||'';
-  const st=shiftTimes(t.shift), m=markOf(t.uid,ds);
-  if(m&&m.hm&&m.hm<=st.close) return m.hm>st.late?'L':'P';
+  const fx=fixOf(t.uid,ds); if(fx&&fx.status) return fx.status;              /* Admin correction wins */
+  const st=shiftTimes(t.shift), today=ds===todayISO(), now=nowHM();
+  if(four()){
+    const a1=punch(t.uid,ds,'AM'),a2=punch(t.uid,ds,'AMO'),p1=punch(t.uid,ds,'PMI'),p2=punch(t.uid,ds,'PM');
+    const late=(a1&&a1.hm>st.late)||(p1&&p1.hm>st.piLate), mh=!!(a1||a2), ah=!!(p1||p2);
+    if(mh&&ah) return late?'L':'P';
+    if(mh) return (today&&now<=st.pmClose)?(late?'L':'P'):(lv||'HD');
+    if(ah) return lv||'HD';
+    if(lv) return lv;
+    if(today&&now<=st.close) return 'W';
+    return (today&&now<=st.piClose)?'W':'A';
+  }
+  const am=punch(t.uid,ds,'AM'), pm=punch(t.uid,ds,'PM');
+  if(am&&pm) return am.hm>st.late?'L':'P';
+  if(am) return (today&&now<=st.pmClose)?(am.hm>st.late?'L':'P'):'HD';   /* morning only: afternoon sign missed */
+  if(pm) return lv||'HD';                                               /* afternoon only: morning sign missed */
   if(lv) return lv;
-  if(m&&m.hm) return 'A';
-  if(ds===todayISO()&&nowHM()<=st.close) return 'W';
+  if(today&&now<=st.close) return 'W';
   return 'A';
 }
 /* % = days present (P + L + duty types) ÷ working days, not counting approved leave days */
 function tally(t,dates){
-  const c={P:0,L:0,A:0,days:0,lv:{},onLeave:0,duty:0};
+  const c={P:0,L:0,HD:0,A:0,days:0,lv:{},onLeave:0,duty:0};
   dates.forEach(ds=>{ if(ds>todayISO()) return; const s=statusOf(t,ds);
-    if(s==='P'||s==='L'||s==='A'){c[s]++;c.days++;}
+    if(s==='P'||s==='L'||s==='HD'||s==='A'){c[s]++;c.days++;}
     else if(isLeaveCode(s)){ c.lv[s]=(c.lv[s]||0)+1; c.days++; if(ltOf(s).present) c.duty++; else c.onLeave++; } });
-  c.present=c.P+c.L+c.duty; c.pct=pct(c.present,c.days-c.onLeave); return c;
+  c.present=c.P+c.L+c.duty+c.HD*0.5; c.pct=pct(c.present,c.days-c.onLeave); return c;
 }
 /* Working days a leave uses (for balances) */
 function leaveDaysUsed(uid,code){ let n=0; Object.entries(S.leaves).forEach(([id,l])=>{ if(l.uid!==uid||l.type!==code||leaveState(id)!=='approved') return;
@@ -328,7 +361,7 @@ const badge=s=>s==='W'?'<span class="code off">Open</span>':s==='H'?'<span class
 
 /* ================= Firebase ================= */
 function loadScript(src){return new Promise((ok,no)=>{const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=no;document.head.appendChild(s);});}
-function markFromDoc(d){ const x=d.data(); const at=x.at&&x.at.toDate?x.at.toDate():null; return {uid:x.uid,date:x.date,r:x.r||'',hm:at?istParts(at).hm:'',pending:!at}; }
+function markFromDoc(d){ const x=d.data(); const at=x.at&&x.at.toDate?x.at.toDate():null; return {uid:x.uid,date:x.date,ses:x.ses||'AM',r:x.r||'',dist:x.dist,hm:at?istParts(at).hm:'',pending:!at}; }
 let unsubs=[], monthUnsub=null, monthKey='';
 async function start(){
   const cfg=window.SJS_FIREBASE;
@@ -342,10 +375,13 @@ async function start(){
   }catch(e){ S.err='Could not load. Check the internet connection and open the app again.'; render(); return; }
   auth.onAuthStateChanged(async u=>{
     unsubs.forEach(f=>f()); unsubs=[]; if(monthUnsub){monthUnsub();monthUnsub=null;monthKey='';}
-    S.view='home'; S.user=u; S.isAdmin=false; S.myLink=null; S.marks={}; S.links={}; S.leaves={}; S.dec={}; S.notices={}; S.noticeErr=false; S.ready=false;
+    S.view='home'; S.user=u; S.isAdmin=false; S.role='teacher'; S.canView=false; S.myLink=null; S.marks={}; S.links={}; S.leaves={}; S.dec={}; S.notices={}; S.noticeErr=false; S.fixes={}; S.fixlog={}; S.ready=false;
     if(!u){ render(); return; }
     render();
     try{ await fs.collection('att_links').limit(1).get(); S.isAdmin=true; }catch(e){ S.isAdmin=false; }
+    if(S.isAdmin) S.role='admin';
+    else { try{ const r=await fs.doc('att_staff/'+u.uid).get(); const role=r.exists&&r.data().role; if(role==='principal'||role==='exam') S.role=role; }catch(e){} }
+    S.canView=S.isAdmin||S.role==='principal'||S.role==='exam';
     const err=e=>{ if(e&&e.code==='permission-denied') toast('Permission problem – ask the Admin to check the Firestore rules.'); else toast('Connection problem: '+(e&&e.code||'')); };
     unsubs.push(fs.doc('att_config/settings').onSnapshot(s=>{S.cfg=s.exists?{...DEFAULT_CFG,...s.data()}:{...DEFAULT_CFG};render();},err));
     unsubs.push(fs.collection('att_teachers').onSnapshot(s=>{S.teachers=s.docs.map(d=>({id:d.id,...d.data()}));render();},err));
@@ -355,16 +391,18 @@ async function start(){
       unsubs.push(fs.doc('att_links/'+u.uid).onSnapshot(s=>{S.myLink=s.exists?s.data():null;render();},err));
     }
     unsubs.push(fs.collection('att_notices').onSnapshot(s=>{const m={};s.docs.forEach(d=>m[d.id]=d.data());S.notices=m;S.noticeErr=false;render();},()=>{S.noticeErr=true;render();}));
-    const lq=c=>S.isAdmin?fs.collection(c):fs.collection(c).where('uid','==',u.uid);
+    const lq=c=>S.canView?fs.collection(c):fs.collection(c).where('uid','==',u.uid);
+    unsubs.push(lq('att_fix').onSnapshot(s=>{const m={};s.docs.forEach(d=>m[d.id]=d.data());S.fixes=m;render();},()=>{}));
+    unsubs.push(lq('att_fix_log').onSnapshot(s=>{const m={};s.docs.forEach(d=>m[d.id]=d.data());S.fixlog=m;render();},()=>{}));
     unsubs.push(lq('att_leaves').onSnapshot(s=>{const m={};s.docs.forEach(d=>m[d.id]=d.data());S.leaves=m;render();},err));
     unsubs.push(lq('att_leave_ok').onSnapshot(s=>{const m={};s.docs.forEach(d=>m[d.id]=d.data());S.dec=m;render();},err));
     unsubs.push(fs.collection('att_marks').where('uid','==',u.uid).onSnapshot(s=>{s.docs.forEach(d=>S.marks[d.id]=markFromDoc(d));S.ready=true;render();},err));
-    if(S.isAdmin) watchMonth(todayISO().slice(0,7));
+    if(S.canView) watchMonth(todayISO().slice(0,7));
   });
 }
 /* Admin: live marks for one month at a time (keeps reads small) */
 function watchMonth(ym){
-  if(!S.isAdmin||monthKey===ym) return; if(monthUnsub) monthUnsub(); monthKey=ym;
+  if(!S.canView||monthKey===ym) return; if(monthUnsub) monthUnsub(); monthKey=ym;
   monthUnsub=fs.collection('att_marks').where('date','>=',ym+'-01').where('date','<=',ym+'-31').onSnapshot(s=>{
     s.docChanges().forEach(c=>{ if(c.type==='removed') delete S.marks[c.doc.id]; else S.marks[c.doc.id]=markFromDoc(c.doc); }); render();
   },e=>toast('Could not load marks ('+(e.code||'')+')'));
@@ -385,7 +423,9 @@ function closeModal(){$('#modalBg').classList.remove('show');}
 $('#modalBg').addEventListener('click',e=>{if(e.target.id==='modalBg')closeModal();});
 function confirmBox(t,m,ok,fn){modal(`<h3>${esc(t)}</h3><p class="sub" style="font-size:13.5px">${esc(m)}</p><div class="row" style="justify-content:flex-end"><button class="btn" id="mC">Cancel</button><button class="btn pri" id="mO">${esc(ok)}</button></div>`);$('#mC').onclick=closeModal;$('#mO').onclick=()=>{closeModal();fn();};}
 const pendingCount=()=>Object.keys(S.leaves).filter(id=>leaveState(id)==='pending').length;
-const views=()=>S.isAdmin?[['home','⌂ Home'],['notices','Notices'+(unreadN()?' ('+unreadN()+')':'')],['me','✓ My Attendance'],['dash','Dashboard'],['leave','Leave'+(pendingCount()?' ('+pendingCount()+')':'')],['register','Register'],['report','Teacher Report'],['teachers','Teachers'],['settings','Settings']]:[['home','⌂ Home'],['notices','Notices'+(unreadN()?' ('+unreadN()+')':'')],['me','✓ My Attendance']];
+const ROLE_NAME={teacher:'Teacher',principal:'Principal',exam:'Examination In-Charge'};
+const canApprove=()=>S.isAdmin||S.role==='principal';
+const views=()=>!S.isAdmin&&S.canView?[['home','⌂ Home'],['notices','Notices'+(unreadN()?' ('+unreadN()+')':'')],['me','✓ Teacher Attendance'],['dash','Dashboard'],['classes','All Classes'],['leave','Leave'+(canApprove()&&pendingCount()?' ('+pendingCount()+')':'')],['register','Register'],['report','Teacher Report']]:S.isAdmin?[['home','⌂ Home'],['notices','Notices'+(unreadN()?' ('+unreadN()+')':'')],['me','✓ Teacher Attendance'],['dash','Dashboard'],['classes','All Classes'],['leave','Leave'+(pendingCount()?' ('+pendingCount()+')':'')],['register','Register'],['report','Teacher Report'],['teachers','Teachers'],['settings','Settings']]:[['home','⌂ Home'],['notices','Notices'+(unreadN()?' ('+unreadN()+')':'')],['me','✓ Teacher Attendance']];
 function go(v){S.view=v;render();window.scrollTo(0,0);}
 
 function render(){
@@ -393,7 +433,7 @@ function render(){
   $('#hSchool').textContent=c.school; $('#hMotto').textContent=c.motto; $('#hAddr').textContent=c.address;
   $('#hSess').textContent='Session '+c.session+' · '+monthLabel(c.start).slice(0,3)+' '+c.start.slice(0,4)+' – '+monthLabel(c.end).slice(0,3)+' '+c.end.slice(0,4);
   const hm=$('#hMode'); hm.className='mode '+(S.user?'on':'');
-  hm.innerHTML='<i></i>'+(S.user?esc(S.user.email)+(S.isAdmin?' · Admin':''):'Not signed in');
+  hm.innerHTML='<i></i>'+(S.user?esc(staffIdOf(S.user.email)||S.user.email)+(S.isAdmin?' · Admin':S.role==='principal'?' · Principal':S.role==='exam'?' · Exam In-Charge':''):'Not signed in');
   if(S.err){ $('#main').innerHTML=`<div class="banner err"><div>${esc(S.err)}</div></div>`; return; }
   if(!auth){ return; }
   const vs=views(); if(!vs.some(v=>v[0]===S.view)) S.view='home';
@@ -401,31 +441,35 @@ function render(){
   $('#nav').innerHTML=vs.map(([k,l])=>`<button class="tab ${S.view===k?'act':''}" data-go="${k}">${l}</button>`).join('');
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
   if(!S.user){ $('#main').innerHTML=vLogin(); bLogin(); return; }
-  const V={home:[vHome,bHome],notices:[vNotices,bNotices],me:[vMe,bMe],dash:[vDash,bDash],leave:[vLeave,bLeave],register:[vReg,bReg],report:[vRep,bRep],teachers:[vTeach,bTeach],settings:[vSet,bSet]}[S.view];
+  const V={classes:[vClasses,bClasses],home:[vHome,bHome],notices:[vNotices,bNotices],me:[vMe,bMe],dash:[vDash,bDash],leave:[vLeave,bLeave],register:[vReg,bReg],report:[vRep,bRep],teachers:[vTeach,bTeach],settings:[vSet,bSet]}[S.view];
   $('#main').innerHTML=V[0]()+`<div class="row" style="justify-content:center;margin-top:16px"><button class="btn sm" id="signOut">Sign out</button></div><div class="foot">${esc(c.school)} · SJS App · Session ${esc(c.session)}${c.principal?' · Principal: '+esc(c.principal):''}</div>`;
   V[1](); $('#signOut').onclick=()=>auth.signOut();
 }
 
 /* ================= LOGIN ================= */
 function vLogin(){
-  return `<div class="card mecard"><h2>Sign in</h2><p class="sub">Teachers: the first time, tap <b>New teacher – create account</b> with your own email and a password.</p>
-    <label class="f">Email<input class="inp" id="lE" type="email" autocomplete="email" inputmode="email"></label>
+  return `<div class="card mecard"><h2>Sign in</h2><p class="sub">Use the <b>Staff ID</b> and password given by the Admin (for example SJS01), or your own email.</p>
+    <label class="f">Staff ID or Email<input class="inp" id="lE" autocomplete="username" autocapitalize="characters" placeholder="SJS01 or name@gmail.com"></label>
     <label class="f" style="margin-top:10px">Password<input class="inp" id="lP" type="password" autocomplete="current-password"></label>
     <button class="bigbtn" id="lIn" style="background:linear-gradient(135deg,#1d3d6e,#13294b);box-shadow:none;font-size:17px;padding:14px">Sign in</button>
     <div class="row" style="justify-content:space-between;margin-top:12px"><button class="btn sm" id="lNew">New teacher – create account</button><button class="btn sm" id="lForgot">Forgot password?</button></div></div>
     <div class="card"><h3>Install this app on your phone</h3><p class="sub" style="margin:0"><b>Android (Chrome):</b> ⋮ menu → <b>Install app</b> / Add to Home screen.<br><b>iPhone (Safari):</b> Share → <b>Add to Home Screen</b>.</p></div>`;
 }
+function staffEmail(id){return String(id).trim().toLowerCase().replace(/[^a-z0-9._-]/g,'')+'@staff.'+((window.SJS_FIREBASE&&window.SJS_FIREBASE.authDomain)||'sjs-app.firebaseapp.com');}
+const idToEmail=v=>v.includes('@')?v:staffEmail(v);
+const isStaffLogin=e=>/@staff\./.test(e||'');
+const staffIdOf=e=>isStaffLogin(e)?e.split('@')[0].toUpperCase():'';
 function bLogin(){
-  const E=()=>$('#lE').value.trim(), P=()=>$('#lP').value;
-  $('#lIn').onclick=async()=>{ if(!E()||!P()){toast('Enter email and password');return;} try{await auth.signInWithEmailAndPassword(E(),P());}catch(e){fbErr(e);} };
+  const E=()=>idToEmail($('#lE').value.trim()), P=()=>$('#lP').value;
+  $('#lIn').onclick=async()=>{ if(!$('#lE').value.trim()||!P()){toast('Enter Staff ID (or email) and password');return;} try{await auth.signInWithEmailAndPassword(E(),P());}catch(e){fbErr(e);} };
   $('#lP').addEventListener('keydown',e=>{ if(e.key==='Enter') $('#lIn').click(); });
-  $('#lNew').onclick=async()=>{ if(!E()||!P()){toast('Type your email and a new password (6+ letters) above, then tap this again');return;} try{await auth.createUserWithEmailAndPassword(E(),P());toast('Account created');}catch(e){fbErr(e);} };
-  $('#lForgot').onclick=async()=>{ if(!E()){toast('Type your email above first');return;} try{await auth.sendPasswordResetEmail(E());toast('Password reset email sent to '+E());}catch(e){fbErr(e);} };
+  $('#lNew').onclick=async()=>{ if(!$('#lE').value.includes('@')){toast('Staff IDs are made by the Admin – just tap Sign in. To create your own account, type your email.');return;} if(!P()){toast('Type your email and a new password (6+ letters) above, then tap this again');return;} try{await auth.createUserWithEmailAndPassword(E(),P());toast('Account created');}catch(e){fbErr(e);} };
+  $('#lForgot').onclick=async()=>{ if(!$('#lE').value.trim()){toast('Type your email above first');return;} if(!$('#lE').value.includes('@')){toast('For a Staff ID, ask the Admin for a new password.');return;} try{await auth.sendPasswordResetEmail(E());toast('Password reset email sent to '+E());}catch(e){fbErr(e);} };
 }
 
 /* ================= HOME ================= */
 const isStaff=()=>S.isAdmin||(S.user&&S.teachers.some(t=>t.uid===S.user.uid));
-const myTeacher=()=>S.user&&S.myLink&&S.teachers.find(t=>t.id===S.myLink.teacherId);
+const myTeacher=()=>S.user&&(S.teachers.find(t=>t.uid===S.user.uid)||(S.myLink&&S.teachers.find(t=>t.id===S.myLink.teacherId)));
 const atMs=n=>n&&n.at&&n.at.toDate?n.at.toDate().getTime():Date.now();
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
@@ -436,25 +480,26 @@ function hello(){ const h=+nowHM().slice(0,2); return h<12?'Good morning':h<17?'
 function vHome(){
   const t=myTeacher(), ds=todayISO(), staff=isStaff();
   let today='Choose your name to start';
-  if(t){ const s=statusOf({...t,uid:S.user.uid},ds); today=s==='P'?'✓ Present today':s==='L'?'✓ Late today':s==='A'?'✗ Absent today':s==='W'?'Not marked yet – tap to mark':s==='H'?'Holiday – '+(offReason(ds)||''):isLeaveCode(s)?ltOf(s).name+' today':'—'; }
+  if(t){ const s=statusOf({...t,uid:S.user.uid},ds); const _pm=pmOf(S.user.uid,ds), _st=shiftTimes(t.shift), _out=(s==='P'||s==='L')&&!(_pm&&_pm.hm); today=_out?(nowHM()>=_st.pmOpen?'Morning ✓ · sign Afternoon now':'Morning ✓ · Afternoon at '+_st.pmOpen):s==='P'?'✓ Present today':s==='L'?'✓ Late today':s==='HD'?'½ Half day today':s==='A'?'✗ Absent today':s==='W'?'Not signed yet – tap to sign':s==='H'?'Holiday – '+(offReason(ds)||''):isLeaveCode(s)?ltOf(s).name+' today':'—'; }
   const tile=(go,icon,title,sub,cls='',href='')=>`<${href?'a href="'+href+'"':'button data-hgo="'+go+'"'} class="tile ${cls}"><span class="ti">${icon}</span><span class="tt">${title}</span><span class="ts">${sub}</span></${href?'a':'button'}>`;
   const ts=activeTeachers(); const presentNow=ts.filter(x=>{const s=statusOf(x,ds);return s==='P'||s==='L'||(isLeaveCode(s)&&ltOf(s).present);}).length;
   const reqs=Object.entries(S.links).filter(([uid,l])=>l&&S.teachers.some(x=>x.id===l.teacherId&&x.uid!==uid)).length;
   const latest=sortedNotices().slice(0,3);
   return `<div class="card mecard"><div class="tmeta">${DOW[parse(ds).getDay()]}, ${fmtDate(ds)}</div><h2 style="font-size:20px;margin:2px 0 0">${hello()}${t?', '+esc(t.name):''}</h2></div>
   <div class="tiles">
-    ${tile('me','✅','My Attendance',esc(today),t&&statusOf({...t,uid:S.user.uid},ds)==='W'?'hot':'')}
+    ${tile('me','✅','Teacher Attendance',esc(today),t&&(statusOf({...t,uid:S.user.uid},ds)==='W'||/sign Afternoon now/.test(today))?'hot':'')}
     ${tile('notices','📢','Notices',unreadN()?unreadN()+' new':'Circulars & dates',unreadN()?'hot':'')}
     ${staff?tile('','🧑‍🎓','Student Attendance','Classes, AM/PM, fines','','attendance.html'):tile('','🔒','Student Attendance','Opens after the Admin confirms you','locked')}
     ${tile('','🗓️','Time Table','Routine & adjustments','','timetable.html')}
   </div>
-  ${S.isAdmin?`<h3 class="sec">Admin</h3><div class="tiles">
+  ${S.canView?`<h3 class="sec">${S.isAdmin?'Admin':esc(ROLE_NAME[S.role])}</h3><div class="tiles">
     ${tile('dash','📊','Dashboard',presentNow+' of '+ts.length+' teachers present')}
-    ${tile('leave','📝','Leave',pendingCount()?pendingCount()+' waiting':'No requests',pendingCount()?'hot':'')}
-    ${tile('teachers','👥','Teachers',reqs?reqs+' to confirm':ts.length+' teachers',reqs?'hot':'')}
+    ${tile('classes','🏫','All Classes','Student attendance today')}
+    ${tile('leave','📝','Leave',pendingCount()?pendingCount()+' waiting':'No requests',canApprove()&&pendingCount()?'hot':'')}
+    ${S.isAdmin?tile('teachers','👥','Teachers',reqs?reqs+' to confirm':ts.length+' teachers',reqs?'hot':''):''}
     ${tile('register','📅','Register','Monthly, Excel')}
     ${tile('report','👤','Teacher Report','One teacher')}
-    ${tile('settings','⚙️','Settings','Session, times, holidays')}
+    ${S.isAdmin?tile('settings','⚙️','Settings','Times, GPS, holidays'):''}
   </div>`:''}
   <div class="card" style="margin-top:14px"><div class="row"><h3 class="grow" style="margin:0">Latest notices</h3><button class="btn sm" data-hgo="notices">All</button></div>
     ${latest.length?latest.map(([id,n])=>`<div class="li"><span>${n.pinned?'📌 ':''}<b>${esc(n.title)}</b> <span class="tmeta">${esc(n.cat||'')} · ${n.date?fmtDate(n.date):''}</span></span></div>`).join(''):`<div class="empty">${S.noticeErr?'Notices appear after the Admin confirms you.':'No notices yet.'}</div>`}</div>`;
@@ -490,37 +535,52 @@ function bNotices(){
 
 /* ================= MY ATTENDANCE ================= */
 function vMe(){
-  const ts=sortT(activeTeachers()); const link=S.myLink; const t=link&&S.teachers.find(x=>x.id===link.teacherId);
+  const ts=sortT(activeTeachers()); const link=S.myLink; const t=S.teachers.find(x=>x.uid===S.user.uid)||(link&&S.teachers.find(x=>x.id===link.teacherId));
   if(!t){
     if(!ts.length) return '<div class="card"><h2>Teacher list is empty</h2><p class="sub">The Admin has not added the teachers yet. Please check again later.</p></div>';
     return `<div class="card mecard"><h2>Choose your name (one time)</h2><p class="sub">The Admin will confirm it. After that only you can mark your attendance.</p>
       <div class="row"><select class="inp grow" id="pickT"><option value="">— Select your name —</option>${ts.map(x=>`<option value="${x.id}">${esc(x.name)}${x.subject?' ('+esc(x.subject)+')':''}</option>`).join('')}</select><button class="btn pri" id="pickB">This is me</button></div></div>`;
   }
   const linked=t.uid===S.user.uid, ds=todayISO(), off=offReason(ds), st=shiftTimes(t.shift), now=nowHM();
-  const m=markOf(S.user.uid,ds);
-  let state,btn=false;
-  if(!S.ready) state='<div class="bigstate wait">Loading…</div>';
-  else if(!inSession(ds)) state=`<div class="bigstate off">Today is outside the session (${monthLabel(S.cfg.start)} – ${monthLabel(S.cfg.end)}).</div>`;
-  else if(off) state=`<div class="bigstate off">🎉 Holiday today – ${esc(off)}</div>`;
-  else if(!m&&leaveOn(S.user.uid,ds)) state=`<div class="bigstate wait">Today: <b>${esc(ltOf(leaveOn(S.user.uid,ds)).name)}</b> (approved by Admin)</div>`;
-  else if(m&&m.pending) state='<div class="bigstate wait">Saving… keep the internet on.</div>';
-  else if(m) { const s=m.hm>st.close?'A':m.hm>st.late?'L':'P'; state=`<div class="bigstate ${s==='P'?'ok':s==='L'?'late':'abs'}">${s==='A'?'✗':'✓'} Marked at <b>${esc(m.hm)}</b> – ${s==='P'?'PRESENT':s==='L'?'LATE':'after closing time: ABSENT'}</div>`; }
-  else if(now<st.open) state=`<div class="bigstate wait">Attendance opens at <b>${esc(st.open)}</b></div>`;
-  else if(now>st.close) state=`<div class="bigstate abs">✗ Closed at ${esc(st.close)}. Today is recorded as <b>ABSENT</b>.</div>`;
-  else { state=`<div class="bigstate wait">Not marked yet. Mark before <b>${esc(st.close)}</b>, or you will be <b>Absent</b>.</div>`; btn=true; }
+  const lvToday=leaveOn(S.user.uid,ds), uid=S.user.uid, SL=slots(st);
+  const blocked=!S.ready||!inSession(ds)||!!off;
+  let top='';
+  if(!S.ready) top='<div class="bigstate wait">Loading…</div>';
+  else if(!inSession(ds)) top=`<div class="bigstate off">Today is outside the session (${monthLabel(S.cfg.start)} – ${monthLabel(S.cfg.end)}).</div>`;
+  else if(off) top=`<div class="bigstate off">🎉 Holiday today – ${esc(off)}</div>`;
+  else if(lvToday&&!SL.some(x=>punch(uid,ds,x.k))) top=`<div class="bigstate wait">Today: <b>${esc(ltOf(lvToday).name)}</b> (approved). You don't need to sign.</div>`;
+  const fx=fixOf(uid,ds);
+  const lines=blocked?'':SL.map(x=>{const m=punch(uid,ds,x.k), raw=S.marks[ds+'_'+uid+SFX[x.k]];
+    const head=`<span>${x.icon} <b>${x.label}</b></span>`;
+    if(m) return `<div class="sign ok">${head}<span>✓ ${esc(m.hm)}${x.late&&m.hm>x.late?' <span class="code L">LATE</span>':''}${m.dist!=null?` <span class="tmeta">📍${Math.round(m.dist)} m</span>`:''}</span></div>${m.r?`<div class="tmeta" style="margin:-4px 0 8px 8px">Reason: ${esc(m.r)}</div>`:''}`;
+    if(raw&&raw.pending) return `<div class="sign wait">${head}<span>Saving…</span></div>`;
+    if(now<x.open) return `<div class="sign wait">${head}<span>opens ${esc(x.open)}</span></div>`;
+    if(now>x.close) return `<div class="sign abs">${head}<span>✗ missed (closed ${esc(x.close)})</span></div>`;
+    return `<div class="sign wait">${head}<span>${x.late?(now>x.late?'late now – reason needed':'on time until '+esc(x.late)):'open until '+esc(x.close)}</span></div>`;}).join('');
+  const openSlot=blocked||(lvToday&&!SL.some(x=>punch(uid,ds,x.k)))?null:SL.find(x=>!punch(uid,ds,x.k)&&!(S.marks[ds+'_'+uid+SFX[x.k]]||{}).pending&&now>=x.open&&now<=x.close);
+  const lateNow=!!(openSlot&&openSlot.late&&now>openSlot.late);
+  const sToday=statusOf({...t,uid},ds);
+  const allDone=SL.every(x=>punch(uid,ds,x.k));
+  const sumLine=blocked||top?'':fx?`<div class="bigstate wait">✎ Corrected by Admin: <b>${esc(sToday)}</b>${fx.reason?' – '+esc(fx.reason):''}</div>`
+    :sToday==='HD'?'<div class="bigstate late">Only part of the day signed – counted as <b>HALF DAY</b>.</div>'
+    :sToday==='A'?'<div class="bigstate abs">✗ No sign today – recorded as <b>ABSENT</b>.</div>'
+    :allDone?`<div class="bigstate ${sToday==='L'?'late':'ok'}">✓ All signs done – <b>${sToday==='L'?'LATE':'PRESENT'}</b></div>`:'';
+  const gpsNote=S.cfg.gpsOn?`<div class="tmeta" style="margin-top:6px">📍 You must be within <b>${+S.cfg.gpsR||100} m</b> of school. Allow Location when the phone asks.</div>`:'';
   const ym=ds.slice(0,7), dates=monthDates(ym), tme={...t,uid:S.user.uid}, c=tally(tme,dates);
   const list=dates.filter(d=>d<=ds).reverse().map(d=>({d,s:statusOf(tme,d),m:markOf(S.user.uid,d)})).filter(x=>x.s);
-  return `${linked?'':`<div class="banner warn"><div><b>Waiting for the Admin to confirm you are ${esc(t.name)}.</b> You can mark now – it counts once confirmed.</div></div>`}
-  <div class="card mecard"><div class="tmeta">${DOW[parse(ds).getDay()]}, ${fmtDate(ds)} · ${esc(t.shift||'Morning')} shift · ${esc(st.open)}–${esc(st.close)}, late after ${esc(st.late)}</div>
-    <h2 style="font-size:20px;margin:4px 0 12px">${esc(t.name)}</h2>${state}
-    ${btn?`<input class="inp" id="myR" placeholder="Remark (optional)" maxlength="120" style="width:100%;margin-top:12px"><button class="bigbtn" id="presentB" ${S.busy?'disabled':''}>I am Present</button><div class="tmeta" style="text-align:center;margin-top:6px">Time is taken from the internet, not your phone.</div>`:''}</div>
+  return `${linked?'':`<div class="banner warn"><div><b>Waiting for the Admin to confirm you are ${esc(t.name)}.</b> You can sign now – it counts once confirmed.</div></div>`}
+  <div class="card mecard"><div class="tmeta">${DOW[parse(ds).getDay()]}, ${fmtDate(ds)} · ${esc(t.shift||'Morning')} shift · ${SL.map(x=>x.label+' '+esc(x.open)+'–'+esc(x.close)+(x.late?' (late after '+esc(x.late)+')':'')).join(' · ')}</div>
+    <h2 style="font-size:20px;margin:4px 0 12px">${esc(t.name)}</h2>${top}${lines}${sumLine}
+    ${openSlot?`<input class="inp" id="myR" placeholder="${lateNow?'Reason for coming late (required)':'Remark (optional)'}" maxlength="120" style="width:100%;margin-top:12px;${lateNow?'border-color:var(--ser)':''}"><button class="bigbtn" id="signB" data-k="${openSlot.k}" style="${openSlot.late?'':'background:linear-gradient(135deg,#1d3d6e,#13294b)'}" ${S.busy?'disabled':''}>${S.busy?'Getting location…':'Sign '+openSlot.label+(lateNow?' (Late)':'')}</button>`:''}
+    ${openSlot?'<div class="tmeta" style="text-align:center;margin-top:6px">Time is taken from the internet, not your phone.</div>':''}${gpsNote}</div>
   <div class="kpis"><div class="kpi" style="--k:var(--good)"><div class="l">Present</div><div class="v">${c.P}</div><div class="s">${monthLabel(ym)}</div></div>
-    <div class="kpi" style="--k:var(--ser)"><div class="l">Late</div><div class="v">${c.L}</div><div class="s">counted present</div></div>
+    <div class="kpi" style="--k:var(--ser)"><div class="l">Late</div><div class="v">${c.L}</div><div class="s">half day ${c.HD}</div></div>
     <div class="kpi" style="--k:var(--crit)"><div class="l">Absent</div><div class="v">${c.A}</div><div class="s">not marked</div></div>
     <div class="kpi" style="--k:var(--leave)"><div class="l">Leave / Duty</div><div class="v">${c.onLeave+c.duty}</div><div class="s">${LT().map(x=>x.code+' '+(c.lv[x.code]||0)).join(' · ')}</div></div>
     <div class="kpi" style="--k:var(--navy)"><div class="l">Attendance</div><div class="v">${c.pct}%</div><div class="s">${c.days} working day(s)</div></div></div>
   ${vMyLeave()}
-  <div class="card"><h3>My days – ${monthLabel(ym)}</h3>${list.length?list.map(x=>`<div class="li"><span>${fmtDate(x.d)} <span class="tmeta">${DOW[parse(x.d).getDay()]}${x.m&&x.m.hm?' · '+esc(x.m.hm):''}${x.m&&x.m.r?' · '+esc(x.m.r):''}${x.s==='H'?' · '+esc(offReason(x.d)):''}${isLeaveCode(x.s)?' · '+esc(ltOf(x.s).name):''}</span></span>${badge(x.s)}</div>`).join(''):'<div class="empty">No days yet.</div>'}</div>`;
+  <div class="row" style="justify-content:center;margin:-4px 0 12px"><button class="btn sm" id="chPw">🔑 Change my password</button></div>
+  <div class="card"><h3>My days – ${monthLabel(ym)}</h3>${list.length?list.map(x=>`<div class="li"><span>${fmtDate(x.d)} <span class="tmeta">${DOW[parse(x.d).getDay()]}${signTimes(S.user.uid,x.d)?' · '+esc(signTimes(S.user.uid,x.d)):''}${x.m&&x.m.r?' · '+esc(x.m.r):''}${x.s==='H'?' · '+esc(offReason(x.d)):''}${isLeaveCode(x.s)?' · '+esc(ltOf(x.s).name):''}${fixOf(S.user.uid,x.d)?' · ✎ corrected':''}</span></span>${badge(x.s)}</div>`).join(''):'<div class="empty">No days yet.</div>'}</div>`;
 }
 const stPill=st=>`<span class="pill" style="${st==='approved'?'background:var(--goodbg);color:#075f07':st==='rejected'?'background:var(--critbg);color:#8f1f1f':'background:var(--warnbg);color:#6b4b00'}">${st==='approved'?'Approved':st==='rejected'?'Rejected':'Pending'}</span>`;
 function vMyLeave(){
@@ -549,24 +609,52 @@ function bMe(){
   const pb=$('#pickB');
   if(pb) pb.onclick=()=>{ const id=$('#pickT').value; if(!id){toast('Select your name');return;} const t=S.teachers.find(x=>x.id===id);
     confirmBox('Are you '+t.name+'?','Choose only your own name. The Admin will check it.','Yes, this is me',async()=>{ try{ await fs.doc('att_links/'+S.user.uid).set({teacherId:id,email:S.user.email||'',requestedAt:FV.serverTimestamp()}); toast('Sent to Admin'); }catch(e){fbErr(e);} }); };
-  const b=$('#presentB');
-  if(b) b.onclick=async()=>{
+  const sign=async(k)=>{
     if(!navigator.onLine){toast('No internet – turn on mobile data and try again');return;}
-    const ds=todayISO(), uid=S.user.uid; S.busy=true; b.disabled=true;
-    try{ await fs.doc('att_marks/'+ds+'_'+uid).set({uid,date:ds,at:FV.serverTimestamp(),r:(($('#myR')||{}).value||'').trim().slice(0,120)}); toast('Attendance saved'); }
-    catch(e){ fbErr(e); }
+    const ds=todayISO(), uid=S.user.uid, tc=myTeacher(), st=shiftTimes(tc&&tc.shift), now=nowHM(), sl=slots(st).find(x=>x.k===k);
+    if(!sl||now<sl.open||now>sl.close){toast('This sign is closed now');render();return;}
+    const r=(($('#myR')||{}).value||'').trim().slice(0,120);
+    if(sl.late&&now>sl.late&&!r){toast('Please write the reason for coming late');const f=$('#myR');if(f)f.focus();return;}
+    const body={uid,date:ds,at:FV.serverTimestamp(),r};
+    if(k!=='AM') body.ses=k;
+    S.busy=true; render();
+    try{
+      if(S.cfg.gpsOn){
+        const c=await getPos(); const d=distM(c.latitude,c.longitude,+S.cfg.gpsLat,+S.cfg.gpsLng), R=+S.cfg.gpsR||100;
+        if(d>R){S.busy=false;render();modal(`<h3>📍 Too far from school</h3><p class="sub" style="font-size:14px">You are about <b>${Math.round(d)} m</b> away. You can sign only within <b>${R} m</b> of St. James.</p><p class="sub">GPS accuracy now: ±${Math.round(c.accuracy)} m. If you are at school, go outside or near a window and try again.</p><div class="row" style="justify-content:flex-end"><button class="btn pri" id="mC">OK</button></div>`);$('#mC').onclick=closeModal;return;}
+        Object.assign(body,{lat:+c.latitude.toFixed(6),lng:+c.longitude.toFixed(6),acc:Math.round(c.accuracy),dist:Math.round(d)});
+      }
+      await fs.doc('att_marks/'+ds+'_'+uid+SFX[k]).set(body);
+      toast(sl.label+' saved');
+    }catch(e){ if(e&&e.gps) gpsErr(e); else fbErr(e); }
     S.busy=false; render();
   };
+  const sb=$('#signB'); if(sb) sb.onclick=()=>sign(sb.dataset.k);
+  const cp=$('#chPw'); if(cp) cp.onclick=changePw;
+}
+function getPos(){return new Promise((ok,no)=>{if(!navigator.geolocation)return no({gps:true,code:0});
+  navigator.geolocation.getCurrentPosition(p=>ok(p.coords),e=>no({gps:true,code:e.code}),{enableHighAccuracy:true,timeout:20000,maximumAge:0});});}
+function distM(a1,o1,a2,o2){const R=6371000,t=x=>x*Math.PI/180,dA=t(a2-a1),dO=t(o2-o1);const h=Math.sin(dA/2)**2+Math.cos(t(a1))*Math.cos(t(a2))*Math.sin(dO/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
+function gpsErr(e){ const m=e.code===1?'Location permission is blocked. Allow Location for this app: phone Settings → Apps → Chrome (or SJS App) → Permissions → Location → Allow.'
+  :e.code===3?'Could not get GPS in time. Turn on Location (GPS), go near a window or outside, and try again.'
+  :e.code===0?'This phone/browser has no GPS support.':'GPS is not available. Turn on Location and try again.';
+  modal(`<h3>📍 Location needed</h3><p class="sub" style="font-size:14px">${m}</p><div class="row" style="justify-content:flex-end"><button class="btn pri" id="mC">OK</button></div>`);$('#mC').onclick=closeModal; }
+function changePw(){
+  modal(`<h3>Change my password</h3><label class="f">New password (6+ letters)<input class="inp" id="np1" type="password"></label><label class="f" style="margin-top:8px">Type it again<input class="inp" id="np2" type="password"></label>
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" id="mC">Cancel</button><button class="btn pri" id="mO">Change</button></div>`);
+  $('#mC').onclick=closeModal;
+  $('#mO').onclick=async()=>{const a=$('#np1').value,b=$('#np2').value;if(a.length<6){toast('At least 6 letters');return;}if(a!==b){toast('The two passwords are different');return;}
+    try{await auth.currentUser.updatePassword(a);closeModal();toast('Password changed');}catch(e){closeModal();toast(e&&e.code==='auth/requires-recent-login'?'For safety, sign out and sign in again, then change the password.':'Could not change: '+((e&&e.code)||''));}};
 }
 
 /* ================= ADMIN: DASHBOARD ================= */
 function vDash(){
   watchMonth(S.date.slice(0,7));
   const ds=S.date, ts=sortT(activeTeachers()), rows=ts.map(t=>({t,s:statusOf(t,ds),m:markOf(t.uid,ds)}));
-  const n=k=>rows.filter(r=>r.s===k).length, P=n('P'),L=n('L'),A=n('A'),W=n('W'), unl=ts.filter(t=>!t.uid).length;
+  const n=k=>rows.filter(r=>r.s===k).length, P=n('P'),L=n('L'),HD=n('HD'),A=n('A'),W=n('W'), unl=ts.filter(t=>!t.uid).length;
   const LVr=rows.filter(r=>isLeaveCode(r.s)), DU=LVr.filter(r=>ltOf(r.s).present).length, LV=LVr.length-DU;
   const ym=ds.slice(0,7), wd=monthDates(ym).filter(countable);
-  const bars=wd.map(d=>{const pr=ts.filter(t=>{const s=statusOf(t,d);return s==='P'||s==='L'||(isLeaveCode(s)&&ltOf(s).present);}).length;return {d,pr,p:pct(pr,ts.length)};});
+  const bars=wd.map(d=>{const pr=ts.reduce((a,t)=>{const s=statusOf(t,d);return a+(s==='P'||s==='L'||(isLeaveCode(s)&&ltOf(s).present)?1:s==='HD'?0.5:0);},0);return {d,pr,p:pct(pr,ts.length)};});
   const most=ts.map(t=>({t,c:tally(t,monthDates(ym))})).filter(r=>r.c.A).sort((a,b)=>b.c.A-a.c.A).slice(0,8);
   const off=offReason(ds);
   return `<div class="card" style="padding:12px 16px"><div class="datebar"><b style="color:var(--navy)">Report for</b><input type="date" class="inp" id="dDate" value="${ds}"><span class="dow">${DOW[parse(ds).getDay()]}${off?' · Holiday – '+esc(off):''}</span><div class="grow"></div><button class="btn sm" id="dToday">Today</button><button class="btn sm gold" id="dShare">Share on WhatsApp</button></div></div>
@@ -574,23 +662,41 @@ function vDash(){
     <div class="kpi" style="--k:var(--good)"><div class="l">Present</div><div class="v">${P+L+DU}</div><div class="s">${pct(P+L+DU,ts.length)}% · on time ${P}${DU?' · duty '+DU:''}</div></div>
     <div class="kpi" style="--k:var(--leave)"><div class="l">On Leave</div><div class="v">${LV}</div><div class="s">approved</div></div>
     <div class="kpi" style="--k:var(--ser)"><div class="l">Late</div><div class="v">${L}</div><div class="s">after late time</div></div>
-    <div class="kpi" style="--k:var(--crit)"><div class="l">Absent</div><div class="v">${A}</div><div class="s">did not mark</div></div>
+    <div class="kpi" style="--k:var(--warn)"><div class="l">Half day</div><div class="v">${HD}</div><div class="s">only one sign</div></div>
+    <div class="kpi" style="--k:var(--crit)"><div class="l">Absent</div><div class="v">${A}</div><div class="s">did not sign</div></div>
     ${W?`<div class="kpi" style="--k:#9aa3b2"><div class="l">Not yet</div><div class="v">${W}</div><div class="s">still open</div></div>`:''}</div>
-  <div class="card"><h2>Present / Absent – ${fmtDate(ds)}</h2><p class="sub">Marked by the teachers themselves. Nobody can edit this list.</p>
-    ${off||!inSession(ds)?`<div class="empty">${off?'Holiday – '+esc(off):'Outside the session'}</div>`:rows.map(r=>`<div class="li"><span>${r.t.code?`<span class="tno">${esc(r.t.code)}</span>`:''}${esc(r.t.name)} <span class="tmeta">${esc(r.t.shift||'Morning')}${r.m&&r.m.hm?' · '+esc(r.m.hm):''}${r.m&&r.m.r?' · '+esc(r.m.r):''}${!r.t.uid?' · not linked':''}</span></span>${badge(r.s)||'<span class="tmeta">—</span>'}</div>`).join('')||'<div class="empty">No teachers.</div>'}</div>
+  <div class="card"><h2>Present / Absent – ${fmtDate(ds)}</h2><p class="sub">Signed by the teachers themselves. ${S.isAdmin?'Tap ✎ to correct a day (a reason is kept in the history).':'Only the Admin can correct it.'}</p>
+    ${off||!inSession(ds)?`<div class="empty">${off?'Holiday – '+esc(off):'Outside the session'}</div>`:rows.map(r=>`<div class="li"><span>${r.t.code?`<span class="tno">${esc(r.t.code)}</span>`:''}${esc(r.t.name)} <span class="tmeta">${esc(r.t.shift||'Morning')}${signTimes(r.t.uid,ds)?' · '+esc(signTimes(r.t.uid,ds)):''}${r.m&&r.m.r?' · '+esc(r.m.r):''}${!r.t.uid?' · not linked':''}${fixOf(r.t.uid,ds)?' · ✎ corrected':''}</span></span><span class="row" style="gap:6px">${badge(r.s)||'<span class="tmeta">—</span>'}${S.isAdmin&&r.t.uid&&ds<=todayISO()?`<button class="btn sm" data-fix="${esc(r.t.id)}" title="Correct">✎</button>`:''}</span></div>`).join('')||'<div class="empty">No teachers.</div>'}</div>
   <div class="card"><h2>Daily attendance – ${monthLabel(ym)}</h2><p class="sub">Share of all teachers present each working day (Late and On Duty count as present). Tap a bar.</p>
     ${bars.length?`<div class="chart" id="chart">${[100,75,50,25].map(v=>`<div class="gl" style="top:calc(6px + (100% - 30px) * ${(100-v)/100})"><span>${v}%</span></div>`).join('')}<div class="plot">${bars.map(b=>`<div class="bcol" data-tip="${fmtDate(b.d)}: ${b.pr} of ${ts.length} present · ${b.p}%"><div class="bfill" style="height:${Math.max(b.p,1)}%"></div><div class="blab">${+b.d.slice(8)}</div></div>`).join('')}</div><div class="tip" id="tip"></div></div>`:'<div class="empty">No working days counted yet this month.</div>'}</div>
   <div class="card"><h3>Most absent – ${monthLabel(ym)}</h3>${most.length?most.map(r=>`<div class="li"><span>${esc(r.t.name)}</span><span><b>${r.c.A}</b> day(s) · ${r.c.pct}%</span></div>`).join(''):'<div class="empty">No absences this month.</div>'}</div>`;
 }
+function fixDialog(t,ds){
+  const cur=statusOf(t,ds), fx=fixOf(t.uid,ds);
+  const opts=[['P','Present'],['L','Late'],['HD','Half day'],['A','Absent'],...LT().map(x=>[x.code,x.name])];
+  modal(`<h3>Correct attendance</h3><p class="sub">${esc(t.name)} · ${fmtDate(ds)} · now <b>${esc(cur||'—')}</b>${fx?' (already corrected)':''}<br>Signs: ${esc(signTimes(t.uid,ds)||'none')}</p>
+    <label class="f">Correct status<select class="inp" id="fxS">${opts.map(([k,n])=>`<option value="${k}" ${k===cur?'selected':''}>${k} – ${esc(n)}</option>`).join('')}</select></label>
+    <label class="f" style="margin-top:8px">Reason (required)<input class="inp" id="fxR" maxlength="200" placeholder="e.g. GPS not working, signed register at office"></label>
+    <div class="row" style="margin-top:12px">${fx?'<button class="btn danger" id="fxDel">Remove correction</button>':''}<div class="grow"></div><button class="btn" id="mC">Cancel</button><button class="btn pri" id="mO">Save</button></div>`);
+  $('#mC').onclick=closeModal;
+  const save=async(status)=>{ const reason=$('#fxR').value.trim(); if(!reason){toast('Write the reason');return;}
+    const key=ds+'_'+t.uid; const b=fs.batch();
+    if(status) b.set(fs.doc('att_fix/'+key),{uid:t.uid,date:ds,status,reason,by:S.user.email||'',at:FV.serverTimestamp()}); else b.delete(fs.doc('att_fix/'+key));
+    b.set(fs.collection('att_fix_log').doc(newId()),{uid:t.uid,date:ds,old:cur||'',new:status||'(removed)',reason,by:S.user.email||'',at:FV.serverTimestamp()});
+    try{await b.commit();closeModal();toast(status?'Corrected – saved in history':'Correction removed');}catch(e){closeModal();fbErr(e);} };
+  $('#mO').onclick=()=>save($('#fxS').value);
+  const del=$('#fxDel'); if(del) del.onclick=()=>save(null);
+}
 function bDash(){
+  document.querySelectorAll('[data-fix]').forEach(b=>b.onclick=()=>{const t=S.teachers.find(x=>x.id===b.dataset.fix);if(t)fixDialog(t,S.date);});
   $('#dDate').onchange=e=>{if(e.target.value){S.date=e.target.value;render();}};
   $('#dToday').onclick=()=>{S.date=todayISO();render();};
   $('#dShare').onclick=()=>{ const ds=S.date, ts=sortT(activeTeachers()); const g=k=>ts.filter(t=>statusOf(t,ds)===k);
-    const line=(h,l)=>l.length?`\n*${h} (${l.length})*\n`+l.map((t,i)=>`${i+1}. ${t.name}${markOf(t.uid,ds)&&markOf(t.uid,ds).hm?' – '+markOf(t.uid,ds).hm:''}`).join('\n')+'\n':'';
+    const line=(h,l)=>l.length?`\n*${h} (${l.length})*\n`+l.map((t,i)=>`${i+1}. ${t.name}${signTimes(t.uid,ds)?' – '+signTimes(t.uid,ds):''}`).join('\n')+'\n':'';
     const P=g('P'),L=g('L'),A=g('A'),W=g('W');
     const lvT=LT().map(x=>[x,ts.filter(t=>statusOf(t,ds)===x.code)]);
     const duty=lvT.filter(([x])=>x.present).reduce((a,[,l])=>a+l.length,0);
-    const txt=`*${S.cfg.school}*\n*Teachers' Attendance: ${fmtDate(ds)}, ${DOW[parse(ds).getDay()]}*\nPresent ${P.length+L.length+duty} / ${ts.length}\n`+line('Present',P)+line('Late',L)+lvT.map(([x,l])=>line(x.name+' ('+x.code+')',l)).join('')+line('Absent',A)+line('Not yet marked',W);
+    const txt=`*${S.cfg.school}*\n*Teachers' Attendance: ${fmtDate(ds)}, ${DOW[parse(ds).getDay()]}*\nPresent ${P.length+L.length+duty} / ${ts.length}\n`+line('Present',P)+line('Late',L)+line('Half day (one sign)',g('HD'))+lvT.map(([x,l])=>line(x.name+' ('+x.code+')',l)).join('')+line('Absent',A)+line('Not yet marked',W);
     window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank'); };
   const ch=$('#chart'); if(!ch) return; const tip=$('#tip');
   ch.querySelectorAll('.bcol').forEach(b=>{const show=()=>{tip.textContent=b.dataset.tip;tip.style.display='block';const r=b.getBoundingClientRect(),cr=ch.getBoundingClientRect();tip.style.left=Math.max(90,Math.min(cr.width-90,r.left-cr.left+r.width/2))+'px';tip.style.top=(b.querySelector('.bfill').getBoundingClientRect().top-cr.top)+'px';};b.addEventListener('mouseenter',show);b.addEventListener('click',show);b.addEventListener('mouseleave',()=>tip.style.display='none');});
@@ -604,7 +710,7 @@ function vLeave(){
   const row=([id,l],act)=>{ const t=tByUid(l.uid), d=S.dec[id], q=+ltOf(l.type).quota;
     return `<div class="tcard"><div class="grow"><div class="tname">${esc(t?t.name:(S.links[l.uid]&&S.links[l.uid].email)||'Unknown')} – <b>${esc(l.type)}</b> <span class="tmeta">${esc(ltOf(l.type).name)}</span></div>
       <div class="tmeta">${fmtDate(l.from)}${l.to!==l.from?' – '+fmtDate(l.to):''} · ${workDaysBetween(l.from,l.to)} working day(s)${l.reason?' · '+esc(l.reason):''}${q>0?' · '+esc(l.type)+' used '+leaveDaysUsed(l.uid,l.type)+' of '+q:''}${!t?' · ⚠ not a confirmed teacher':''}${d&&d.note?' · Note: '+esc(d.note):''}</div></div>
-      ${act?`<button class="btn sm danger" data-no="${esc(id)}">Reject</button><button class="btn sm pri" data-yes="${esc(id)}">Approve</button>`:stPill(leaveState(id))}</div>`; };
+      ${act&&canApprove()?`<button class="btn sm danger" data-no="${esc(id)}">Reject</button><button class="btn sm pri" data-yes="${esc(id)}">Approve</button>`:stPill(leaveState(id))}</div>`; };
   return `<div class="card"><h2>Waiting for approval (${pend.length})</h2><p class="sub">Teachers apply from their own phone. Your decision is final and cannot be changed later.</p>
     ${pend.length?pend.map(x=>row(x,true)).join(''):'<div class="empty">No applications waiting.</div>'}</div>
   <div class="card"><h2>Decided</h2>${done.length?done.slice(0,100).map(x=>row(x,false)).join(''):'<div class="empty">Nothing yet.</div>'}</div>`;
@@ -620,6 +726,62 @@ function bLeave(){
   document.querySelectorAll('[data-no]').forEach(b=>b.onclick=()=>decide(b.dataset.no,false));
 }
 
+
+/* ================= ADMIN: ALL CLASSES (student attendance overview) ================= */
+const CL={date:null,loading:false,rows:null,err:'',open:null,students:{}};
+async function loadClasses(ds){
+  CL.loading=true;CL.err='';CL.date=ds;render();
+  try{
+    const cq=await fs.collection('classes').get();
+    const classes=cq.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order||0)-(b.order||0)||String(a.cls).localeCompare(String(b.cls),undefined,{numeric:true})||String(a.section||'').localeCompare(String(b.section||'')));
+    const rows=await Promise.all(classes.map(async k=>{
+      if(!CL.students[k.id]){const q=await fs.collection('c/'+k.id+'/students').get();CL.students[k.id]=q.docs.map(d=>d.data()).sort((a,b)=>a.roll-b.roll);}
+      const a=await fs.doc('c/'+k.id+'/att/'+ds).get();
+      return {k,att:a.exists?a.data():null};
+    }));
+    if(CL.date===ds) CL.rows=rows;
+  }catch(e){CL.err=(e&&e.code)==='permission-denied'?'Not allowed to read classes – check the Firebase rules.':'Could not load: '+((e&&e.code)||'error');}
+  CL.loading=false;render();
+}
+function sesCount(k,att,ses){
+  const st=CL.students[k.id]||[], n=st.length;
+  if(!att||!att['taken'+ses]) return {taken:false,n};
+  const m=att[ses]||{}; let A=0,L=0; st.forEach(x=>{const c=m[x.roll];if(c==='A')A++;else if(c==='L')L++;});
+  return {taken:true,n,A,L,P:n-A-L,absent:st.filter(x=>m[x.roll]==='A'),leave:st.filter(x=>m[x.roll]==='L')};
+}
+const sesCell=c=>!c.taken?'<span class="code off">not taken</span>':`<b>${c.P}</b>/${c.n} <span class="tmeta">${c.A?' · A '+c.A:''}${c.L?' · L '+c.L:''}</span>`;
+function vClasses(){
+  const ds=S.date;
+  if(CL.date!==ds&&!CL.loading) setTimeout(()=>loadClasses(ds),0);
+  const rows=CL.date===ds&&CL.rows?CL.rows:[];
+  const T={AM:{n:0,P:0,A:0,L:0,t:0},PM:{n:0,P:0,A:0,L:0,t:0}};
+  const calc=rows.map(r=>{const am=sesCount(r.k,r.att,'AM'),pm=sesCount(r.k,r.att,'PM');
+    [['AM',am],['PM',pm]].forEach(([s,c])=>{if(c.taken){T[s].t++;T[s].n+=c.n;T[s].P+=c.P;T[s].A+=c.A;T[s].L+=c.L;}});return {...r,am,pm};});
+  const notTaken=calc.filter(r=>!r.am.taken).length;
+  return `<div class="card" style="padding:12px 16px"><div class="datebar"><b style="color:var(--navy)">All classes on</b><input type="date" class="inp" id="cDate" value="${ds}"><span class="dow">${DOW[parse(ds).getDay()]}</span><div class="grow"></div>
+    <button class="btn sm" id="cReload">↻ Refresh</button><button class="btn sm gold" id="cShare" ${calc.length?'':'disabled'}>Share on WhatsApp</button></div></div>
+  ${CL.err?`<div class="banner err"><div>${esc(CL.err)}</div></div>`:''}
+  <div class="kpis">
+    <div class="kpi"><div class="l">Classes</div><div class="v">${calc.length}</div><div class="s">${notTaken?notTaken+' AM not taken':'all AM taken'}</div></div>
+    <div class="kpi" style="--k:var(--good)"><div class="l">Present (AM)</div><div class="v">${T.AM.P}</div><div class="s">${pct(T.AM.P,T.AM.n)}% of ${T.AM.n}</div></div>
+    <div class="kpi" style="--k:var(--crit)"><div class="l">Absent (AM)</div><div class="v">${T.AM.A}</div><div class="s">leave ${T.AM.L}</div></div>
+    <div class="kpi" style="--k:var(--good)"><div class="l">Present (PM)</div><div class="v">${T.PM.P}</div><div class="s">${T.PM.t?pct(T.PM.P,T.PM.n)+'% of '+T.PM.n:'not taken yet'}</div></div>
+  </div>
+  <div class="card"><h2>Class-wise</h2><p class="sub">Marked by each class teacher in Student Attendance. Tap a class to see absent students.</p>
+  ${CL.loading&&!rows.length?'<div class="empty">Loading all classes…</div>':calc.length?`<div class="tw"><table class="reg"><thead><tr><th class="stk">Class</th><th>Teacher</th><th>Morning (AM)</th><th>Afternoon (PM)</th></tr></thead><tbody>
+    ${calc.map(r=>`<tr data-cl="${esc(r.k.id)}" style="cursor:pointer"><td class="stk">${esc(r.k.cls)}${r.k.section?' - '+esc(r.k.section):''}</td><td style="text-align:left">${esc(r.k.teacher||'')}</td><td>${sesCell(r.am)}</td><td>${sesCell(r.pm)}</td></tr>
+      ${CL.open===r.k.id?`<tr><td colspan="4" style="text-align:left;white-space:normal;background:#fafbfd">${[['AM',r.am],['PM',r.pm]].map(([s,c])=>c.taken?`<div><b>${s} absent:</b> ${c.absent.map(x=>x.roll+'. '+esc(x.name)).join(', ')||'none'}${c.leave.length?` · <b>Leave:</b> ${c.leave.map(x=>x.roll+'. '+esc(x.name)).join(', ')}`:''}</div>`:`<div><b>${s}:</b> not taken</div>`).join('')}</td></tr>`:''}`).join('')}
+    </tbody></table></div>`:'<div class="empty">No classes yet. Add them in Student Attendance → More → Classes.</div>'}</div>`;
+}
+function bClasses(){
+  $('#cDate').onchange=e=>{if(e.target.value){S.date=e.target.value;CL.open=null;render();}};
+  $('#cReload').onclick=()=>{CL.students={};loadClasses(S.date);};
+  document.querySelectorAll('[data-cl]').forEach(tr=>tr.onclick=()=>{CL.open=CL.open===tr.dataset.cl?null:tr.dataset.cl;render();});
+  $('#cShare').onclick=()=>{const ds=S.date;const rows=(CL.rows||[]);
+    const lines=rows.map(r=>{const am=sesCount(r.k,r.att,'AM');const lab=r.k.cls+(r.k.section?'-'+r.k.section:'');
+      return am.taken?`${lab}: ${am.P}/${am.n} present${am.A?', absent: '+am.absent.map(x=>x.name).join(', '):''}`:`${lab}: not taken`;});
+    window.open('https://wa.me/?text='+encodeURIComponent(`*${S.cfg.school}*\n*Student Attendance (AM): ${fmtDate(ds)}, ${DOW[parse(ds).getDay()]}*\n\n`+lines.join('\n')),'_blank');};
+}
 /* ================= ADMIN: REGISTER ================= */
 function regRows(ym){const dates=monthDates(ym);return {dates,rows:sortT(activeTeachers()).map((t,i)=>({i:i+1,t,cells:dates.map(d=>statusOf(t,d)),c:tally(t,dates)}))};}
 function vReg(){
@@ -628,26 +790,26 @@ function vReg(){
   return `<div class="card"><div class="row"><div class="grow"><h2>Monthly Register</h2><p class="sub" style="margin:0">${monthLabel(ym)} · ${dates.filter(countable).length} working day(s) counted</p></div>
     <select class="inp" id="regM">${months.map(m=>`<option value="${m}" ${m===ym?'selected':''}>${monthLabel(m)}</option>`).join('')}</select></div>
     <div class="row" style="margin-top:10px"><button class="btn gold" id="dlM">⬇ Excel – this month</button><button class="btn" id="dlS">⬇ Excel – whole session</button></div></div>
-  ${rows.length?`<div class="tw"><table class="reg"><thead><tr><th class="stk"># Teacher</th>${dates.map(d=>`<th class="${offReason(d)||!inSession(d)?'offh':''}">${+d.slice(8)}<br>${DOW[parse(d).getDay()].slice(0,2)}</th>`).join('')}<th>P</th><th>L</th>${LT().map(x=>`<th>${esc(x.code)}</th>`).join('')}<th>A</th><th>Days</th><th>%</th></tr></thead>
-  <tbody>${rows.map(r=>`<tr><td class="stk">${r.i}. ${esc(r.t.name)}</td>${r.cells.map(s=>`<td class="${s==='H'?'offd':''}">${badge(s)}</td>`).join('')}<td class="tot">${r.c.P}</td><td class="tot">${r.c.L}</td>${LT().map(x=>`<td class="tot">${r.c.lv[x.code]||''}</td>`).join('')}<td class="tot">${r.c.A}</td><td class="tot">${r.c.days}</td><td class="tot pct" style="color:${r.c.days&&r.c.pct<75?'var(--crit)':'inherit'}">${r.c.days?r.c.pct+'%':'–'}</td></tr>`).join('')}</tbody></table></div>
-  <div class="legend"><span><span class="code P">P</span>Present</span><span><span class="code L">L</span>Late</span>${LT().map(x=>`<span>${badge(x.code)}${esc(x.name)}</span>`).join('')}<span><span class="code A">A</span>Absent – did not mark</span><span><span class="code off">H</span>Holiday</span><span>· % leaves out approved leave days</span></div>`:'<div class="card"><div class="empty">No teachers yet.</div></div>'}`;
+  ${rows.length?`<div class="tw"><table class="reg"><thead><tr><th class="stk"># Teacher</th>${dates.map(d=>`<th class="${offReason(d)||!inSession(d)?'offh':''}">${+d.slice(8)}<br>${DOW[parse(d).getDay()].slice(0,2)}</th>`).join('')}<th>P</th><th>L</th><th>HD</th>${LT().map(x=>`<th>${esc(x.code)}</th>`).join('')}<th>A</th><th>Days</th><th>%</th></tr></thead>
+  <tbody>${rows.map(r=>`<tr><td class="stk">${r.i}. ${esc(r.t.name)}</td>${r.cells.map(s=>`<td class="${s==='H'?'offd':''}">${badge(s)}</td>`).join('')}<td class="tot">${r.c.P}</td><td class="tot">${r.c.L}</td><td class="tot">${r.c.HD||''}</td>${LT().map(x=>`<td class="tot">${r.c.lv[x.code]||''}</td>`).join('')}<td class="tot">${r.c.A}</td><td class="tot">${r.c.days}</td><td class="tot pct" style="color:${r.c.days&&r.c.pct<75?'var(--crit)':'inherit'}">${r.c.days?r.c.pct+'%':'–'}</td></tr>`).join('')}</tbody></table></div>
+  <div class="legend"><span><span class="code P">P</span>Present</span><span><span class="code L">L</span>Late</span>${LT().map(x=>`<span>${badge(x.code)}${esc(x.name)}</span>`).join('')}<span><span class="code HD">HD</span>Half day – one sign</span><span><span class="code A">A</span>Absent – no sign</span><span><span class="code off">H</span>Holiday</span><span>· % leaves out approved leave days</span></div>`:'<div class="card"><div class="empty">No teachers yet.</div></div>'}`;
 }
-function regAOA(ym){const {dates,rows}=regRows(ym);const a=[[S.cfg.school],[S.cfg.address],["Teachers' Attendance Register – "+monthLabel(ym)+' · Session '+S.cfg.session],[],['Sl','Teacher','Designation','Subject','Shift',...dates.map(d=>+d.slice(8)),'P','L',...LT().map(x=>x.code),'A','Days','Attendance %']];
-  rows.forEach(r=>a.push([r.i,r.t.name,r.t.desig||'',r.t.subject||'',r.t.shift||'',...r.cells.map(s=>s==='W'?'':s),r.c.P,r.c.L,...LT().map(x=>r.c.lv[x.code]||0),r.c.A,r.c.days,r.c.days?r.c.pct:'']));
-  a.push([],['P = Present, L = Late, '+LT().map(x=>x.code+' = '+x.name).join(', ')+', A = Absent (did not mark), H = Holiday. % leaves out approved leave days.']);return a;}
-function summaryAOA(){const all=[];sessionMonths().forEach(m=>all.push(...monthDates(m)));const a=[[S.cfg.school],["Teachers' Attendance – Session "+S.cfg.session+' ('+monthLabel(S.cfg.start)+' to '+monthLabel(S.cfg.end)+')'],[],['Sl','Teacher','Designation','Subject','Shift','Present','Late',...LT().map(x=>x.code),'Absent','Working days','Attendance %',...LT().filter(x=>+x.quota>0).map(x=>x.code+' left')]];
-  sortT(activeTeachers()).forEach((t,i)=>{const c=tally(t,all);a.push([i+1,t.name,t.desig||'',t.subject||'',t.shift||'',c.P,c.L,...LT().map(x=>c.lv[x.code]||0),c.A,c.days,c.days?c.pct:'',...LT().filter(x=>+x.quota>0).map(x=>(+x.quota)-leaveDaysUsed(t.uid,x.code))]);});return a;}
+function regAOA(ym){const {dates,rows}=regRows(ym);const a=[[S.cfg.school],[S.cfg.address],["Teachers' Attendance Register – "+monthLabel(ym)+' · Session '+S.cfg.session],[],['Sl','Teacher','Designation','Subject','Shift',...dates.map(d=>+d.slice(8)),'P','L','HD',...LT().map(x=>x.code),'A','Days','Attendance %']];
+  rows.forEach(r=>a.push([r.i,r.t.name,r.t.desig||'',r.t.subject||'',r.t.shift||'',...r.cells.map(s=>s==='W'?'':s),r.c.P,r.c.L,r.c.HD,...LT().map(x=>r.c.lv[x.code]||0),r.c.A,r.c.days,r.c.days?r.c.pct:'']));
+  a.push([],['P = Present (2 signs), L = Late, HD = Half day (1 sign, counts ½), '+LT().map(x=>x.code+' = '+x.name).join(', ')+', A = Absent (did not mark), H = Holiday. % leaves out approved leave days.']);return a;}
+function summaryAOA(){const all=[];sessionMonths().forEach(m=>all.push(...monthDates(m)));const a=[[S.cfg.school],["Teachers' Attendance – Session "+S.cfg.session+' ('+monthLabel(S.cfg.start)+' to '+monthLabel(S.cfg.end)+')'],[],['Sl','Teacher','Designation','Subject','Shift','Present','Late','Half day',...LT().map(x=>x.code),'Absent','Working days','Attendance %',...LT().filter(x=>+x.quota>0).map(x=>x.code+' left')]];
+  sortT(activeTeachers()).forEach((t,i)=>{const c=tally(t,all);a.push([i+1,t.name,t.desig||'',t.subject||'',t.shift||'',c.P,c.L,c.HD,...LT().map(x=>c.lv[x.code]||0),c.A,c.days,c.days?c.pct:'',...LT().filter(x=>+x.quota>0).map(x=>(+x.quota)-leaveDaysUsed(t.uid,x.code))]);});return a;}
 function saveXlsx(name,sheets){
   if(!window.XLSX){toast('Excel tool still loading – try again in a moment');return;}
   const wb=XLSX.utils.book_new(); sheets.forEach(([n,a,w])=>{const ws=XLSX.utils.aoa_to_sheet(a);if(w)ws['!cols']=w.map(x=>({wch:x}));XLSX.utils.book_append_sheet(wb,ws,n.slice(0,31));});
   XLSX.writeFile(wb,name.replace(/[^\w\-]+/g,'_')+'.xlsx');
 }
-const regW=ym=>[4,24,12,12,8,...monthDates(ym).map(()=>4),5,5,...LT().map(()=>5),5,7,12];
+const regW=ym=>[4,24,12,12,8,...monthDates(ym).map(()=>4),5,5,5,...LT().map(()=>5),5,7,12];
 function bReg(){
   $('#regM').onchange=e=>{S.regMonth=e.target.value;render();};
   $('#dlM').onclick=()=>saveXlsx('SJS_Teacher_Attendance_'+monthLabel(S.regMonth),[[monthLabel(S.regMonth),regAOA(S.regMonth),regW(S.regMonth)]]);
   $('#dlS').onclick=async()=>{ const b=$('#dlS'); b.disabled=true; b.textContent='Loading whole session…';
-    try{ await loadRange(sessionStart(),sessionEnd()); saveXlsx('SJS_Teacher_Attendance_Session_'+S.cfg.session,[['Session Summary',summaryAOA(),[4,24,12,12,8,8,6,...LT().map(()=>6),7,12,12]],...sessionMonths().map(m=>[monthLabel(m),regAOA(m),regW(m)])]); }catch(e){fbErr(e);}
+    try{ await loadRange(sessionStart(),sessionEnd()); saveXlsx('SJS_Teacher_Attendance_Session_'+S.cfg.session,[['Session Summary',summaryAOA(),[4,24,12,12,8,8,6,8,...LT().map(()=>6),7,12,12]],...sessionMonths().map(m=>[monthLabel(m),regAOA(m),regW(m)])]); }catch(e){fbErr(e);}
     render(); };
 }
 
@@ -657,14 +819,16 @@ function vRep(){
   const ts=sortT(S.teachers); if(!ts.length) return '<div class="card"><div class="empty">No teachers yet.</div></div>';
   if(!ts.some(t=>t.id===S.repTeacher)) S.repTeacher=ts[0].id; const t=ts.find(x=>x.id===S.repTeacher);
   if(t.uid&&!loadedT[t.uid]){ loadedT[t.uid]=1; loadTeacherMarks(t.uid).then(render).catch(fbErr); }
-  const rows=sessionMonths().map(m=>({m,c:tally(t,monthDates(m))})); const T={P:0,L:0,A:0,days:0,present:0,onLeave:0,lv:{}}; rows.forEach(r=>{['P','L','A','days','present','onLeave'].forEach(k=>T[k]+=r.c[k]);LT().forEach(x=>T.lv[x.code]=(T.lv[x.code]||0)+(r.c.lv[x.code]||0));});
-  const notes=[]; sessionMonths().forEach(m=>monthDates(m).forEach(d=>{const s=statusOf(t,d),mk=markOf(t.uid,d);if(s==='A'||s==='L'||isLeaveCode(s)||(mk&&mk.r))notes.push({d,s,mk});}));
+  const rows=sessionMonths().map(m=>({m,c:tally(t,monthDates(m))})); const T={P:0,L:0,HD:0,A:0,days:0,present:0,onLeave:0,lv:{}}; rows.forEach(r=>{['P','L','HD','A','days','present','onLeave'].forEach(k=>T[k]+=r.c[k]);LT().forEach(x=>T.lv[x.code]=(T.lv[x.code]||0)+(r.c.lv[x.code]||0));});
+  const notes=[]; sessionMonths().forEach(m=>monthDates(m).forEach(d=>{const s=statusOf(t,d),mk=markOf(t.uid,d);if(s==='A'||s==='L'||s==='HD'||isLeaveCode(s)||(mk&&mk.r))notes.push({d,s,mk});}));
   return `<div class="card"><div class="row"><div class="grow"><h2>Teacher Report</h2><p class="sub" style="margin:0">Session ${esc(S.cfg.session)}</p></div><select class="inp" id="repT">${ts.map(x=>`<option value="${x.id}" ${x.id===t.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select></div></div>
   <div class="kpis"><div class="kpi"><div class="l">Teacher</div><div class="v" style="font-size:17px">${esc(t.name)}</div><div class="s">${t.uid?'Linked ✓':'Not linked yet'}</div></div>
     <div class="kpi" style="--k:var(--good)"><div class="l">Attendance</div><div class="v">${pct(T.present,T.days-T.onLeave)}%</div><div class="s">${T.days} working day(s)</div></div>
     <div class="kpi" style="--k:var(--ser)"><div class="l">Late</div><div class="v">${T.L}</div></div><div class="kpi" style="--k:var(--crit)"><div class="l">Absent</div><div class="v">${T.A}</div></div>${LT().filter(x=>+x.quota>0).map(x=>`<div class="kpi" style="--k:var(--leave)"><div class="l">${esc(x.code)} balance</div><div class="v">${(+x.quota)-leaveDaysUsed(t.uid,x.code)}</div><div class="s">used ${leaveDaysUsed(t.uid,x.code)} of ${+x.quota}</div></div>`).join('')}</div>
-  <div class="card"><h3>Month-wise</h3><div class="tw"><table class="reg"><thead><tr><th class="stk">Month</th><th>P</th><th>L</th>${LT().map(x=>`<th>${esc(x.code)}</th>`).join('')}<th>A</th><th>Days</th><th>%</th></tr></thead><tbody>${rows.map(r=>`<tr><td class="stk">${monthLabel(r.m)}</td><td>${r.c.P}</td><td>${r.c.L}</td>${LT().map(x=>`<td>${r.c.lv[x.code]||''}</td>`).join('')}<td>${r.c.A}</td><td>${r.c.days}</td><td class="pct">${r.c.days?r.c.pct+'%':'–'}</td></tr>`).join('')}</tbody><tfoot><tr><td class="stk">Total</td><td>${T.P}</td><td>${T.L}</td>${LT().map(x=>`<td>${T.lv[x.code]}</td>`).join('')}<td>${T.A}</td><td>${T.days}</td><td>${pct(T.present,T.days-T.onLeave)}%</td></tr></tfoot></table></div></div>
-  <div class="card"><h3>Absent, late, leave &amp; remarks</h3>${notes.length?notes.reverse().map(n=>`<div class="li"><span>${fmtDate(n.d)} <span class="tmeta">${DOW[parse(n.d).getDay()]}${n.mk&&n.mk.hm?' · '+esc(n.mk.hm):''}${n.mk&&n.mk.r?' · '+esc(n.mk.r):''}</span></span>${badge(n.s)}</div>`).join(''):'<div class="empty">Nothing to show.</div>'}</div>`;
+  <div class="card"><h3>Month-wise</h3><div class="tw"><table class="reg"><thead><tr><th class="stk">Month</th><th>P</th><th>L</th><th>HD</th>${LT().map(x=>`<th>${esc(x.code)}</th>`).join('')}<th>A</th><th>Days</th><th>%</th></tr></thead><tbody>${rows.map(r=>`<tr><td class="stk">${monthLabel(r.m)}</td><td>${r.c.P}</td><td>${r.c.L}</td><td>${r.c.HD||''}</td>${LT().map(x=>`<td>${r.c.lv[x.code]||''}</td>`).join('')}<td>${r.c.A}</td><td>${r.c.days}</td><td class="pct">${r.c.days?r.c.pct+'%':'–'}</td></tr>`).join('')}</tbody><tfoot><tr><td class="stk">Total</td><td>${T.P}</td><td>${T.L}</td><td>${T.HD}</td>${LT().map(x=>`<td>${T.lv[x.code]}</td>`).join('')}<td>${T.A}</td><td>${T.days}</td><td>${pct(T.present,T.days-T.onLeave)}%</td></tr></tfoot></table></div></div>
+  <div class="card"><h3>Absent, late, leave &amp; remarks</h3>${notes.length?notes.reverse().map(n=>`<div class="li"><span>${fmtDate(n.d)} <span class="tmeta">${DOW[parse(n.d).getDay()]}${signTimes(t.uid,n.d)?' · '+esc(signTimes(t.uid,n.d)):''}${n.mk&&n.mk.r?' · '+esc(n.mk.r):''}</span></span>${badge(n.s)}</div>`).join(''):'<div class="empty">Nothing to show.</div>'}</div>
+  <div class="card"><h3>Correction history</h3>${(()=>{const L=Object.values(S.fixlog).filter(x=>x.uid===t.uid).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+    return L.length?L.map(x=>`<div class="li"><span>${fmtDate(x.date)} <span class="tmeta">${esc(x.old||'—')} → <b>${esc(x.new)}</b> · ${esc(x.reason||'')} · by ${esc(staffIdOf(x.by)||x.by||'')}${x.at&&x.at.toDate?' · '+x.at.toDate().toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}):''}</span></span></div>`).join(''):'<div class="empty">No corrections.</div>';})()}</div>`;
 }
 function bRep(){const s=$('#repT');if(s)s.onchange=e=>{S.repTeacher=e.target.value;render();};}
 
@@ -693,12 +857,43 @@ function vTeach(){
     ${reqs.length?reqs.map(([uid,l])=>{const t=S.teachers.find(x=>x.id===l.teacherId);return `<div class="tcard"><div class="grow"><div class="tname">${esc(l.email||'(no email)')} → <u>${esc(t.name)}</u></div><div class="tmeta">${t.uid?'⚠ already linked to another email – confirming replaces it':'new'}</div></div><button class="btn sm pri" data-ok="${esc(uid)}">Confirm</button></div>`;}).join(''):'<div class="empty">No requests waiting.</div>'}</div>
   <div class="card"><h2>Add a teacher</h2><div class="grid2"><label class="f">Sl. No.<input class="inp" id="nCode" placeholder="01"></label><label class="f">Name *<input class="inp" id="nName"></label><label class="f">Designation<input class="inp" id="nDesig" placeholder="PGT / TGT / PRT"></label><label class="f">Subject<input class="inp" id="nSub"></label><label class="f">Shift<select class="inp" id="nShift"><option>Morning</option><option>Noon</option></select></label></div>
     <div class="row" style="margin-top:12px"><button class="btn pri" id="addT">+ Add Teacher</button><button class="btn" id="bulkT">Paste a list</button></div></div>
-  <div class="card"><h2>Teachers (${ts.length})</h2>${ts.length?ts.map(t=>`<div class="tcard ${t.active===false?'inactive':''}"><div class="grow"><div class="tname">${t.code?`<span class="tno">${esc(t.code)}</span>`:''}${esc(t.name)}</div><div class="tmeta">${esc([t.desig,t.subject,t.shift||'Morning',t.email].filter(Boolean).join(' · '))}</div></div><span class="pill" style="${t.uid?'background:var(--goodbg);color:#075f07':''}">${t.uid?'Linked ✓':'Not linked'}</span><button class="btn sm" data-edit="${t.id}">Edit</button></div>`).join(''):'<div class="empty">No teachers yet.</div>'}</div>`;
+  <div class="card"><h2>Staff ID logins</h2><p class="sub">Give every teacher a <b>Staff ID</b> and password – no email needed. ${(()=>{const n=ts.filter(t=>!t.uid&&t.active!==false).length;return n?`<b>${n}</b> active teacher(s) have no login yet.`:'Every active teacher has a login.';})()} Passwords are shown <b>only once</b>, in the Excel list you download.</p>
+    <div class="row"><button class="btn gold" id="mkAll" ${ts.some(t=>!t.uid&&t.active!==false)?'':'disabled'}>Create logins for all without one</button></div></div>
+  <div class="card"><h2>Teachers (${ts.length})</h2>${ts.length?ts.map(t=>`<div class="tcard ${t.active===false?'inactive':''}"><div class="grow"><div class="tname">${t.code?`<span class="tno">${esc(t.code)}</span>`:''}${esc(t.name)}</div><div class="tmeta">${esc([t.desig,t.subject,t.shift||'Morning',staffIdOf(t.email)?'ID '+staffIdOf(t.email):t.email,t.role&&t.role!=='teacher'?ROLE_NAME[t.role]:''].filter(Boolean).join(' · '))}</div></div><span class="pill" style="${t.uid?'background:var(--goodbg);color:#075f07':''}">${t.uid?'Login ✓':'No login'}</span><button class="btn sm" data-edit="${t.id}">Edit</button></div>`).join(''):'<div class="empty">No teachers yet.</div>'}</div>`;
+}
+const randPw=()=>String(Math.floor(100000+Math.random()*900000));
+const defaultSid=t=>'SJS'+(String(t.code||'').replace(/[^A-Za-z0-9]/g,'')||String(t.order||'').padStart(2,'0'));
+async function makeLogin(t,sid,pw){
+  const email=staffEmail(sid);
+  const app2=firebase.apps.find(a=>a.name==='sjs-creator')||firebase.initializeApp(window.SJS_FIREBASE,'sjs-creator');
+  const cred=await app2.auth().createUserWithEmailAndPassword(email,pw); const uid=cred.user.uid; try{await app2.auth().signOut();}catch(e){}
+  const {id,...rest}=t; const b=fs.batch();
+  b.set(fs.collection('att_teachers').doc(t.id),{...rest,uid,email,staffId:sid});
+  b.set(fs.doc('att_staff/'+uid),{teacherId:t.id,email,role:t.role||'teacher'});
+  await b.commit(); return uid;
+}
+function showLogins(rows){
+  const link=location.origin+location.pathname;
+  modal(`<h3>🔑 Staff logins created (${rows.length})</h3><p class="sub">Download or copy this list now – the passwords are <b>not saved</b> anywhere else. Teachers can change their password later.</p>
+    <div class="tw" style="max-height:45vh"><table class="reg"><thead><tr><th class="stk">Teacher</th><th>Staff ID</th><th>Password</th></tr></thead><tbody>${rows.map(r=>`<tr><td class="stk">${esc(r.n)}</td><td>${esc(r.sid)}</td><td>${esc(r.pw)}</td></tr>`).join('')}</tbody></table></div>
+    <div class="row" style="margin-top:12px"><button class="btn gold" id="lgX">⬇ Excel list</button><button class="btn" id="lgC">Copy</button><div class="grow"></div><button class="btn pri" id="mC">Done</button></div>`);
+  $('#mC').onclick=closeModal;
+  $('#lgX').onclick=()=>saveXlsx('SJS_Staff_Logins',[['Logins',[[S.cfg.school+' – SJS App staff logins'],['App: '+link],[],['Teacher','Staff ID','Password'],...rows.map(r=>[r.n,r.sid,r.pw])],[30,12,12]]]);
+  $('#lgC').onclick=async()=>{try{await navigator.clipboard.writeText(rows.map(r=>`${r.n}: Staff ID ${r.sid}, Password ${r.pw}`).join('\n')+'\nApp: '+link);toast('Copied');}catch(e){toast('Copy was blocked');}};
 }
 function bTeach(){
+  const ma=$('#mkAll'); if(ma) ma.onclick=()=>{ const list=sortT(S.teachers.filter(t=>!t.uid&&t.active!==false));
+    confirmBox('Create '+list.length+' Staff ID logins?','Each teacher gets an ID like SJS01 and a 6-digit password. You will get the list to download.','Create',async()=>{
+      const out=[], used=new Set(S.teachers.map(t=>staffIdOf(t.email)).filter(Boolean)); let fail=0;
+      for(let i=0;i<list.length;i++){ const t=list[i]; let sid=defaultSid(t).toUpperCase(), n=1; while(used.has(sid)) sid=defaultSid(t).toUpperCase()+'-'+(++n);
+        const pw=randPw(); toast('Creating '+(i+1)+' of '+list.length+'…');
+        try{ await makeLogin(t,sid,pw); used.add(sid); out.push({n:t.name,sid,pw}); }
+        catch(e){ if(e&&e.code==='auth/email-already-in-use'){ used.add(sid); i--; continue; } fail++; if(e&&e.code==='auth/too-many-requests'){toast('Google limit reached – try the rest after 1 hour');break;} }
+        await new Promise(r=>setTimeout(r,400)); }
+      if(out.length) showLogins(out); if(fail) toast(fail+' could not be created – try again later'); }); };
   document.querySelectorAll('[data-ok]').forEach(b=>b.onclick=async()=>{ const uid=b.dataset.ok,l=S.links[uid],t=S.teachers.find(x=>x.id===l.teacherId); b.disabled=true;
     try{ const batch=fs.batch(); S.teachers.filter(x=>x.uid===uid&&x.id!==t.id).forEach(x=>{const {id,...r}=x;delete r.uid;delete r.email;batch.set(fs.collection('att_teachers').doc(x.id),r);});
-      const {id,...rest}=t; batch.set(fs.collection('att_teachers').doc(t.id),{...rest,uid,email:l.email||''}); batch.set(fs.doc('att_staff/'+uid),{teacherId:t.id,email:l.email||''}); await batch.commit(); toast(t.name+' confirmed'); }catch(e){fbErr(e);} });
+      const {id,...rest}=t; batch.set(fs.collection('att_teachers').doc(t.id),{...rest,uid,email:l.email||''}); batch.set(fs.doc('att_staff/'+uid),{teacherId:t.id,email:l.email||'',role:t.role||'teacher'}); await batch.commit(); toast(t.name+' confirmed'); }catch(e){fbErr(e);} });
   $('#addT').onclick=async()=>{const name=$('#nName').value.trim();if(!name){toast('Enter the name');return;}const code=$('#nCode').value.trim();
     try{await saveT(newId(),{code,name,desig:$('#nDesig').value.trim(),subject:$('#nSub').value.trim(),shift:$('#nShift').value,active:true,order:ordOf(code,S.teachers.length+1)});toast(name+' added');}catch(e){fbErr(e);}};
   $('#bulkT').onclick=()=>{modal(`<h3>Paste a list of teachers</h3><p class="sub">Copy the rows straight from Excel (Name, Designation, Subjects…, Shift) and paste here, or type one per line: <b>Name, Designation, Subject, Shift</b>. Extra subject columns are joined automatically.</p><textarea class="inp" id="bt" rows="9" style="width:100%"></textarea><div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn" id="mC">Cancel</button><button class="btn pri" id="mO">Add all</button></div>`);
@@ -706,12 +901,19 @@ function bTeach(){
       const rows=lines.map(parseTeacherLine).filter(r=>r&&r.name);
       try{const batch=fs.batch();rows.slice(0,400).forEach((r,i)=>{batch.set(fs.collection('att_teachers').doc(newId()+i),{code:pad(base+i+1),name:r.name,desig:r.desig,subject:r.subject,shift:r.shift,active:true,order:base+i+1});});await batch.commit();closeModal();toast(rows.length+' teacher(s) added');}catch(e){closeModal();fbErr(e);}};};
   document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{const t=S.teachers.find(x=>x.id===b.dataset.edit);
-    modal(`<h3>Edit teacher</h3><div class="grid2"><label class="f">Sl. No.<input class="inp" id="eCode" value="${esc(t.code||'')}"></label><label class="f">Name<input class="inp" id="eName" value="${esc(t.name)}"></label><label class="f">Designation<input class="inp" id="eDesig" value="${esc(t.desig||'')}"></label><label class="f">Subject<input class="inp" id="eSub" value="${esc(t.subject||'')}"></label><label class="f">Shift<select class="inp" id="eShift">${['Morning','Noon'].map(s=>`<option ${t.shift===s?'selected':''}>${s}</option>`).join('')}</select></label></div>
-      <label class="chk" style="margin-top:10px"><input type="checkbox" id="eAct" ${t.active!==false?'checked':''}> Active</label>${t.uid?`<label class="chk" style="margin-top:10px"><input type="checkbox" id="eUn"> Remove the email link (${esc(t.email||'')})</label>`:''}
+    modal(`<h3>Edit teacher</h3><div class="grid2"><label class="f">Sl. No.<input class="inp" id="eCode" value="${esc(t.code||'')}"></label><label class="f">Name<input class="inp" id="eName" value="${esc(t.name)}"></label><label class="f">Designation<input class="inp" id="eDesig" value="${esc(t.desig||'')}"></label><label class="f">Subject<input class="inp" id="eSub" value="${esc(t.subject||'')}"></label><label class="f">Shift<select class="inp" id="eShift">${['Morning','Noon'].map(s=>`<option ${t.shift===s?'selected':''}>${s}</option>`).join('')}</select></label>
+      <label class="f">Role in the app<select class="inp" id="eRole">${Object.entries(ROLE_NAME).map(([k,n])=>`<option value="${k}" ${(t.role||'teacher')===k?'selected':''}>${n}</option>`).join('')}</select></label></div>
+      <p class="sub" style="margin:6px 0 0">Principal and Examination In-Charge can see all dashboards and reports. The Principal can also approve leave.</p>
+      ${t.uid?`<p class="sub" style="margin:8px 0 0">Login: <b>${esc(staffIdOf(t.email)||t.email||'linked')}</b></p>`:`<div class="card" style="margin:10px 0 0;padding:10px"><b>Create Staff ID login</b><div class="grid2" style="margin-top:6px"><label class="f">Staff ID<input class="inp" id="eSid" value="${esc(defaultSid(t))}"></label><label class="f">Password<input class="inp" id="ePw" value="${randPw()}"></label></div><button class="btn sm pri" id="eMk" style="margin-top:8px">Create login</button></div>`}
+      <label class="chk" style="margin-top:10px"><input type="checkbox" id="eAct" ${t.active!==false?'checked':''}> Active</label>${t.uid?`<label class="chk" style="margin-top:10px"><input type="checkbox" id="eUn"> Remove the login link (${esc(staffIdOf(t.email)||t.email||'')}) – the teacher must get a new login</label>`:''}
       <div class="row" style="margin-top:14px"><button class="btn danger" id="mD">Delete</button><div class="grow"></div><button class="btn" id="mC">Cancel</button><button class="btn pri" id="mO">Save</button></div>`);
     $('#mC').onclick=closeModal;
-    $('#mO').onclick=async()=>{const code=$('#eCode').value.trim();const {id,...rest}=t;const r={...rest,code,name:$('#eName').value.trim()||t.name,desig:$('#eDesig').value.trim(),subject:$('#eSub').value.trim(),shift:$('#eShift').value,active:$('#eAct').checked,order:ordOf(code,t.order??999)};
-      const unl=$('#eUn')&&$('#eUn').checked; if(unl){delete r.uid;delete r.email;} try{await saveT(t.id,r); if(unl&&t.uid) await fs.doc('att_staff/'+t.uid).delete(); closeModal();toast('Saved');}catch(e){closeModal();fbErr(e);}};
+    $('#mO').onclick=async()=>{const code=$('#eCode').value.trim();const {id,...rest}=t;const r={...rest,code,name:$('#eName').value.trim()||t.name,desig:$('#eDesig').value.trim(),subject:$('#eSub').value.trim(),shift:$('#eShift').value,role:$('#eRole').value,active:$('#eAct').checked,order:ordOf(code,t.order??999)};
+      const unl=$('#eUn')&&$('#eUn').checked; if(unl){delete r.uid;delete r.email;} try{await saveT(t.id,r); if(unl&&t.uid) await fs.doc('att_staff/'+t.uid).delete(); else if(t.uid&&(t.role||'teacher')!==r.role) await fs.doc('att_staff/'+t.uid).set({teacherId:t.id,email:t.email||'',role:r.role}); closeModal();toast('Saved');}catch(e){closeModal();fbErr(e);}};
+    const mk=$('#eMk'); if(mk) mk.onclick=async()=>{ const sid=$('#eSid').value.trim().toUpperCase(), pw=$('#ePw').value.trim();
+      if(!/^[A-Z0-9._-]{3,20}$/.test(sid)){toast('Staff ID: 3–20 letters/numbers, no spaces');return;} if(pw.length<6){toast('Password: at least 6 characters');return;}
+      mk.disabled=true; mk.textContent='Creating…';
+      try{ await makeLogin({...t,role:$('#eRole').value},sid,pw); closeModal(); showLogins([{n:t.name,sid,pw}]); }catch(e){ mk.disabled=false; mk.textContent='Create login'; toast(e&&e.code==='auth/email-already-in-use'?'This Staff ID is already used – choose another':'Could not create: '+((e&&e.code)||'')); } };
     $('#mD').onclick=()=>{closeModal();confirmBox('Delete '+t.name+'?','The teacher disappears from all reports. To keep past records, untick Active instead.','Delete',async()=>{try{await fs.collection('att_teachers').doc(t.id).delete();toast('Deleted');}catch(e){fbErr(e);}});};});
 }
 
@@ -723,9 +925,23 @@ function vSet(){
   return `<div class="card"><h2>Academic session</h2><p class="sub">Change the months any time – reports follow automatically.</p>
     <div class="grid2"><label class="f">Session name<input class="inp" id="sName" value="${esc(c.session)}"></label><label class="f">Starts<span>${mSel('sS',c.start)}</span></label><label class="f">Ends<span>${mSel('sE',c.end)}</span></label><label class="f">Count attendance from<input type="date" class="inp" id="sTrack" value="${esc(c.trackFrom)}"></label></div>
     <p class="sub" style="margin:10px 0 0">Days before “Count attendance from” are not counted, so nobody is absent for the time before the app started.</p></div>
-  <div class="card"><h2>Marking time (per shift)</h2><p class="sub">“I am Present” works only between Opens and Closes. After Late time = Late. Not marked by Closes = Absent.</p>
-    <div class="grid2"><label class="f">Morning – opens${tm('mO',c.mOpen)}</label><label class="f">Morning – late after${tm('mL',c.mLate)}</label><label class="f">Morning – closes${tm('mCl',c.mClose)}</label></div>
-    <div class="grid2" style="margin-top:10px"><label class="f">Noon – opens${tm('nO',c.nOpen)}</label><label class="f">Noon – late after${tm('nL',c.nLate)}</label><label class="f">Noon – closes${tm('nCl',c.nClose)}</label></div></div>
+  <div class="card"><h2>📍 GPS – sign only at school</h2><p class="sub">When on, teachers can sign only within the radius of the school. Stand at the school gate or office and tap <b>Use my current location</b>.</p>
+    <label class="chk"><input type="checkbox" id="gOn" ${c.gpsOn?'checked':''}> Require GPS for signing</label>
+    <div class="grid2" style="margin-top:10px"><label class="f">Latitude<input class="inp" id="gLat" inputmode="decimal" value="${esc(c.gpsLat)}"></label><label class="f">Longitude<input class="inp" id="gLng" inputmode="decimal" value="${esc(c.gpsLng)}"></label><label class="f">Radius (metres)<input class="inp" id="gR" type="number" min="30" max="2000" value="${+c.gpsR||100}"></label></div>
+    <div class="row" style="margin-top:10px"><button class="btn" id="gHere">📍 Use my current location</button>${c.gpsLat&&c.gpsLng?`<a class="btn sm" href="https://www.google.com/maps?q=${encodeURIComponent(c.gpsLat+','+c.gpsLng)}" target="_blank" rel="noopener">Check on Google Maps</a>`:''}<span class="tmeta" id="gInfo"></span></div></div>
+  <div class="card"><h2>Signing times</h2>
+    <div class="checks" style="margin-bottom:8px"><label class="chk"><input type="radio" name="sm" value="2" ${!four()?'checked':''}> <b>2 signs a day</b> – Morning IN, Afternoon OUT</label><label class="chk"><input type="radio" name="sm" value="4" ${four()?'checked':''}> <b>4 signs a day</b> – Morning IN/OUT, Afternoon IN/OUT</label></div>
+    <p class="sub">Signing after “late after” = <b>Late</b> (a reason is required). Set “last time” late enough for teachers who come late. Morning + afternoon signed = Present · only one half = Half day · none = Absent.</p>
+    <h3>Morning shift</h3>
+    <div class="grid2"><label class="f">Morning IN – opens${tm('mO',c.mOpen)}</label><label class="f">Morning IN – late after${tm('mL',c.mLate)}</label><label class="f">Morning IN – last time${tm('mCl',c.mClose)}</label></div>
+    <div class="grid2 only4" style="margin-top:10px"><label class="f">Morning OUT – opens${tm('mAO',c.mAoOpen||DEFAULT_CFG.mAoOpen)}</label><label class="f">Morning OUT – closes${tm('mAC',c.mAoClose||DEFAULT_CFG.mAoClose)}</label></div>
+    <div class="grid2 only4" style="margin-top:10px"><label class="f">Afternoon IN – opens${tm('mIO',c.mPiOpen||DEFAULT_CFG.mPiOpen)}</label><label class="f">Afternoon IN – late after${tm('mIL',c.mPiLate||DEFAULT_CFG.mPiLate)}</label><label class="f">Afternoon IN – last time${tm('mIC',c.mPiClose||DEFAULT_CFG.mPiClose)}</label></div>
+    <div class="grid2" style="margin-top:10px"><label class="f">Afternoon OUT – opens (school over)${tm('mPO',c.mPmOpen||DEFAULT_CFG.mPmOpen)}</label><label class="f">Afternoon OUT – closes${tm('mPC',c.mPmClose||DEFAULT_CFG.mPmClose)}</label></div>
+    <h3 style="margin-top:14px">Noon shift</h3>
+    <div class="grid2"><label class="f">Morning IN – opens${tm('nO',c.nOpen)}</label><label class="f">Morning IN – late after${tm('nL',c.nLate)}</label><label class="f">Morning IN – last time${tm('nCl',c.nClose)}</label></div>
+    <div class="grid2 only4" style="margin-top:10px"><label class="f">Morning OUT – opens${tm('nAO',c.nAoOpen||DEFAULT_CFG.nAoOpen)}</label><label class="f">Morning OUT – closes${tm('nAC',c.nAoClose||DEFAULT_CFG.nAoClose)}</label></div>
+    <div class="grid2 only4" style="margin-top:10px"><label class="f">Afternoon IN – opens${tm('nIO',c.nPiOpen||DEFAULT_CFG.nPiOpen)}</label><label class="f">Afternoon IN – late after${tm('nIL',c.nPiLate||DEFAULT_CFG.nPiLate)}</label><label class="f">Afternoon IN – last time${tm('nIC',c.nPiClose||DEFAULT_CFG.nPiClose)}</label></div>
+    <div class="grid2" style="margin-top:10px"><label class="f">Afternoon OUT – opens (school over)${tm('nPO',c.nPmOpen||DEFAULT_CFG.nPmOpen)}</label><label class="f">Afternoon OUT – closes${tm('nPC',c.nPmClose||DEFAULT_CFG.nPmClose)}</label></div></div>
   <div class="card"><h2>Weekly off</h2><div class="checks"><label class="chk"><input type="checkbox" id="oSun" ${c.offSun?'checked':''}> Sunday</label><label class="chk"><input type="checkbox" id="oSatAll" ${c.offSatAll?'checked':''}> Every Saturday</label>${[1,2,3,4,5].map(n=>`<label class="chk"><input type="checkbox" class="oSat" value="${n}" ${(c.offSats||[]).includes(n)?'checked':''}> ${['','1st','2nd','3rd','4th','5th'][n]} Saturday</label>`).join('')}</div></div>
   <div class="card"><h2>Leave &amp; duty types</h2><p class="sub">Teachers choose from these when they apply. Days per session 0 = no limit. “Counts as present” is for duty (e.g. On Duty, exam duty).</p>
     <div id="ltList">${LT().map((x,i)=>`<div class="row lt" style="margin-bottom:8px"><input class="inp" data-k="code" value="${esc(x.code)}" maxlength="4" style="width:70px" placeholder="Code"><input class="inp grow" data-k="name" value="${esc(x.name)}" placeholder="Name" style="min-width:120px"><input type="number" min="0" class="inp" data-k="quota" value="${+x.quota||0}" style="width:80px" title="Days per session"><label class="chk"><input type="checkbox" data-k="present" ${x.present?'checked':''}> Counts as present</label><button class="btn sm danger" data-rmlt="${i}">✕</button></div>`).join('')}</div>
@@ -739,19 +955,31 @@ function vSet(){
 const saveCfg=cfg=>fs.doc('att_config/settings').set(cfg);
 function bSet(){
   $('#saveCfg').onclick=async()=>{const start=$('#sSY').value+'-'+pad($('#sSM').value),end=$('#sEY').value+'-'+pad($('#sEM').value);if(end<start){toast('Session must end after it starts');return;}
-    const tms={mOpen:$('#mO').value,mLate:$('#mL').value,mClose:$('#mCl').value,nOpen:$('#nO').value,nLate:$('#nL').value,nClose:$('#nCl').value};
+    const tms={mOpen:$('#mO').value,mLate:$('#mL').value,mClose:$('#mCl').value,mPmOpen:$('#mPO').value,mPmClose:$('#mPC').value,nOpen:$('#nO').value,nLate:$('#nL').value,nClose:$('#nCl').value,nPmOpen:$('#nPO').value,nPmClose:$('#nPC').value,
+      mAoOpen:$('#mAO').value,mAoClose:$('#mAC').value,mPiOpen:$('#mIO').value,mPiLate:$('#mIL').value,mPiClose:$('#mIC').value,nAoOpen:$('#nAO').value,nAoClose:$('#nAC').value,nPiOpen:$('#nIO').value,nPiLate:$('#nIL').value,nPiClose:$('#nIC').value};
+    const signMode=(document.querySelector('input[name=sm]:checked')||{}).value||'2';
+    const gpsOn=$('#gOn').checked, gpsLat=$('#gLat').value.trim(), gpsLng=$('#gLng').value.trim(), gpsR=Math.max(30,Math.min(2000,+$('#gR').value||100));
+    if(gpsOn&&(!isFinite(+gpsLat)||!isFinite(+gpsLng)||!gpsLat||!gpsLng||Math.abs(+gpsLat)>90||Math.abs(+gpsLng)>180)){toast('GPS: set the school latitude and longitude first');return;}
+    const gps={gpsOn,gpsLat:gpsLat?+gpsLat:'',gpsLng:gpsLng?+gpsLng:'',gpsR,gpsCos:gpsLat?Math.cos(+gpsLat*Math.PI/180):1};
     if(Object.values(tms).some(v=>!okHM(v))){toast('Please fill all times');return;}
-    if(!(tms.mOpen<=tms.mLate&&tms.mLate<=tms.mClose&&tms.nOpen<=tms.nLate&&tms.nLate<=tms.nClose)){toast('Times must be in order: opens ≤ late ≤ closes');return;}
+    if(!(tms.mOpen<=tms.mLate&&tms.mLate<=tms.mClose&&tms.nOpen<=tms.nLate&&tms.nLate<=tms.nClose)){toast('Morning sign times must be in order: opens ≤ late after ≤ last time');return;}
+    if(!(tms.mPmOpen<=tms.mPmClose&&tms.nPmOpen<=tms.nPmClose)){toast('Afternoon OUT: opens must be before closes');return;}
+    if(signMode==='4'&&!(tms.mAoOpen<=tms.mAoClose&&tms.nAoOpen<=tms.nAoClose&&tms.mPiOpen<=tms.mPiLate&&tms.mPiLate<=tms.mPiClose&&tms.nPiOpen<=tms.nPiLate&&tms.nPiLate<=tms.nPiClose)){toast('Check the Morning OUT / Afternoon IN times – they must be in order');return;}
     const lts=[...document.querySelectorAll('.lt')].map(r=>({code:r.querySelector('[data-k=code]').value.trim().toUpperCase().replace(/[^A-Z]/g,''),name:r.querySelector('[data-k=name]').value.trim(),quota:+r.querySelector('[data-k=quota]').value||0,present:r.querySelector('[data-k=present]').checked})).filter(x=>x.code);
-    if(lts.some(x=>['P','L','A','W','H'].includes(x.code))){toast('Codes P, L, A, W, H are already used – choose another');return;}
+    if(lts.some(x=>['P','L','HD','A','W','H'].includes(x.code))){toast('Codes P, L, HD, A, W, H are already used – choose another');return;}
     if(new Set(lts.map(x=>x.code)).size!==lts.length){toast('Two leave types have the same code');return;}
-    try{await saveCfg({...S.cfg,leaveTypes:lts.length?lts:DEFAULT_CFG.leaveTypes,session:$('#sName').value.trim()||S.cfg.session,start,end,trackFrom:$('#sTrack').value||start+'-01',...tms,offSun:$('#oSun').checked,offSatAll:$('#oSatAll').checked,offSats:[...document.querySelectorAll('.oSat')].filter(x=>x.checked).map(x=>+x.value),school:$('#sSch').value.trim(),motto:$('#sMot').value.trim(),principal:$('#sPr').value.trim(),address:$('#sAd').value.trim()});toast('Settings saved');}catch(e){fbErr(e);}};
+    try{await saveCfg({...S.cfg,signMode,...gps,leaveTypes:lts.length?lts:DEFAULT_CFG.leaveTypes,session:$('#sName').value.trim()||S.cfg.session,start,end,trackFrom:$('#sTrack').value||start+'-01',...tms,offSun:$('#oSun').checked,offSatAll:$('#oSatAll').checked,offSats:[...document.querySelectorAll('.oSat')].filter(x=>x.checked).map(x=>+x.value),school:$('#sSch').value.trim(),motto:$('#sMot').value.trim(),principal:$('#sPr').value.trim(),address:$('#sAd').value.trim()});toast('Settings saved');}catch(e){fbErr(e);}};
   const ltRow=()=>`<div class="row lt" style="margin-bottom:8px"><input class="inp" data-k="code" maxlength="4" style="width:70px" placeholder="Code"><input class="inp grow" data-k="name" placeholder="Name" style="min-width:120px"><input type="number" min="0" class="inp" data-k="quota" value="0" style="width:80px"><label class="chk"><input type="checkbox" data-k="present"> Counts as present</label><button class="btn sm danger" data-rmlt="x">✕</button></div>`;
   const bindRm=()=>document.querySelectorAll('[data-rmlt]').forEach(b=>b.onclick=()=>b.closest('.lt').remove());
+  const tog=()=>{const f=(document.querySelector('input[name=sm]:checked')||{}).value==='4';document.querySelectorAll('.only4').forEach(e=>e.style.display=f?'':'none');};
+  document.querySelectorAll('input[name=sm]').forEach(r=>r.onchange=tog); tog();
+  $('#gHere').onclick=async()=>{ const inf=$('#gInfo'); inf.textContent='Getting location…';
+    try{ const c=await getPos(); $('#gLat').value=c.latitude.toFixed(6); $('#gLng').value=c.longitude.toFixed(6); inf.textContent='Got it (±'+Math.round(c.accuracy)+' m). Tick “Require GPS” and Save Settings.'; }
+    catch(e){ inf.textContent=''; gpsErr(e); } };
   $('#addLT').onclick=()=>{$('#ltList').insertAdjacentHTML('beforeend',ltRow());bindRm();}; bindRm();
   $('#addH').onclick=async()=>{const from=$('#hF').value,to=$('#hT').value||from,name=$('#hN').value.trim()||'Holiday';if(!from){toast('Choose the date');return;}if(to<from){toast('End date is before start');return;}try{await saveCfg({...S.cfg,holidays:[...(S.cfg.holidays||[]),{from,to,name}]});toast('Holiday added');}catch(e){fbErr(e);}};
   document.querySelectorAll('[data-dh]').forEach(b=>b.onclick=async()=>{const[f,n]=b.dataset.dh.split('|');try{await saveCfg({...S.cfg,holidays:S.cfg.holidays.filter(h=>!(h.from===f&&h.name===n))});toast('Removed');}catch(e){fbErr(e);}});
-  $('#shApp').onclick=()=>{const link=location.origin+location.pathname;window.open('https://wa.me/?text='+encodeURIComponent(`*${S.cfg.school} – SJS App*\n\n1. Open: ${link}\n2. Install it (Chrome ⋮ → Install app / iPhone Share → Add to Home Screen)\n3. Tap "New teacher – create account" with your email and a password\n4. Choose your name. After the Admin confirms you, you can use My Attendance, Notices, Student Attendance and the Time Table.`),'_blank');};
+  $('#shApp').onclick=()=>{const link=location.origin+location.pathname;window.open('https://wa.me/?text='+encodeURIComponent(`*${S.cfg.school} – SJS App*\n\n1. Open: ${link}\n2. Install it (Chrome ⋮ → Install app / iPhone Share → Add to Home Screen)\n3. Tap "New teacher – create account" with your email and a password\n4. Choose your name. After the Admin confirms you, you can use Teacher Attendance, Notices, Student Attendance and the Time Table.`),'_blank');};
 }
 
 /* ================= Start ================= */
