@@ -42,6 +42,36 @@ service cloud.firestore {
     match /c/{cid}/att/{doc}         { allow read: if isStaff(); allow write: if canClass(cid); }
     match /c/{cid}/pay/{doc}         { allow read: if isStaff(); allow write: if canClass(cid); }
 
+    // ===== Marks & Report Cards =====
+    // Setup (exams, grades, subjects): only the Admin. Marks: any confirmed teacher, until the Admin locks that exam.
+    function examLocked(ex) {
+      return exists(/databases/$(database)/documents/mk_cfg/main)
+        && get(/databases/$(database)/documents/mk_cfg/main).data.get('locked', {}).get(ex, false) == true;
+    }
+    match /mk_cfg/{doc}           { allow read: if isStaff(); allow write: if isAdmin(); }
+    match /c/{cid}/marks/{doc} {
+      allow read: if isStaff();
+      allow create: if isAdmin() || (isStaff() && !examLocked(request.resource.data.exam));
+      allow update: if isAdmin() || (isStaff() && !examLocked(request.resource.data.exam) && !examLocked(resource.data.exam));
+      allow delete: if isAdmin();
+    }
+
+    // ===== Homework: any confirmed teacher posts; the writer (or the Admin) can delete =====
+    match /c/{cid}/hw/{doc} {
+      allow read: if isStaff();
+      allow create: if isStaff() && request.resource.data.by == request.auth.uid;
+      allow update, delete: if isAdmin() || (isStaff() && resource.data.by == request.auth.uid);
+    }
+
+    // ===== Fee status (pasted from the Fee Collection workbook): Admin writes, staff view =====
+    match /c/{cid}/fees/{doc}     { allow read: if isStaff(); allow write: if isAdmin(); }
+
+    // ===== Exams (date sheet, invigilation, seat plan): Admin, Exam In-Charge, Principal =====
+    match /ex_data/{doc}          { allow read: if isStaff(); allow write: if isAdmin() || myRole() in ['exam', 'principal']; }
+
+    // ===== School calendar: Admin and Principal =====
+    match /cal_events/{doc}       { allow read: if isStaff(); allow write: if isAdmin() || isPrincipal(); }
+
     // ===== Notice Board: staff read, only the Admin posts =====
     match /att_notices/{doc} { allow read: if isStaff(); allow write: if isAdmin(); }
 

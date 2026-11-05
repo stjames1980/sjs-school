@@ -75,6 +75,7 @@ main{max-width:1180px;margin:0 auto;padding:16px 12px 110px}
 .btn.gold{background:var(--gold);border-color:var(--gold);color:var(--navy)}
 .btn.danger{color:var(--crit);border-color:#efc2c2}
 .btn.sm{padding:5px 9px;font-size:12px;border-radius:8px}
+a.btn{text-decoration:none;color:inherit}
 .inp,select.inp,textarea.inp{border:1px solid var(--line2);border-radius:10px;padding:8px 11px;background:#fff;min-width:0}
 .inp:focus{outline:2px solid #9db8ea;outline-offset:0;border-color:#6d93dd}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--ink2)}
@@ -205,6 +206,11 @@ table.reg{border-collapse:separate;border-spacing:0;font-size:12px;min-width:100
 .tile.hot{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold2)}
 .tile.hot .ts{color:#8a6400;font-weight:600}
 .tile.locked{opacity:.6}
+.duty{border:2px solid var(--gold);background:#fffbeb}
+.dline{display:flex;gap:10px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin-top:6px}
+.dp{font-weight:800;color:var(--navy);min-width:34px}
+.droom{text-align:center;background:#fff7ed;border:2px solid #fdba74;border-radius:10px;padding:3px 8px;min-width:52px}
+.droom small{display:block;font-size:9px;font-weight:800;color:var(--muted)}.droom b{font-size:17px;color:#9a3412}
 h3.sec{margin:18px 2px 8px;font-size:13px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
 .notice{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px}
 .notice.pin{border-color:var(--gold);background:#fffbef}
@@ -274,7 +280,7 @@ const pct=(a,b)=>b?Math.round(a*1000/b)/10:0;
 const newId=()=>'t'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const okHM=v=>/^\d\d:\d\d$/.test(v||'');
 
-const S={cfg:{...DEFAULT_CFG},teachers:[],links:{},marks:{},leaves:{},dec:{},notices:{},noticeErr:false,fixes:{},fixlog:{},role:'teacher',canView:false,user:null,isAdmin:false,myLink:null,
+const S={adj:[],events:[],cfg:{...DEFAULT_CFG},teachers:[],links:{},marks:{},leaves:{},dec:{},notices:{},noticeErr:false,fixes:{},fixlog:{},role:'teacher',canView:false,user:null,isAdmin:false,myLink:null,
   view:'home',date:todayISO(),regMonth:null,repTeacher:null,busy:false,ready:false,err:''};
 let fs=null, auth=null, FV=null;
 
@@ -390,6 +396,8 @@ async function start(){
     } else {
       unsubs.push(fs.doc('att_links/'+u.uid).onSnapshot(s=>{S.myLink=s.exists?s.data():null;render();},err));
     }
+    unsubs.push(fs.collection('sjs_tt_adj').where('date','>=',todayISO()).orderBy('date').limit(4).onSnapshot(s=>{S.adj=s.docs.map(d=>d.data());render();dutyAlert();},()=>{}));
+    unsubs.push(fs.collection('cal_events').where('date','>=',todayISO()).orderBy('date').limit(8).onSnapshot(s=>{S.events=s.docs.map(d=>({id:d.id,...d.data()}));render();},()=>{}));
     unsubs.push(fs.collection('att_notices').onSnapshot(s=>{const m={};s.docs.forEach(d=>m[d.id]=d.data());S.notices=m;S.noticeErr=false;render();},()=>{S.noticeErr=true;render();}));
     const lq=c=>S.canView?fs.collection(c):fs.collection(c).where('uid','==',u.uid);
     unsubs.push(lq('att_fix').onSnapshot(s=>{const m={};s.docs.forEach(d=>m[d.id]=d.data());S.fixes=m;render();},()=>{}));
@@ -477,6 +485,24 @@ const seenKey=()=>'sjs_notice_seen_'+(S.user?S.user.uid:'');
 function unreadN(){ const seen=+(lsGet(seenKey())||0); return Object.values(S.notices||{}).filter(n=>atMs(n)>seen).length; }
 function sortedNotices(){ const today=todayISO(); return Object.entries(S.notices||{}).filter(([,n])=>!n.until||n.until>=today||S.isAdmin).sort((a,b)=>(b[1].pinned?1:0)-(a[1].pinned?1:0)||atMs(b[1])-atMs(a[1])); }
 function hello(){ const h=+nowHM().slice(0,2); return h<12?'Good morning':h<17?'Good afternoon':'Good evening'; }
+/* ===== Substitute duty alert (from Time Table → Adjust) ===== */
+const normN=n=>String(n||'').toLowerCase().replace(/\b(sir|mdm|madam|ms|mrs|mr|miss|dr)\b\.?/g,' ').replace(/[^a-z]/g,'');
+function myDuties(){const t=myTeacher();if(!t)return[];const n=normN(t.name),out=[];
+  (S.adj||[]).forEach(a=>{const du=a.duty||{};let k=t.ttc&&du[t.ttc]?t.ttc:null;
+    if(!k)k=Object.keys(du).find(c=>{const m=normN(du[c].n);return m&&n&&(m===n||m.includes(n)||n.includes(m))});
+    if(k)du[k].list.forEach(x=>out.push({...x,date:a.date}))});return out}
+function dutyCard(){const ds=myDuties();if(!ds.length)return'';const td=todayISO();
+  const byDate={};ds.forEach(x=>(byDate[x.date]=byDate[x.date]||[]).push(x));
+  return `<div class="card duty"><h3 style="margin:0 0 6px">🔔 Your substitute duty</h3>${Object.keys(byDate).sort().map(d=>`<div class="tmeta" style="font-weight:700;margin-top:6px">${d===td?'TODAY':DOW[parse(d).getDay()].toUpperCase()} · ${fmtDate(d)}</div>${byDate[d].map(x=>`<div class="dline"><span class="dp">${esc(x.pn)}</span><span class="grow"><b>${esc(x.cls)}</b> · ${esc(x.s)}<br><span class="tmeta">${esc(x.time)} · for ${esc(x.for)}</span></span><span class="droom"><small>ROOM</small><b>${esc(x.room||'-')}</b></span></div>`).join('')}`).join('')}
+   <a class="btn sm" style="margin-top:8px" href="timetable.html">Open Time Table</a></div>`}
+function dutyAlert(){const ds=myDuties().filter(x=>x.date===todayISO());if(!ds.length)return;
+  const key='sjs-duty-'+todayISO()+'-'+ds.map(x=>x.p+x.cls).join(',');if(lsGet(key))return;lsSet(key,'1');
+  const body=ds.map(x=>x.pn+' · '+x.cls+' · '+x.s+' · Room '+(x.room||'-')).join('\n');
+  toast('🔔 Substitute duty today: '+ds.map(x=>x.pn+' '+x.cls).join(', '));
+  try{if('Notification' in window&&Notification.permission==='granted'&&navigator.serviceWorker)navigator.serviceWorker.ready.then(r=>r.showNotification('SJS App – substitute duty today',{body,icon:'icon-192.png',tag:key}));}catch(e){}}
+function eventsCard(){const ev=(S.events||[]).filter(e=>e.date<=addDaysISO(todayISO(),14)).slice(0,4);if(!ev.length)return'';
+  return `<div class="card"><div class="row"><h3 class="grow" style="margin:0">📆 Coming up</h3><a class="btn sm" href="school.html#cal">Calendar</a></div>${ev.map(e=>`<div class="li"><span><b>${esc(e.title)}</b> <span class="tmeta">${esc(e.type||'')} · ${fmtDate(e.date)}${e.to&&e.to!==e.date?' – '+fmtDate(e.to):''}</span></span></div>`).join('')}</div>`}
+function addDaysISO(d,n){const x=parse(d);x.setDate(x.getDate()+n);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')}
 function vHome(){
   const t=myTeacher(), ds=todayISO(), staff=isStaff();
   let today='Choose your name to start';
@@ -486,12 +512,20 @@ function vHome(){
   const reqs=Object.entries(S.links).filter(([uid,l])=>l&&S.teachers.some(x=>x.id===l.teacherId&&x.uid!==uid)).length;
   const latest=sortedNotices().slice(0,3);
   return `<div class="card mecard"><div class="tmeta">${DOW[parse(ds).getDay()]}, ${fmtDate(ds)}</div><h2 style="font-size:20px;margin:2px 0 0">${hello()}${t?', '+esc(t.name):''}</h2></div>
+  ${dutyCard()}
   <div class="tiles">
     ${tile('me','✅','Teacher Attendance',esc(today),t&&(statusOf({...t,uid:S.user.uid},ds)==='W'||/sign Afternoon now/.test(today))?'hot':'')}
     ${tile('notices','📢','Notices',unreadN()?unreadN()+' new':'Circulars & dates',unreadN()?'hot':'')}
     ${staff?tile('','🧑‍🎓','Student Attendance','Classes, AM/PM, fines','','attendance.html'):tile('','🔒','Student Attendance','Opens after the Admin confirms you','locked')}
     ${tile('','🗓️','Time Table','Routine & adjustments','','timetable.html')}
+    ${staff?tile('','📝','Marks & Report Cards','PT, Half Yearly, Annual','','marks.html'):''}
+    ${staff?tile('','📚','Homework','Class diary','','school.html#hw'):''}
+    ${staff?tile('','✍️','Exams','Date sheet, duty, seats','','school.html#exam'):''}
+    ${staff?tile('','📆','Calendar','Holidays & events','','school.html#cal'):''}
+    ${staff?tile('','💰','Fee Status','Dues by class','','school.html#fees'):''}
+    ${S.user&&'Notification' in window&&Notification.permission==='default'?tile('notify','🔔','Turn on alerts','Substitute duty on this phone'):''}
   </div>
+  ${eventsCard()}
   ${S.canView?`<h3 class="sec">${S.isAdmin?'Admin':esc(ROLE_NAME[S.role])}</h3><div class="tiles">
     ${tile('dash','📊','Dashboard',presentNow+' of '+ts.length+' teachers present')}
     ${tile('classes','🏫','All Classes','Student attendance today')}
@@ -504,7 +538,7 @@ function vHome(){
   <div class="card" style="margin-top:14px"><div class="row"><h3 class="grow" style="margin:0">Latest notices</h3><button class="btn sm" data-hgo="notices">All</button></div>
     ${latest.length?latest.map(([id,n])=>`<div class="li"><span>${n.pinned?'📌 ':''}<b>${esc(n.title)}</b> <span class="tmeta">${esc(n.cat||'')} · ${n.date?fmtDate(n.date):''}</span></span></div>`).join(''):`<div class="empty">${S.noticeErr?'Notices appear after the Admin confirms you.':'No notices yet.'}</div>`}</div>`;
 }
-function bHome(){ document.querySelectorAll('[data-hgo]').forEach(b=>b.onclick=()=>go(b.dataset.hgo)); }
+function bHome(){ document.querySelectorAll('[data-hgo]').forEach(b=>b.onclick=()=>{ if(b.dataset.hgo==='notify'){ try{Notification.requestPermission().then(()=>{render();dutyAlert();});}catch(e){} return; } go(b.dataset.hgo); }); }
 
 /* ================= NOTICE BOARD ================= */
 const NCATS=['General','Holiday','Exam','Meeting','CCA / Event','Duty'];
@@ -902,13 +936,14 @@ function bTeach(){
       try{const batch=fs.batch();rows.slice(0,400).forEach((r,i)=>{batch.set(fs.collection('att_teachers').doc(newId()+i),{code:pad(base+i+1),name:r.name,desig:r.desig,subject:r.subject,shift:r.shift,active:true,order:base+i+1});});await batch.commit();closeModal();toast(rows.length+' teacher(s) added');}catch(e){closeModal();fbErr(e);}};};
   document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{const t=S.teachers.find(x=>x.id===b.dataset.edit);
     modal(`<h3>Edit teacher</h3><div class="grid2"><label class="f">Sl. No.<input class="inp" id="eCode" value="${esc(t.code||'')}"></label><label class="f">Name<input class="inp" id="eName" value="${esc(t.name)}"></label><label class="f">Designation<input class="inp" id="eDesig" value="${esc(t.desig||'')}"></label><label class="f">Subject<input class="inp" id="eSub" value="${esc(t.subject||'')}"></label><label class="f">Shift<select class="inp" id="eShift">${['Morning','Noon'].map(s=>`<option ${t.shift===s?'selected':''}>${s}</option>`).join('')}</select></label>
+      <label class="f">Time Table code<input class="inp" id="eTtc" maxlength="6" placeholder="e.g. LK" value="${esc(t.ttc||'')}"></label>
       <label class="f">Role in the app<select class="inp" id="eRole">${Object.entries(ROLE_NAME).map(([k,n])=>`<option value="${k}" ${(t.role||'teacher')===k?'selected':''}>${n}</option>`).join('')}</select></label></div>
       <p class="sub" style="margin:6px 0 0">Principal and Examination In-Charge can see all dashboards and reports. The Principal can also approve leave.</p>
       ${t.uid?`<p class="sub" style="margin:8px 0 0">Login: <b>${esc(staffIdOf(t.email)||t.email||'linked')}</b></p>`:`<div class="card" style="margin:10px 0 0;padding:10px"><b>Create Staff ID login</b><div class="grid2" style="margin-top:6px"><label class="f">Staff ID<input class="inp" id="eSid" value="${esc(defaultSid(t))}"></label><label class="f">Password<input class="inp" id="ePw" value="${randPw()}"></label></div><button class="btn sm pri" id="eMk" style="margin-top:8px">Create login</button></div>`}
       <label class="chk" style="margin-top:10px"><input type="checkbox" id="eAct" ${t.active!==false?'checked':''}> Active</label>${t.uid?`<label class="chk" style="margin-top:10px"><input type="checkbox" id="eUn"> Remove the login link (${esc(staffIdOf(t.email)||t.email||'')}) – the teacher must get a new login</label>`:''}
       <div class="row" style="margin-top:14px"><button class="btn danger" id="mD">Delete</button><div class="grow"></div><button class="btn" id="mC">Cancel</button><button class="btn pri" id="mO">Save</button></div>`);
     $('#mC').onclick=closeModal;
-    $('#mO').onclick=async()=>{const code=$('#eCode').value.trim();const {id,...rest}=t;const r={...rest,code,name:$('#eName').value.trim()||t.name,desig:$('#eDesig').value.trim(),subject:$('#eSub').value.trim(),shift:$('#eShift').value,role:$('#eRole').value,active:$('#eAct').checked,order:ordOf(code,t.order??999)};
+    $('#mO').onclick=async()=>{const code=$('#eCode').value.trim();const {id,...rest}=t;const r={...rest,code,name:$('#eName').value.trim()||t.name,desig:$('#eDesig').value.trim(),subject:$('#eSub').value.trim(),shift:$('#eShift').value,ttc:$('#eTtc').value.trim().toUpperCase(),role:$('#eRole').value,active:$('#eAct').checked,order:ordOf(code,t.order??999)};
       const unl=$('#eUn')&&$('#eUn').checked; if(unl){delete r.uid;delete r.email;} try{await saveT(t.id,r); if(unl&&t.uid) await fs.doc('att_staff/'+t.uid).delete(); else if(t.uid&&(t.role||'teacher')!==r.role) await fs.doc('att_staff/'+t.uid).set({teacherId:t.id,email:t.email||'',role:r.role}); closeModal();toast('Saved');}catch(e){closeModal();fbErr(e);}};
     const mk=$('#eMk'); if(mk) mk.onclick=async()=>{ const sid=$('#eSid').value.trim().toUpperCase(), pw=$('#ePw').value.trim();
       if(!/^[A-Z0-9._-]{3,20}$/.test(sid)){toast('Staff ID: 3–20 letters/numbers, no spaces');return;} if(pw.length<6){toast('Password: at least 6 characters');return;}

@@ -440,6 +440,27 @@ function waText(adj){const lines=[`*Substitution Routine: ${longDate(adj.date)}*
     if(!g.list.length)lines.push('No class periods');
     for(const s of g.list){const sub=(adj.subs||{})[s.key];lines.push(`${PN[s.p]}- ${s.cls} - ${sub?tfull(sub):'(pending)'}`)}}
   lines.push('',`– ${BASE.school.incharge?BASE.school.incharge+', ':''}Routine in-charge`,BASE.school.name);return lines.join('\n')}
+/* ----- approved leave from Teacher Attendance (SJS App) → absent teachers here ----- */
+const LV={date:null,list:[],busy:false};
+const normN=n=>String(n||'').toLowerCase().replace(/\b(sir|mdm|madam|ms|mrs|mr|miss|dr)\b\.?/g,' ').replace(/[^a-z]/g,'');
+function ttCodeFor(t){if(t.ttc&&TM()[t.ttc])return t.ttc;const n=normN(t.name);if(!n)return'';
+  const hit=teachers().find(x=>normN(x.n)===n)||teachers().find(x=>{const m=normN(x.n);return m&&(m.includes(n)||n.includes(m))});return hit?hit.c:''}
+async function loadLeaves(date){if(S.mode!=='online'||!S.user||LV.busy)return;LV.busy=true;LV.date=date;
+  try{const fs=firebase.firestore();
+    const [q,tq]=await Promise.all([fs.collection('att_leaves').where('from','<=',date).get(),fs.collection('att_teachers').get()]);
+    const tByUid={};tq.docs.forEach(d=>{const t=d.data();if(t.uid)tByUid[t.uid]=t});
+    const cand=q.docs.map(d=>({id:d.id,...d.data()})).filter(l=>l.to>=date);
+    const oks=await Promise.all(cand.map(l=>fs.doc('att_leave_ok/'+l.id).get().catch(()=>null)));
+    LV.list=cand.filter((l,i)=>oks[i]&&oks[i].exists&&oks[i].data().ok).map(l=>{const t=tByUid[l.uid]||{};return{name:t.name||'?',code:ttCodeFor(t),type:l.type==='OD'?'On Duty':l.type==='ML'?'Medical Leave':l.type==='CL'?'Casual Leave':l.type}});
+  }catch(e){LV.list=[]}
+  LV.busy=false;if(pref.tab==='adj'&&A.date===date)render()}
+function leavesOn(date){return LV.date===date?LV.list:[]}
+function leaveCard(adj,canEdit){if(!canEdit)return'';const ls=leavesOn(A.date);if(!ls.length)return'';
+  const have=new Set(adj.absent.map(a=>a.c)),todo=ls.filter(l=>l.code&&!have.has(l.code)),nocode=ls.filter(l=>!l.code);
+  return`<div class="card" style="margin-bottom:12px;border-left:5px solid var(--sub)"><b style="color:var(--navy)">Approved leave this day (${ls.length})</b>
+   <div class="note" style="margin-top:4px">${ls.map(l=>esc(l.name)+' · '+esc(l.type)+(l.code?'':' <span style="color:#b91c1c">(name not found in routine)</span>')).join('<br>')}</div>
+   ${todo.length?`<button class="btn gold" id="addLv" style="margin-top:10px;width:100%">⚡ Add ${todo.length} on leave & auto-assign substitutes</button>`:'<div class="note" style="margin-top:6px">✓ Already in the list below.</div>'}
+   ${nocode.length?'<div class="note" style="margin-top:6px">Set their Time Table code in SJS App → Teachers → Edit.</div>':''}</div>`}
 function vAdjust(m){
   const seg=`<div class="seg" id="adjSeg" style="margin-bottom:12px"><button data-v="adj" class="${adjMode==='adj'?'on':''}">Period adjustment</button><button data-v="free" class="${adjMode==='free'?'on':''}">Free teachers</button></div>`;
   if(adjMode==='free'){vFree(m,seg);return}
@@ -448,9 +469,9 @@ function vAdjust(m){
   const canEdit=S.admin;
   let body='';
   if(d<0)body=`<div class="card empty">${DN[toD(A.date).getDay()]} — no school. Pick a school day.</div>`;
-  else if(!adj.absent.length)body=`<div class="card empty">No teacher marked absent for this day.${canEdit?'<br><br><button class="btn gold" id="addAbs">+ Mark absent teacher</button>':'<br><span class="note">The Admin adds absent teachers here.</span>'}</div>`;
+  else if(!adj.absent.length)body=leaveCard(adj,canEdit)+`<div class="card empty">No teacher marked absent for this day.${canEdit?'<br><br><button class="btn gold" id="addAbs">+ Mark absent teacher</button>':'<br><span class="note">The Admin adds absent teachers here.</span>'}</div>`;
   else{
-    body=`<div class="stats"><div class="stat"><b>${total}</b><span>To cover</span></div><div class="stat ${total-done?'warn':'ok'}"><b>${total-done}</b><span>Pending</span></div><div class="stat"><b>${adj.absent.length}</b><span>On leave</span></div></div>`;
+    body=leaveCard(adj,canEdit)+`<div class="stats"><div class="stat"><b>${total}</b><span>To cover</span></div><div class="stat ${total-done?'warn':'ok'}"><b>${total-done}</b><span>Pending</span></div><div class="stat"><b>${adj.absent.length}</b><span>On leave</span></div></div>`;
     body+=`<div style="height:12px"></div>`+slots.map(g=>`<div class="adjp"><h4><span>${esc(tfull(g.a.c))} <span class="note">(${esc(g.a.c)})</span></span>${canEdit?`<button class="btn sm red" data-rmabs="${esc(g.a.c)}">Remove</button>`:''}</h4>
       <div class="note">${esc(g.a.r||'Other')} · ${g.list.length} period${g.list.length===1?'':'s'}</div>
       ${g.list.length?g.list.map(s=>{const sub=(adj.subs||{})[s.key];
@@ -471,6 +492,10 @@ function vAdjust(m){
   m.querySelectorAll('[data-hist]').forEach(b=>b.onclick=()=>{A.date=b.dataset.hist;A.draft=null;A.dirty=false;render();window.scrollTo({top:0})});
   const work=()=>{if(!A.draft||A.draft.date!==A.date)A.draft=curAdj();return A.draft};
   const ab=$('#addAbs');if(ab)ab.onclick=()=>absentSheet(work());
+  const al=$('#addLv');if(al)al.onclick=()=>{const w=work();const have=new Set(w.absent.map(a=>a.c));let n=0;
+    leavesOn(A.date).forEach(l=>{if(l.code&&!have.has(l.code)){w.absent.push({c:l.code,r:l.type});have.add(l.code);n++}});
+    if(n){autoAssign(w);A.dirty=true;render();toast(n+' teacher(s) on leave added · substitutes filled – check, then Save')}else toast('Already added')};
+  if(canEdit&&LV.date!==A.date)loadLeaves(A.date);
   const au=$('#autoA');if(au)au.onclick=()=>{autoAssign(work());A.dirty=true;render();toast('Substitutes filled — least busy teachers first')};
   m.querySelectorAll('[data-slot]').forEach(s=>s.onchange=()=>{const w=work();w.subs=w.subs||{};if(s.value)w.subs[s.dataset.slot]=s.value;else delete w.subs[s.dataset.slot];A.dirty=true;render()});
   m.querySelectorAll('[data-rmabs]').forEach(b=>b.onclick=()=>{const w=work();const c=b.dataset.rmabs;w.absent=w.absent.filter(a=>a.c!==c);for(const k in w.subs)if(k.endsWith('|'+c))delete w.subs[k];A.dirty=true;render()});
@@ -479,7 +504,12 @@ function vAdjust(m){
   const cp=$('#cpBtn');if(cp)cp.onclick=async()=>{try{await navigator.clipboard.writeText(waText(adj));toast('Copied — paste in the staff group')}catch(e){toast('Select the text below and copy')}};
 }
 let leaveArmed=false;function confirm2(){if(leaveArmed){leaveArmed=false;return true}leaveArmed=true;toast('Not saved. Tap again to discard.');setTimeout(()=>leaveArmed=false,3000);return false}
-async function saveAdj(){const a=A.draft||curAdj();a.date=A.date;a.at=Date.now();
+/* duty summary saved with each adjustment, so the SJS App Home screen can alert each substitute teacher */
+function dutySummary(a){const d=dayIdx(a.date),out={};if(d<0)return out;
+  for(const k in (a.subs||{})){const sub=a.subs[k];if(!sub)continue;const[p,c,ab]=k.split('|');const x=cell(d,c,+p);
+    (out[sub]=out[sub]||{n:tfull(sub),list:[]}).list.push({p:+p,pn:PN[+p],cls:c,s:SM()[x.s]||x.s||'',room:(CM()[c]||{}).room||'',time:timing().p[+p]||'',for:tfull(ab)})}
+  for(const k in out)out[k].list.sort((x,y)=>x.p-y.p);return out}
+async function saveAdj(){const a=A.draft||curAdj();a.date=A.date;a.at=Date.now();a.duty=dutySummary(a);
   const ok=await write(C_ADJ+'/'+A.date,a.absent.length?a:null);if(ok){A.dirty=false;A.draft=null;render();toast('Saved — staff phones update now')}}
 function absentSheet(adj){const already=new Set(adj.absent.map(a=>a.c));const d=dayIdx(adj.date);
   $('#sheet').innerHTML=`<h3>Mark absent teacher</h3><div class="note">${esc(longDate(adj.date))}</div>

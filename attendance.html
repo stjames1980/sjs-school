@@ -737,13 +737,13 @@ function bulkStudents(){if(!canClass()){toast("Only this class's teacher or the 
 function openStudent(roll){
   const st=S.students.find(s=>s.roll===roll);if(!st)return;const c=C();const ses=sessionStats(roll);
   const rows=months().map(m=>({m,x:statsFor(roll,m)})).filter(r=>r.x.W>0);
-  openSheet(`<div class="row between"><div><h2>${esc(st.name)}</h2><div class="small muted">Roll ${st.roll} • ${esc(st.adm||"")} • Class ${esc(c.cls)}</div></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>
+  openSheet(`<div class="row between"><div class="row" style="gap:10px;align-items:center">${st.photo?`<img src="${st.photo}" alt="" style="width:58px;height:58px;border-radius:50%;object-fit:cover;border:2px solid #c9a227">`:""}<div><h2>${esc(st.name)}</h2><div class="small muted">Roll ${st.roll} • ${esc(st.adm||"")} • Class ${esc(c.cls)}</div>${st.dob||st.blood?`<div class="small muted">${st.dob?"Born "+esc(fmtDate(st.dob)):""}${st.dob&&st.blood?" • ":""}${st.blood?"Blood "+esc(st.blood):""}</div>`:""}</div></div><button class="iconbtn" data-close aria-label="Close">✕</button></div>
   <div class="kpis"><div class="kpi ${ses.pct!=null&&ses.pct<c.minPct?"k-bad":"k-good"}"><div class="label">Session</div><b>${pct(ses.pct)}</b><div class="small muted">${ses.present.toFixed(1)} of ${ses.W} days</div></div>
   <div class="kpi k-gold"><div class="label">Fines</div><b>Rs ${ses.fine}</b><div class="small muted">Full ${ses.full} • Half ${ses.half}</div></div></div>
   ${ses.pct!=null&&ses.pct<c.minPct?`<div class="banner warn">Short by ${fmtS(daysShort(ses.present,ses.W,c.minPct))} days. Needs ${daysNeeded(ses.present,ses.W,c.minPct)} days of full attendance in a row to reach ${Math.round(c.minPct*100)}%.</div>`:""}
   <div class="card tablewrap"><table><thead><tr><th>Month</th><th>Days</th><th>Full A</th><th>Half</th><th>Leave</th><th>%</th><th>Fine</th></tr></thead><tbody>
   ${rows.map(r=>`<tr><td>${monthLabel(r.m)}</td><td>${r.x.present.toFixed(1)}/${r.x.W}</td><td>${r.x.full||"–"}</td><td>${r.x.half||"–"}</td><td>${r.x.ldays||"–"}</td><td class="${r.x.pct<c.minPct?"pct-low":""}">${pct(r.x.pct)}</td><td>${r.x.fine||"–"}${r.x.fine?(paidOn(r.m,roll)?" ✓":""):""}</td></tr>`).join("")}</tbody></table></div>
-  ${st.parent||st.phone?`<div class="card"><div class="label">Parent / Guardian</div><div style="font-weight:600;margin-top:4px">${esc(st.parent||"")}</div><div class="row" style="margin-top:6px"><span style="user-select:all;font-variant-numeric:tabular-nums">${esc(st.phone||"")}</span>${st.phone?`<button class="btn ghost sm" id="cpPhone">Copy number</button>`:""}</div></div>`:""}
+  ${st.parent||st.phone?`<div class="card"><div class="label">Parent / Guardian</div><div style="font-weight:600;margin-top:4px">${esc(st.parent||"")}</div><div class="row" style="margin-top:6px"><span style="user-select:all;font-variant-numeric:tabular-nums">${esc(st.phone||"")}</span>${st.phone?`<button class="btn ghost sm" id="cpPhone">Copy number</button>`:""}</div>${st.address?`<div class="small muted" style="margin-top:4px">${esc(st.address)}</div>`:""}${waPhone(st.phone)?`<div class="btns" style="margin-top:8px"><a class="btn sm" href="tel:+${waPhone(st.phone)}">📞 Call</a><a class="btn sm green" target="_blank" rel="noopener" href="https://wa.me/${waPhone(st.phone)}?text=${encodeURIComponent("Dear Parent, this is from "+(c.school||"St. James H.S. School")+" regarding "+st.name+" (Class "+c.cls+(c.section?"-"+c.section:"")+", Roll "+st.roll+"). ")}">WhatsApp</a></div>`:""}</div>`:""}
   <div class="btns">${canClass()?`<button class="btn ghost" id="editS">Edit details</button>`:""}<button class="btn ghost" data-close>Close</button></div>`);
   const cp=document.getElementById("cpPhone");if(cp)cp.onclick=()=>copyText(String(st.phone));
   const ed=document.getElementById("editS");if(ed)ed.onclick=()=>editStudent(st);
@@ -758,12 +758,20 @@ function editStudent(st){if(!canClass()){toast("Only this class's teacher or the
   <div class="grid2"><label class="field"><span class="label">Gender</span><select id="fGen"><option value="">–</option><option value="M" ${s.gender==="M"?"selected":""}>Boy (M)</option><option value="F" ${s.gender==="F"?"selected":""}>Girl (F)</option></select></label>
   <label class="field"><span class="label">Contact no.</span><input id="fPh" inputmode="tel" value="${esc(s.phone)}"></label></div>
   <label class="field"><span class="label">Parent / Guardian</span><input id="fPar" value="${esc(s.parent)}"></label>
+  <div class="grid2"><label class="field"><span class="label">Date of birth</span><input id="fDob" type="date" value="${esc(s.dob||"")}"></label>
+  <label class="field"><span class="label">Blood group</span><input id="fBl" maxlength="4" value="${esc(s.blood||"")}" placeholder="e.g. B+"></label></div>
+  <label class="field"><span class="label">Address</span><input id="fAddr" maxlength="150" value="${esc(s.address||"")}"></label>
+  <label class="field"><span class="label">Photo</span><div class="row" style="gap:10px;align-items:center"><img id="fPhImg" src="${esc(s.photo||"")}" alt="" style="width:56px;height:56px;border-radius:50%;object-fit:cover;background:#eef1f6;${s.photo?"":"visibility:hidden"}"><input id="fPhoto" type="file" accept="image/*" capture="environment"><button class="btn ghost sm" id="fPhX" type="button">Remove</button></div></label>
   <div class="btns"><button class="btn green" id="fSave">Save student</button><button class="btn ghost" data-close>Cancel</button></div>`);
+  let photo=s.photo||"";const im=document.getElementById("fPhImg");
+  document.getElementById("fPhoto").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const i=new Image();i.onload=()=>{const z=160,cv=document.createElement("canvas");cv.width=cv.height=z;const k=Math.min(i.width,i.height);cv.getContext("2d").drawImage(i,(i.width-k)/2,(i.height-k)/2,k,k,0,0,z,z);photo=cv.toDataURL("image/jpeg",0.72);im.src=photo;im.style.visibility="visible"};i.src=r.result};r.readAsDataURL(f)};
+  document.getElementById("fPhX").onclick=()=>{photo="";im.style.visibility="hidden"};
   document.getElementById("fSave").onclick=async()=>{
     const roll=+document.getElementById("fRoll").value,name=document.getElementById("fName").value.trim();
     if(!roll||!name){toast("Enter a roll number and name");return}
     if(!st&&S.students.some(x=>x.roll===roll)){toast("Roll "+roll+" already exists");return}
-    const body={roll,adm:document.getElementById("fAdm").value.trim(),name,gender:document.getElementById("fGen").value,parent:document.getElementById("fPar").value.trim(),phone:document.getElementById("fPh").value.trim()};
+    const body={roll,adm:document.getElementById("fAdm").value.trim(),name,gender:document.getElementById("fGen").value,parent:document.getElementById("fPar").value.trim(),phone:document.getElementById("fPh").value.trim(),dob:document.getElementById("fDob").value,blood:document.getElementById("fBl").value.trim().toUpperCase(),address:document.getElementById("fAddr").value.trim(),photo};
+    if(st)Object.keys(st).forEach(k=>{if(!(k in body))body[k]=st[k]});
     try{await S.db.doc(P("students")+"/r"+String(roll).padStart(3,"0")).set(body);closeSheet();toast("Saved "+name)}catch(e){toast("Couldn't save the student")}
   };
 }

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marks & Report Cards – SJS App</title>
+<meta name="theme-color" content="#13294b">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="favicon.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Merriweather:wght@900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="sjs-common.css">
+</head>
+<body>
+<script src="config.js"></script>
+<script src="sjs-common.js"></script>
+<script>
+/* ===== Marks & Report Cards =====
+   mk_cfg/main                 exams, grade scale, pass %, locked exams, subjects for each class (Admin)
+   c/<classId>/marks/<exam>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}  (any confirmed teacher, until the exam is locked) */
+const {$,esc,toast,sheet,closeSheet,printHTML,csvDownload,pasteRows,classLabel}=SJS;
+const DEF_CFG={exams:[{id:'pt1',name:'PT-I',max:25},{id:'hy',name:'Half Yearly',max:80},{id:'pt2',name:'PT-II',max:25},{id:'an',name:'Annual',max:80}],
+  pass:33,grades:[{min:91,g:'A1'},{min:81,g:'A2'},{min:71,g:'B1'},{min:61,g:'B2'},{min:51,g:'C1'},{min:41,g:'C2'},{min:33,g:'D'},{min:0,g:'E'}],locked:{},subj:{}};
+const DEF_SUBJ='English, Mizo/Bengali, Hindi, Mathematics, Science, Social Science, Computer';
+const M={tab:'enter',cfg:null,cid:null,exam:null,subj:null,students:[],marks:{},dirty:{},rex:'',cards:[]};
+const LSK='sjs-marks-';const lg=k=>{try{return localStorage.getItem(LSK+k)}catch(e){return null}};const ls=(k,v)=>{try{localStorage.setItem(LSK+k,v)}catch(e){}};
+const cfg=()=>({...DEF_CFG,...(M.cfg||{})});
+const exams=()=>cfg().exams||[];
+const exName=id=>(exams().find(e=>e.id===id)||{}).name||id;
+const exMax=id=>+(exams().find(e=>e.id===id)||{}).max||100;
+const subjOf=cid=>{const s=(cfg().subj||{})[cid];return (s&&s.length?s:DEF_SUBJ.split(',').map(x=>x.trim()))};
+const skey=s=>s.replace(/[^A-Za-z0-9]/g,'').slice(0,20)||'S';
+const grade=p=>{if(p==null)return'';const g=[...cfg().grades].sort((a,b)=>b.min-a.min).find(x=>p>=x.min);return g?g.g:''};
+const num=v=>v===''||v==null||v==='AB'?null:+v;
+const fmt=v=>v==null||v===''?'':v==='AB'?'AB':(Math.round(v*100)/100);
+
+function tabs(){const T=[['enter','Enter marks'],['res','Results'],['cards','Report cards']];if(SJS.isAdmin)T.push(['setup','Setup']);
+  return `<div class="nav"><div class="nav-in">${T.map(([k,l])=>`<button class="tab ${M.tab===k?'act':''}" data-t="${k}">${l}</button>`).join('')}</div></div>`}
+function render(){const a=$('#app');const h=a.querySelector('.hdr').outerHTML;a.innerHTML=h+tabs()+'<main id="main"></main>';
+  a.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{if(Object.keys(M.dirty).length&&!confirm('Marks not saved. Leave anyway?'))return;M.dirty={};M.tab=b.dataset.t;ls('tab',M.tab);render()});
+  ({enter:vEnter,res:vRes,cards:vCards,setup:vSetup}[M.tab]||vEnter)($('#main'))}
+
+function classSel(id='cSel'){const cs=SJS.classes;if(!cs.length)return'<div class="banner warn">No classes yet. The Admin adds classes in Student Attendance.</div>';
+  return `<label class="f">Class<select class="inp" id="${id}">${cs.map(c=>`<option value="${esc(c.id)}" ${c.id===M.cid?'selected':''}>${esc(classLabel(c))}${SJS.canClass(c.id)&&!SJS.isAdmin?' ★':''}</option>`).join('')}</select></label>`}
+function pickDefaults(){if(!M.cid||!SJS.classes.some(c=>c.id===M.cid)){const mine=SJS.myClasses()[0];M.cid=lg('cid')&&SJS.classes.some(c=>c.id===lg('cid'))?lg('cid'):(mine||SJS.classes[0]||{}).id||null}
+  if(!M.exam||!exams().some(e=>e.id===M.exam))M.exam=lg('exam')&&exams().some(e=>e.id===lg('exam'))?lg('exam'):(exams()[0]||{}).id;
+  if(M.cid){const sl=subjOf(M.cid);if(!sl.includes(M.subj))M.subj=sl.includes(lg('subj'))?lg('subj'):sl[0]}}
+async function loadClass(cid){if(M._loaded===cid)return;M.students=await SJS.students(cid);const r=await SJS.db.list('c/'+cid+'/marks');M.marks={};r.forEach(d=>M.marks[d.id]=d);M._loaded=cid}
+const mdoc=(ex,s)=>M.marks[ex+'__'+skey(s)]||null;
+const markOf=(ex,s,roll)=>{const d=mdoc(ex,s);return d&&d.m?d.m[roll]:undefined};
+
+/* ---------- Enter marks ---------- */
+async function vEnter(m){pickDefaults();if(!M.cid){m.innerHTML=classSel();return}
+  m.innerHTML='<div class="empty">Loading students…</div>';await loadClass(M.cid);
+  const sl=subjOf(M.cid),locked=!!(cfg().locked||{})[M.exam],can=SJS.isAdmin||!locked;const d=mdoc(M.exam,M.subj);const max=d&&d.max?+d.max:exMax(M.exam);
+  const filled=M.students.filter(st=>{const v=M.dirty[st.roll]!==undefined?M.dirty[st.roll]:markOf(M.exam,M.subj,st.roll);return v!==undefined&&v!==''}).length;
+  m.innerHTML=`<div class="card"><div class="grid2">${classSel()}
+    <label class="f">Exam<select class="inp" id="eSel">${exams().map(e=>`<option value="${esc(e.id)}" ${e.id===M.exam?'selected':''}>${esc(e.name)}${(cfg().locked||{})[e.id]?' 🔒':''}</option>`).join('')}</select></label>
+    <label class="f">Subject<select class="inp" id="sSel">${sl.map(s=>`<option ${s===M.subj?'selected':''}>${esc(s)}</option>`).join('')}</select></label>
+    <label class="f">Full marks<input class="inp" id="mMax" type="number" min="1" value="${max}" ${can?'':'disabled'}></label></div>
+    <div class="row" style="margin-top:8px"><span class="pill ${filled===M.students.length&&filled?'g':'y'}">${filled} of ${M.students.length} entered</span>${locked?'<span class="pill r">🔒 Locked by Admin</span>':''}<span class="tmeta grow">${d&&d.byName?'Last saved by '+esc(d.byName):''}</span></div></div>
+  ${M.students.length?`<div class="card"><div class="tmeta" style="margin-bottom:6px">Type the mark, or <b>AB</b> for absent. Leave empty if not given.</div>
+    <div class="scroll"><table class="tbl"><tr><th>Roll</th><th>Student</th><th style="text-align:center">Marks / ${max}</th></tr>
+    ${M.students.map(st=>{const v=M.dirty[st.roll]!==undefined?M.dirty[st.roll]:markOf(M.exam,M.subj,st.roll);const n=num(v);
+      return `<tr><td>${esc(st.roll)}</td><td>${esc(st.name)}</td><td style="text-align:center"><input class="inp mk ${n!=null&&(n>max||n<0)?'bad':''}" data-r="${esc(st.roll)}" inputmode="decimal" value="${esc(v==null?'':v)}" ${can?'':'disabled'}></td></tr>`}).join('')}</table></div>
+    ${can?`<div class="row" style="margin-top:10px"><button class="btn" id="pasteB">Paste from Excel</button><div class="grow"></div><button class="btn pri" id="saveB" ${Object.keys(M.dirty).length?'':'disabled'}>${Object.keys(M.dirty).length?'Save marks':'Saved ✓'}</button></div>`:''}</div>`:'<div class="card empty">No students in this class yet.</div>'}`;
+  $('#cSel').onchange=e=>{if(Object.keys(M.dirty).length&&!confirm('Marks not saved. Leave anyway?')){e.target.value=M.cid;return}M.dirty={};M.cid=e.target.value;ls('cid',M.cid);vEnter(m)};
+  $('#eSel').onchange=e=>{M.dirty={};M.exam=e.target.value;ls('exam',M.exam);vEnter(m)};
+  $('#sSel').onchange=e=>{M.dirty={};M.subj=e.target.value;ls('subj',M.subj);vEnter(m)};
+  m.querySelectorAll('[data-r]').forEach(inp=>{inp.oninput=()=>{let v=inp.value.trim().toUpperCase();if(v==='A'||v==='ABS')v='AB';M.dirty[inp.dataset.r]=v;const n=num(v);
+      inp.classList.toggle('bad',v!==''&&v!=='AB'&&(isNaN(n)||n>+$('#mMax').value||n<0));const b=$('#saveB');if(b){b.disabled=false;b.textContent='Save marks'}};
+    inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const all=[...m.querySelectorAll('[data-r]')];const i=all.indexOf(inp);if(all[i+1])all[i+1].focus()}}});
+  const mx=$('#mMax');if(mx)mx.onchange=()=>{M.dirty.__max=1;const b=$('#saveB');if(b){b.disabled=false;b.textContent='Save marks'}};
+  const pb=$('#pasteB');if(pb)pb.onclick=()=>{sheet(`<h3>Paste marks from Excel</h3><p class="sub">Copy one column of marks (in roll order) – or two columns: Roll No and Marks – then paste here.</p><textarea class="inp" id="pT" rows="10"></textarea><div class="row" style="margin-top:10px"><div class="grow"></div><button class="btn" onclick="SJS.closeSheet()">Cancel</button><button class="btn pri" id="pOk">Use</button></div>`);
+    $('#pOk').onclick=()=>{const rows=pasteRows($('#pT').value);let n=0;
+      if(rows.length&&rows[0].length>=2)rows.forEach(r=>{const st=M.students.find(s=>String(s.roll)===String(r[0]).trim());if(st){M.dirty[st.roll]=r[1].toUpperCase();n++}});
+      else rows.forEach((r,i)=>{const st=M.students[i];if(st){M.dirty[st.roll]=r[0].toUpperCase();n++}});
+      closeSheet();toast(n+' marks filled – check, then Save');vEnter(m)}};
+  const sb=$('#saveB');if(sb)sb.onclick=async()=>{const max2=+$('#mMax').value||max;const bad=Object.entries(M.dirty).filter(([r,v])=>r!=='__max'&&v!==''&&v!=='AB'&&(isNaN(+v)||+v>max2||+v<0));
+    if(bad.length){toast('Check roll '+bad.map(b=>b[0]).join(', ')+' – mark must be 0 to '+max2+' or AB');return}
+    const id=M.exam+'__'+skey(M.subj),old=(mdoc(M.exam,M.subj)||{}).m||{},mm={...old};
+    Object.entries(M.dirty).forEach(([r,v])=>{if(r==='__max')return;if(v==='')delete mm[r];else mm[r]=v==='AB'?'AB':+v});
+    const doc={exam:M.exam,subj:M.subj,max:max2,m:mm,by:SJS.user.uid,byName:SJS.me?SJS.me.name:(SJS.user.email||''),at:SJS.db.now()};
+    sb.disabled=true;sb.textContent='Saving…';
+    try{await SJS.db.set('c/'+M.cid+'/marks/'+id,doc);M.marks[id]={id,...doc};M.dirty={};toast('Marks saved');vEnter(m)}catch(e){sb.disabled=false;sb.textContent='Save marks';toast(e&&e.code==='permission-denied'?'Not allowed – the exam may be locked, or the rules need updating':'Could not save – check the internet')}}}
+
+/* ---------- Results ---------- */
+function computeResults(cid,exList){const sl=subjOf(cid);const pass=+cfg().pass||33;
+  const rows=M.students.map(st=>{let tot=0,full=0,fail=false,any=false;const per={};
+    sl.forEach(s=>{let got=0,mx=0,has=false,ab=false;exList.forEach(ex=>{const d=mdoc(ex,s);const v=d&&d.m?d.m[st.roll]:undefined;const mxx=d&&d.max?+d.max:exMax(ex);
+        if(v!==undefined&&v!==''){has=true;mx+=mxx;if(v==='AB')ab=true;else got+=+v}});
+      per[s]=has?{got,mx,ab,p:mx?got/mx*100:null}:null;if(has){any=true;tot+=got;full+=mx;if(per[s].p<pass)fail=true}});
+    const p=full?tot/full*100:null;return{st,per,tot,full,p,g:grade(p),fail,any}});
+  const ranked=rows.filter(r=>r.any).sort((a,b)=>b.p-a.p);ranked.forEach((r,i)=>{r.rank=i>0&&Math.abs(ranked[i-1].p-r.p)<1e-9?ranked[i-1].rank:i+1});return{sl,rows}}
+async function vRes(m){pickDefaults();if(!M.cid){m.innerHTML=classSel();return}m.innerHTML='<div class="empty">Loading…</div>';await loadClass(M.cid);
+  if(!M.rex)M.rex=M.exam;const exList=M.rex==='ALL'?exams().map(e=>e.id):[M.rex];const {sl,rows}=computeResults(M.cid,exList);
+  const app=rows.filter(r=>r.any),passed=app.filter(r=>!r.fail),top=[...app].sort((a,b)=>a.rank-b.rank).slice(0,10);
+  const avg=s=>{const v=app.map(r=>r.per[s]).filter(x=>x&&x.p!=null);return v.length?v.reduce((a,b)=>a+b.p,0)/v.length:null};
+  const cl=SJS.classes.find(c=>c.id===M.cid);
+  m.innerHTML=`<div class="card"><div class="grid2">${classSel()}<label class="f">Exam<select class="inp" id="rSel">${exams().map(e=>`<option value="${esc(e.id)}" ${e.id===M.rex?'selected':''}>${esc(e.name)}</option>`).join('')}<option value="ALL" ${M.rex==='ALL'?'selected':''}>All exams together</option></select></label></div></div>
+   <div class="stats"><div class="stat"><b>${app.length}</b><span>Appeared</span></div><div class="stat"><b style="color:var(--good)">${passed.length}</b><span>Passed</span></div><div class="stat"><b style="color:var(--crit)">${app.length-passed.length}</b><span>Failed</span></div><div class="stat"><b>${app.length?Math.round(passed.length/app.length*100):0}%</b><span>Pass %</span></div><div class="stat"><b>${app.length?fmt(Math.max(...app.map(r=>r.p))):'-'}${app.length?'%':''}</b><span>Highest</span></div></div>
+   <div class="card"><div class="row"><h3 class="grow" style="margin:0">Result sheet – ${esc(classLabel(cl))}</h3><button class="btn sm" id="rPrint">Print</button><button class="btn sm" id="rCsv">Excel</button></div>
+    <div class="scroll" style="margin-top:8px"><table class="tbl"><tr><th>Roll</th><th>Name</th>${sl.map(s=>`<th>${esc(s)}</th>`).join('')}<th>Total</th><th>%</th><th>Grade</th><th>Rank</th><th>Result</th></tr>
+    ${rows.map(r=>`<tr><td>${esc(r.st.roll)}</td><td>${esc(r.st.name)}</td>${sl.map(s=>{const x=r.per[s];return`<td style="${x&&x.p<(+cfg().pass)?'color:var(--crit);font-weight:700':''}">${x?(x.ab&&!x.got?'AB':fmt(x.got)):''}</td>`}).join('')}<td><b>${r.any?fmt(r.tot)+'/'+r.full:''}</b></td><td>${r.p!=null?fmt(r.p):''}</td><td>${r.g}</td><td>${r.rank||''}</td><td>${r.any?(r.fail?'<span class="pill r">Fail</span>':'<span class="pill g">Pass</span>'):''}</td></tr>`).join('')}</table></div></div>
+   <div class="card"><h3>Subject average</h3>${sl.map(s=>{const a=avg(s);return`<div class="li"><span class="grow">${esc(s)}</span><b>${a==null?'-':fmt(a)+'%'}</b></div>`}).join('')}</div>
+   <div class="card"><h3>Top 10</h3>${top.length?top.map(r=>`<div class="li"><span class="pill b">${r.rank}</span><span class="grow"><b>${esc(r.st.name)}</b> <span class="tmeta">Roll ${esc(r.st.roll)}</span></span><b>${fmt(r.p)}%</b></div>`).join(''):'<div class="empty">No marks yet.</div>'}</div>`;
+  $('#cSel').onchange=e=>{M.cid=e.target.value;ls('cid',M.cid);vRes(m)};$('#rSel').onchange=e=>{M.rex=e.target.value;vRes(m)};
+  const title=`Result Sheet – Class ${classLabel(cl)} – ${M.rex==='ALL'?'All exams':exName(M.rex)}`;
+  $('#rPrint').onclick=()=>printHTML(title,SJS.printHead(title)+`<table><tr><th>Roll</th><th class="l">Name</th>${sl.map(s=>`<th>${esc(s)}</th>`).join('')}<th>Total</th><th>%</th><th>Grade</th><th>Rank</th><th>Result</th></tr>${rows.map(r=>`<tr><td>${esc(r.st.roll)}</td><td class="l">${esc(r.st.name)}</td>${sl.map(s=>{const x=r.per[s];return`<td>${x?(x.ab&&!x.got?'AB':fmt(x.got)):''}</td>`}).join('')}<td>${r.any?fmt(r.tot)+'/'+r.full:''}</td><td>${r.p!=null?fmt(r.p):''}</td><td>${r.g}</td><td>${r.rank||''}</td><td>${r.any?(r.fail?'Fail':'Pass'):''}</td></tr>`).join('')}</table>
+    <p>Appeared: ${app.length} · Passed: ${passed.length} · Failed: ${app.length-passed.length} · Pass %: ${app.length?Math.round(passed.length/app.length*100):0}%</p><div class="sig"><div>Class Teacher</div><div>Examination In-Charge</div><div>Principal</div></div>`);
+  $('#rCsv').onclick=()=>csvDownload(title.replace(/[^\w-]+/g,'_')+'.csv',[['Roll','Name',...sl,'Total','Full','%','Grade','Rank','Result'],...rows.map(r=>[r.st.roll,r.st.name,...sl.map(s=>{const x=r.per[s];return x?(x.ab&&!x.got?'AB':fmt(x.got)):''}),r.any?fmt(r.tot):'',r.full||'',r.p!=null?fmt(r.p):'',r.g,r.rank||'',r.any?(r.fail?'Fail':'Pass'):''])])}
+
+/* ---------- Report cards ---------- */
+async function vCards(m){pickDefaults();if(!M.cid){m.innerHTML=classSel();return}m.innerHTML='<div class="empty">Loading…</div>';await loadClass(M.cid);
+  if(!M.cards.length)M.cards=exams().map(e=>e.id);
+  m.innerHTML=`<div class="card"><div class="grid2">${classSel()}</div>
+    <div class="tmeta" style="margin:10px 0 4px;font-weight:700">Exams on the report card</div><div class="row">${exams().map(e=>`<label class="pill" style="padding:6px 10px"><input type="checkbox" data-ex="${esc(e.id)}" ${M.cards.includes(e.id)?'checked':''}> ${esc(e.name)}</label>`).join('')}</div>
+    <label class="f" style="margin-top:10px">Remark for all (optional)<input class="inp" id="rcRem" placeholder="Leave empty for automatic remarks"></label>
+    <div class="row" style="margin-top:10px"><button class="btn pri" id="rcAll">🖨 Print all report cards</button></div></div>
+   <div class="card"><h3>One student</h3>${M.students.map(st=>`<div class="li"><span class="pill">${esc(st.roll)}</span><span class="grow">${esc(st.name)}</span><button class="btn sm" data-one="${esc(st.roll)}">Print</button></div>`).join('')||'<div class="empty">No students.</div>'}</div>`;
+  $('#cSel').onchange=e=>{M.cid=e.target.value;ls('cid',M.cid);vCards(m)};
+  m.querySelectorAll('[data-ex]').forEach(c=>c.onchange=()=>{M.cards=[...m.querySelectorAll('[data-ex]:checked')].map(x=>x.dataset.ex)});
+  $('#rcAll').onclick=()=>printCards(null,$('#rcRem').value.trim());
+  m.querySelectorAll('[data-one]').forEach(b=>b.onclick=()=>printCards(b.dataset.one,$('#rcRem').value.trim()))}
+function autoRemark(p,fail){if(p==null)return'';if(fail)return'Needs to work harder. Please meet the class teacher.';if(p>=90)return'Outstanding performance. Keep it up!';if(p>=75)return'Very good. Keep working hard.';if(p>=60)return'Good. Can do even better.';if(p>=45)return'Satisfactory. Needs more effort.';return'Must improve with regular study.'}
+function printCards(roll,remark){const exList=exams().map(e=>e.id).filter(id=>M.cards.includes(id));if(!exList.length){toast('Tick at least one exam');return}
+  const {sl,rows}=computeResults(M.cid,exList);const cl=SJS.classes.find(c=>c.id===M.cid);const n=rows.filter(r=>r.any).length;
+  const list=roll?rows.filter(r=>String(r.st.roll)===String(roll)):rows;
+  const ct=(SJS.teachers.find(t=>(cl.teacherUids||[]).includes(t.uid))||{}).name||'';
+  const html=list.map((r,i)=>`<div class="${i<list.length-1?'pb':''}">${SJS.printHead('PROGRESS REPORT CARD')}
+    <div class="meta"><div>Name: <b>${esc(r.st.name)}</b></div><div>Class: <b>${esc(classLabel(cl))}</b></div><div>Roll No: <b>${esc(r.st.roll)}</b></div><div>Admission No: <b>${esc(r.st.adm||'')}</b></div><div>Parent / Guardian: <b>${esc(r.st.parent||'')}</b></div><div>Class Teacher: <b>${esc(ct)}</b></div></div>
+    <table><tr><th class="l">Subject</th>${exList.map(ex=>`<th>${esc(exName(ex))}</th>`).join('')}<th>Total</th><th>%</th><th>Grade</th></tr>
+    ${sl.map(s=>{let g=0,mx=0,h=false;const cells=exList.map(ex=>{const d=mdoc(ex,s);const v=d&&d.m?d.m[r.st.roll]:undefined;const mxx=d&&d.max?+d.max:exMax(ex);if(v===undefined||v==='')return'<td></td>';h=true;mx+=mxx;if(v!=='AB')g+=+v;return`<td>${v==='AB'?'AB':fmt(v)} / ${mxx}</td>`}).join('');
+      const p=h&&mx?g/mx*100:null;return`<tr><td class="l">${esc(s)}</td>${cells}<td>${h?fmt(g)+' / '+mx:''}</td><td>${p!=null?fmt(p):''}</td><td>${grade(p)}</td></tr>`}).join('')}
+    <tr><th class="l">Grand total</th>${exList.map(()=>'<th></th>').join('')}<th>${r.any?fmt(r.tot)+' / '+r.full:''}</th><th>${r.p!=null?fmt(r.p):''}</th><th>${r.g}</th></tr></table>
+    <div class="meta" style="margin-top:10px"><div>Percentage: <b>${r.p!=null?fmt(r.p)+'%':'-'}</b></div><div>Rank: <b>${r.rank?r.rank+' of '+n:'-'}</b></div><div>Result: <b>${r.any?(r.fail?'NOT PASSED':'PASSED'):'-'}</b></div><div>Grade: <b>${r.g||'-'}</b></div></div>
+    <div class="box"><b>Remarks:</b> ${esc(remark||autoRemark(r.p,r.fail))}</div>
+    <div class="box" style="font-size:10.5px">Grades: ${[...cfg().grades].sort((a,b)=>b.min-a.min).map(g=>g.g+' ≥ '+g.min+'%').join(' · ')} · Pass mark ${cfg().pass}% in each subject</div>
+    <div class="sig"><div>Class Teacher</div><div>Principal</div><div>Parent / Guardian</div></div></div>`).join('');
+  printHTML('Report Cards – '+classLabel(cl),html)}
+
+/* ---------- Setup (Admin) ---------- */
+function vSetup(m){const c=cfg();
+  m.innerHTML=`<div class="card"><h2>Exams</h2><p class="sub">Name and full marks for each exam. Teachers can change full marks for one subject while entering.</p>
+    <div id="exL">${c.exams.map((e,i)=>`<div class="row" style="margin-bottom:6px"><input class="inp" style="flex:2" data-en="${i}" value="${esc(e.name)}"><input class="inp" style="flex:1" type="number" data-em="${i}" value="${e.max}"><label class="pill" style="padding:6px 8px"><input type="checkbox" data-el="${esc(e.id)}" ${(c.locked||{})[e.id]?'checked':''}> 🔒 Lock</label></div>`).join('')}</div>
+    <button class="btn sm" id="exAdd">+ Add exam</button>
+    <p class="sub" style="margin-top:8px">🔒 Lock an exam after results are final – then only the Admin can change its marks.</p></div>
+   <div class="card"><h2>Pass mark & grades</h2><div class="grid2"><label class="f">Pass mark in each subject (%)<input class="inp" id="pass" type="number" value="${c.pass}"></label>
+    <label class="f">Grades (grade=minimum %, comma separated)<input class="inp" id="grd" value="${esc([...c.grades].sort((a,b)=>b.min-a.min).map(g=>g.g+'='+g.min).join(', '))}"></label></div></div>
+   <div class="card"><h2>Subjects for each class</h2><p class="sub">Comma separated, in report-card order. Empty = ${esc(DEF_SUBJ)}.</p>
+    ${SJS.classes.map(k=>`<label class="f" style="margin-bottom:8px">${esc(classLabel(k))}<input class="inp" data-cs="${esc(k.id)}" value="${esc(((c.subj||{})[k.id]||[]).join(', '))}" placeholder="${esc(DEF_SUBJ)}"></label>`).join('')||'<div class="empty">No classes yet.</div>'}
+    ${SJS.classes.length?'<button class="btn sm" id="cpSame">Copy each class\'s subjects to its other sections</button>':''}</div>
+   <button class="btn pri full" id="svSet">Save setup</button>`;
+  $('#exAdd').onclick=()=>{const x=cfg();x.exams=[...x.exams,{id:'ex'+Date.now().toString(36),name:'New exam',max:100}];M.cfg=x;vSetup(m)};
+  $('#cpSame')&&($('#cpSame').onclick=()=>{const by={};SJS.classes.forEach(k=>{const v=m.querySelector(`[data-cs="${k.id}"]`).value.trim();if(v&&!by[k.cls])by[k.cls]=v});SJS.classes.forEach(k=>{const i=m.querySelector(`[data-cs="${k.id}"]`);if(!i.value.trim()&&by[k.cls])i.value=by[k.cls]});toast('Copied – tap Save setup')});
+  $('#svSet').onclick=async()=>{const x=cfg();
+    x.exams=x.exams.map((e,i)=>({id:e.id,name:(m.querySelector(`[data-en="${i}"]`).value.trim()||e.name),max:+m.querySelector(`[data-em="${i}"]`).value||e.max}));
+    x.locked={};m.querySelectorAll('[data-el]').forEach(k=>{if(k.checked)x.locked[k.dataset.el]=true});
+    x.pass=+$('#pass').value||33;const gs=$('#grd').value.split(',').map(t=>t.split('=')).filter(p=>p.length===2&&p[0].trim()).map(p=>({g:p[0].trim(),min:+p[1]}));if(gs.length)x.grades=gs;
+    x.subj={};m.querySelectorAll('[data-cs]').forEach(i=>{const v=i.value.split(',').map(s=>s.trim()).filter(Boolean);if(v.length)x.subj[i.dataset.cs]=v});
+    try{await SJS.db.set('mk_cfg/main',x);M.cfg=x;toast('Setup saved')}catch(e){toast('Could not save – check the Firestore rules')}}}
+
+window.SJS_DEMO_SEED=D=>{const cls=[['vi-a','VI','A',1],['vi-b','VI','B',2],['x-a','X','A',3]];
+  const names=['Lalremruata','Vanlalhriati','Zothanpuii','Lalrinfela','Malsawmtluanga','Lalnunsiami','Rohmingthanga','Biakchungnunga','Laldinpuii','Joseph Lalhmangaiha'];
+  cls.forEach(([id,c,s,o])=>{D['classes/'+id]={id,cls:c,section:s,order:o,teacherUids:['demo-admin']};names.forEach((n,i)=>{D[`c/${id}/students/${i+1}`]={roll:i+1,name:n,adm:'SJS/'+(2400+i),parent:'Father of '+n.split(' ')[0],phone:'98620'+String(10000+i)}})});
+  D['att_teachers/t1']={name:'Sir Lalkunga Molsom',uid:'demo-admin',ttc:'LK',order:1};D['att_teachers/t2']={name:'Mdm Lalbiaki Molsom',order:2};
+  const subs=DEF_SUBJ.split(',').map(x=>x.trim());['pt1','hy'].forEach(ex=>subs.forEach((s,j)=>{const max=ex==='pt1'?25:80;const m={};names.forEach((n,i)=>{m[i+1]=(i===3&&j===2)?'AB':Math.round(max*(0.3+((i*7+j*3)%10)/14))});D[`c/vi-a/marks/${ex}__${skey(s)}`]={exam:ex,subj:s,max,m,byName:'Sir Lalkunga Molsom'}}))};
+SJS.boot('Marks & Report Cards',async()=>{M.tab=lg('tab')||'enter';if(M.tab==='setup'&&!SJS.isAdmin)M.tab='enter';
+  SJS.db.watch('mk_cfg/main',d=>{const first=M.cfg===null;M.cfg=d||{};if(first||!Object.keys(M.dirty).length)render()})});
+</script>
+</body>
+</html>

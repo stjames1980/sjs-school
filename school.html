@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>School Diary – SJS App</title>
+<meta name="theme-color" content="#13294b">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="favicon.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Merriweather:wght@900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="sjs-common.css">
+</head>
+<body>
+<script src="config.js"></script>
+<script src="sjs-common.js"></script>
+<script>
+/* ===== Homework · Exams · Calendar · Fee status =====
+   c/<classId>/hw/<id>     homework {date, subj, text, by, byName, at}   any confirmed teacher posts; delete own (Admin: any)
+   ex_data/<examId>        {routine:[{date,cls,subj,time}], invig:[{date,time,room,t}], seats:[{room,cls,from,to}]}   Admin / Exam In-Charge
+   cal_events/<id>         {date, to, title, type, note}   Admin / Principal
+   c/<classId>/fees/status {rows:{roll:{due,months,note}}, upto}   Admin; all staff view */
+const {$,esc,toast,sheet,closeSheet,printHTML,csvDownload,pasteRows,classLabel,fmtDate,todayISO,addDays,parse,iso,MONTHS,DOW,waPhone,normN}=SJS;
+const TABS=[['hw','📚 Homework'],['exam','✍️ Exams'],['cal','📆 Calendar'],['fees','💰 Fees']];
+const S={tab:'hw',cid:null,hwDate:todayISO(),exId:null,exView:'sheet',exCls:'',month:todayISO().slice(0,7),calSel:null,mk:null,events:[]};
+const LSK='sjs-school-';const lg=k=>{try{return localStorage.getItem(LSK+k)}catch(e){return null}};const ls=(k,v)=>{try{localStorage.setItem(LSK+k,v)}catch(e){}};
+const EVT=['Holiday','Exam','CCA','PTM','Meeting','Other'];
+const canExam=()=>SJS.isAdmin||SJS.role==='exam'||SJS.role==='principal';
+const canCal=()=>SJS.isAdmin||SJS.role==='principal';
+const myName=()=>SJS.me?SJS.me.name:'';
+const isMe=t=>{const a=normN(t),b=normN(myName());if(!a||!b)return SJS.me&&SJS.me.ttc&&String(t).trim().toUpperCase()===SJS.me.ttc;return a===b||a.includes(b)||b.includes(a)||(SJS.me&&SJS.me.ttc&&String(t).trim().toUpperCase()===SJS.me.ttc)};
+const DEF_SUBJ='English, Mizo/Bengali, Hindi, Mathematics, Science, Social Science, Computer';
+const subjOf=cid=>{const s=((S.mk||{}).subj||{})[cid];return s&&s.length?s:DEF_SUBJ.split(',').map(x=>x.trim())};
+const examList=()=>((S.mk&&S.mk.exams)||[{id:'pt1',name:'PT-I'},{id:'hy',name:'Half Yearly'},{id:'pt2',name:'PT-II'},{id:'an',name:'Annual'}]);
+
+function render(){const a=$('#app');const h=a.querySelector('.hdr').outerHTML;
+  a.innerHTML=h+`<div class="nav"><div class="nav-in">${TABS.map(([k,l])=>`<button class="tab ${S.tab===k?'act':''}" data-t="${k}">${l}</button>`).join('')}</div></div><main id="main"></main>`;
+  a.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;history.replaceState(null,'','#'+S.tab);render()});
+  ({hw:vHw,exam:vExam,cal:vCal,fees:vFees}[S.tab]||vHw)($('#main'))}
+function pickClass(){if(!S.cid||!SJS.classes.some(c=>c.id===S.cid)){const m=SJS.myClasses()[0];S.cid=lg('cid')&&SJS.classes.some(c=>c.id===lg('cid'))?lg('cid'):(m||SJS.classes[0]||{}).id||null}}
+function classSel(){return SJS.classes.length?`<label class="f">Class<select class="inp" id="cSel">${SJS.classes.map(c=>`<option value="${esc(c.id)}" ${c.id===S.cid?'selected':''}>${esc(classLabel(c))}</option>`).join('')}</select></label>`:'<div class="banner warn">No classes yet. The Admin adds classes in Student Attendance.</div>'}
+function bindClass(fn){const s=$('#cSel');if(s)s.onchange=e=>{S.cid=e.target.value;ls('cid',S.cid);fn()}}
+
+/* ================= HOMEWORK ================= */
+async function vHw(m){pickClass();if(!S.cid){m.innerHTML=classSel();return}m.innerHTML='<div class="empty">Loading…</div>';
+  const cl=SJS.classes.find(c=>c.id===S.cid);const all=(await SJS.db.list('c/'+S.cid+'/hw',{where:['date','>=',addDays(todayISO(),-30)]})).sort((a,b)=>b.date.localeCompare(a.date)||String(a.subj).localeCompare(b.subj));
+  const day=all.filter(h=>h.date===S.hwDate),earlier=all.filter(h=>h.date!==S.hwDate&&h.date<S.hwDate).slice(0,20);
+  const waT=`*Homework – Class ${classLabel(cl)}*\n${fmtDate(S.hwDate)} (${DOW[parse(S.hwDate).getDay()]})\n\n`+day.map(h=>`• *${h.subj}*: ${h.text}`).join('\n')+`\n\n– ${SJS.school.name}`;
+  m.innerHTML=`<div class="card"><div class="grid2">${classSel()}<label class="f">Date<input type="date" class="inp" id="hDate" value="${S.hwDate}"></label></div></div>
+   <div class="card"><h3>Post homework</h3><div class="grid2"><label class="f">Subject<select class="inp" id="hSub">${subjOf(S.cid).map(s=>`<option>${esc(s)}</option>`).join('')}<option>Other</option></select></label></div>
+    <label class="f" style="margin-top:8px">Homework<textarea class="inp" id="hTxt" rows="3" maxlength="600" placeholder="e.g. Exercise 4.2, Q1–5 in the notebook"></textarea></label>
+    <div class="row" style="margin-top:8px"><div class="grow"></div><button class="btn pri" id="hPost">Post</button></div></div>
+   <div class="card"><div class="row"><h3 class="grow" style="margin:0">${fmtDate(S.hwDate)} · ${day.length} subject${day.length===1?'':'s'}</h3>${day.length?`<a class="btn sm green" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(waT)}">WhatsApp to parents</a>`:''}</div>
+    ${day.length?day.map(hwRow).join(''):'<div class="empty">No homework posted for this day.</div>'}</div>
+   ${earlier.length?`<div class="card"><h3>Earlier</h3>${earlier.map(hwRow).join('')}</div>`:''}`;
+  bindClass(()=>vHw(m));$('#hDate').onchange=e=>{S.hwDate=e.target.value||todayISO();vHw(m)};
+  $('#hPost').onclick=async()=>{const text=$('#hTxt').value.trim();if(!text){toast('Write the homework');return}
+    try{await SJS.db.add('c/'+S.cid+'/hw',{date:S.hwDate,subj:$('#hSub').value,text,by:SJS.user.uid,byName:myName()||SJS.user.email||'',at:SJS.db.now()});toast('Posted');vHw(m)}catch(e){toast('Could not post – the Admin must update the Firestore rules')}};
+  m.querySelectorAll('[data-hdel]').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this homework?'))return;try{await SJS.db.del('c/'+S.cid+'/hw/'+b.dataset.hdel);vHw(m)}catch(e){toast('Not allowed')}})}
+function hwRow(h){return `<div class="li"><span class="grow"><b>${esc(h.subj)}</b>${h.date!==S.hwDate?` <span class="tmeta">· ${fmtDate(h.date)}</span>`:''}<br>${esc(h.text)}<br><span class="tmeta">${esc(h.byName||'')}</span></span>${SJS.isAdmin||h.by===SJS.user.uid?`<button class="btn sm danger" data-hdel="${esc(h.id)}">✕</button>`:''}</div>`}
+
+/* ================= EXAMS ================= */
+async function vExam(m){const exs=examList();if(!S.exId||!exs.some(e=>e.id===S.exId))S.exId=lg('ex')&&exs.some(e=>e.id===lg('ex'))?lg('ex'):exs[0].id;
+  m.innerHTML='<div class="empty">Loading…</div>';const d=(await SJS.db.get('ex_data/'+S.exId))||{};const R=d.routine||[],I=d.invig||[],Z=d.seats||[];const exName=(exs.find(e=>e.id===S.exId)||{}).name||S.exId;
+  const seg=`<div class="row" style="margin-bottom:10px">${[['sheet','Date sheet'],['duty','Invigilation'],['seat','Seat plan']].map(([k,l])=>`<button class="btn sm ${S.exView===k?'pri':''}" data-v="${k}">${l}</button>`).join('')}</div>`;
+  let body='';
+  if(S.exView==='sheet'){const clsOpts=[...new Set(R.map(r=>r.cls))].sort();const rr=R.filter(r=>!S.exCls||r.cls===S.exCls||String(r.cls).split(/[ ,&+]+/).includes(S.exCls)).sort((a,b)=>a.date.localeCompare(b.date)||String(a.time).localeCompare(b.time));
+    const byD={};rr.forEach(r=>(byD[r.date]=byD[r.date]||[]).push(r));
+    body=`<div class="card"><div class="row"><select class="inp" id="exCls" style="flex:1"><option value="">All classes</option>${clsOpts.map(c=>`<option ${c===S.exCls?'selected':''}>${esc(c)}</option>`).join('')}</select>${rr.length?'<button class="btn sm" id="pSheet">Print</button>':''}</div></div>
+     ${Object.keys(byD).length?Object.keys(byD).map(dt=>`<div class="card"><h3>${fmtDate(dt)} · ${DOW[parse(dt).getDay()]}${dt===todayISO()?' <span class="pill y">Today</span>':''}</h3>${byD[dt].map(r=>`<div class="li"><span class="pill b">${esc(r.cls)}</span><span class="grow"><b>${esc(r.subj)}</b></span><span class="tmeta">${esc(r.time||'')}</span></div>`).join('')}</div>`).join(''):'<div class="card empty">No date sheet yet.</div>'}`}
+  else if(S.exView==='duty'){const mine=I.filter(x=>isMe(x.t)).sort((a,b)=>a.date.localeCompare(b.date));const all=[...I].sort((a,b)=>a.date.localeCompare(b.date)||String(a.room).localeCompare(String(b.room),undefined,{numeric:true}));
+    body=`<div class="card" style="border:2px solid var(--gold);background:#fffbeb"><h3>My invigilation duty (${mine.length})</h3>${mine.length?mine.map(x=>`<div class="li"><span class="grow"><b>${fmtDate(x.date)}</b> · ${DOW[parse(x.date).getDay()]}<br><span class="tmeta">${esc(x.time||'')}</span></span><span class="pill y" style="font-size:13px">Room ${esc(x.room)}</span></div>`).join(''):`<div class="empty">${myName()?'No duty found for '+esc(myName())+'.':'Your name is not linked yet – ask the Admin.'}</div>`}</div>
+     <div class="card"><div class="row"><h3 class="grow" style="margin:0">All duties</h3>${all.length?'<button class="btn sm" id="pDuty">Print</button>':''}</div>${all.length?`<div class="scroll"><table class="tbl"><tr><th>Date</th><th>Time</th><th>Room</th><th>Teacher</th></tr>${all.map(x=>`<tr style="${isMe(x.t)?'background:#fffbeb;font-weight:700':''}"><td>${fmtDate(x.date)}</td><td>${esc(x.time||'')}</td><td>${esc(x.room)}</td><td>${esc(x.t)}</td></tr>`).join('')}</table></div>`:'<div class="empty">No duties yet.</div>'}</div>`}
+  else{const rooms=[...new Set(Z.map(z=>z.room))];
+    body=`<div class="card"><h3>Where does a student sit?</h3><div class="row"><input class="inp" id="fCls" placeholder="Class e.g. VI-A" style="flex:1"><input class="inp" id="fRoll" placeholder="Roll" inputmode="numeric" style="flex:.6"><button class="btn pri" id="fGo">Find</button></div><div id="fOut" style="margin-top:8px"></div></div>
+     <div class="card"><div class="row"><h3 class="grow" style="margin:0">Rooms (${rooms.length})</h3>${rooms.length?'<button class="btn sm" id="pSeat">Print</button>':''}</div>${rooms.length?rooms.map(rm=>{const zz=Z.filter(z=>z.room===rm);const n=zz.reduce((a,z)=>a+Math.max(0,(+z.to||0)-(+z.from||0)+1),0);return`<div class="li"><span class="pill y" style="font-size:13px">Room ${esc(rm)}</span><span class="grow">${zz.map(z=>`<b>${esc(z.cls)}</b> ${esc(z.from)}–${esc(z.to)}`).join(' · ')}</span><span class="tmeta">${n||''}</span></div>`}).join(''):'<div class="empty">No seat plan yet.</div>'}</div>`}
+  m.innerHTML=`<div class="card"><label class="f">Exam<select class="inp" id="exSel">${exs.map(e=>`<option value="${esc(e.id)}" ${e.id===S.exId?'selected':''}>${esc(e.name)}</option>`).join('')}</select></label></div>${seg}${body}
+   ${canExam()?`<div class="card"><h3>Update (${esc(exName)})</h3><p class="sub">Copy the rows from your Excel file and paste. This replaces the list for this exam.</p><div class="row"><button class="btn sm" data-paste="routine">Paste date sheet</button><button class="btn sm" data-paste="invig">Paste invigilation duty</button><button class="btn sm" data-paste="seats">Paste seat plan</button></div></div>`:''}`;
+  $('#exSel').onchange=e=>{S.exId=e.target.value;ls('ex',S.exId);vExam(m)};
+  m.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{S.exView=b.dataset.v;vExam(m)});
+  const ec=$('#exCls');if(ec)ec.onchange=e=>{S.exCls=e.target.value;vExam(m)};
+  const T=exName+' – '+SJS.school.session;
+  const ps=$('#pSheet');if(ps)ps.onclick=()=>{const rr=R.filter(r=>!S.exCls||r.cls===S.exCls).sort((a,b)=>a.date.localeCompare(b.date));printHTML('Date sheet',SJS.printHead('EXAMINATION DATE SHEET – '+T+(S.exCls?' – Class '+S.exCls:''))+`<table><tr><th>Date</th><th>Day</th><th>Class</th><th class="l">Subject</th><th>Time</th></tr>${rr.map(r=>`<tr><td>${fmtDate(r.date)}</td><td>${DOW[parse(r.date).getDay()]}</td><td>${esc(r.cls)}</td><td class="l">${esc(r.subj)}</td><td>${esc(r.time||'')}</td></tr>`).join('')}</table><div class="sig"><div>Examination In-Charge</div><div>Principal</div></div>`)};
+  const pd=$('#pDuty');if(pd)pd.onclick=()=>printHTML('Invigilation',SJS.printHead('INVIGILATION DUTY – '+T)+`<table><tr><th>Date</th><th>Time</th><th>Room</th><th class="l">Teacher</th><th>Signature</th></tr>${[...I].sort((a,b)=>a.date.localeCompare(b.date)).map(x=>`<tr><td>${fmtDate(x.date)}</td><td>${esc(x.time||'')}</td><td>${esc(x.room)}</td><td class="l">${esc(x.t)}</td><td></td></tr>`).join('')}</table><div class="sig"><div>Examination In-Charge</div><div>Principal</div></div>`);
+  const pz=$('#pSeat');if(pz)pz.onclick=()=>printHTML('Seat plan',[...new Set(Z.map(z=>z.room))].map((rm,i,arr)=>`<div class="${i<arr.length-1?'pb':''}">${SJS.printHead('SEAT PLAN – '+T)}<h1 style="text-align:center;font-size:40px;margin:20px 0">ROOM ${esc(rm)}</h1><table><tr><th>Class</th><th>Roll from</th><th>Roll to</th><th>Students</th></tr>${Z.filter(z=>z.room===rm).map(z=>`<tr><td style="font-size:18px"><b>${esc(z.cls)}</b></td><td style="font-size:18px">${esc(z.from)}</td><td style="font-size:18px">${esc(z.to)}</td><td>${Math.max(0,(+z.to||0)-(+z.from||0)+1)||''}</td></tr>`).join('')}</table></div>`).join(''));
+  const fg=$('#fGo');if(fg)fg.onclick=()=>{const c=normC($('#fCls').value),r=+$('#fRoll').value;const hit=Z.find(z=>normC(z.cls)===c&&r>=+z.from&&r<=+z.to);$('#fOut').innerHTML=hit?`<div class="banner">Class <b>${esc(hit.cls)}</b> roll <b>${r}</b> → <b style="font-size:18px">Room ${esc(hit.room)}</b></div>`:'<div class="banner warn">Not found in the seat plan.</div>'};
+  m.querySelectorAll('[data-paste]').forEach(b=>b.onclick=()=>pasteExam(b.dataset.paste,d,m))}
+const normC=c=>String(c||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+function pasteExam(kind,d,m){const H={routine:['Date','Class','Subject','Time'],invig:['Date','Time / Session','Room','Teacher'],seats:['Room','Class','Roll from','Roll to']}[kind];
+  sheet(`<h3>Paste ${kind==='routine'?'date sheet':kind==='invig'?'invigilation duty':'seat plan'}</h3><p class="sub">Columns in this order: <b>${H.join(' | ')}</b>. A heading row is skipped. Dates like 16-11-2026, 16/11/2026 or 2026-11-16.</p>
+   <textarea class="inp" id="pT" rows="10" placeholder="${H.join('\t')}"></textarea><div class="row" style="margin-top:10px"><div class="grow"></div><button class="btn" onclick="SJS.closeSheet()">Cancel</button><button class="btn pri" id="pOk">Save</button></div>`);
+  $('#pOk').onclick=async()=>{const rows=pasteRows($('#pT').value).filter(r=>r.length>=3);let list;
+    if(kind==='seats')list=rows.filter(r=>!/room/i.test(r[0])).map(r=>({room:r[0],cls:r[1],from:r[2],to:r[3]||r[2]}));
+    else{list=rows.map(r=>({r,dt:toISO(r[0])})).filter(x=>x.dt).map(({r,dt})=>kind==='routine'?{date:dt,cls:r[1],subj:r[2],time:r[3]||''}:{date:dt,time:r[1],room:r[2],t:r[3]||''})}
+    if(!list.length){toast('Nothing to save – check the columns and dates');return}
+    try{await SJS.db.set('ex_data/'+S.exId,{[kind]:list,at:SJS.db.now()},true);closeSheet();toast(list.length+' rows saved');vExam(m)}catch(e){toast('Could not save – check the Firestore rules')}}}
+function toISO(s){s=String(s||'').trim();let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);if(m)return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+  m=s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);if(m){const y=m[3].length===2?'20'+m[3]:m[3];return y+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0')}
+  m=s.match(/^(\d{1,2})[\s\-]([A-Za-z]{3})[A-Za-z]*[\s\-,]*(\d{4})$/);if(m){const i=MONTHS.findIndex(x=>x.slice(0,3).toLowerCase()===m[2].toLowerCase());if(i>=0)return m[3]+'-'+String(i+1).padStart(2,'0')+'-'+m[1].padStart(2,'0')}
+  if(/^\d{5}$/.test(s)){const d=new Date(Date.UTC(1899,11,30)+(+s)*86400000);return d.toISOString().slice(0,10)}return null}
+
+/* ================= CALENDAR ================= */
+function vCal(m){const [y,mo]=S.month.split('-').map(Number);const first=new Date(y,mo-1,1),start=new Date(first);start.setDate(1-first.getDay());
+  const evOn=d=>S.events.filter(e=>e.date<=d&&(e.to||e.date)>=d);const td=todayISO();let cells='';
+  for(let i=0;i<42;i++){const dd=new Date(start);dd.setDate(start.getDate()+i);const ds=iso(dd);const ev=evOn(ds);
+    cells+=`<div class="d ${dd.getMonth()!==mo-1?'o':''} ${ds===td?'t':''} ${dd.getDay()===0?'sun':''}" data-d="${ds}">${dd.getDate()}${ev.slice(0,2).map(e=>`<i class="ev-${esc(e.type||'Other')}">${esc(e.title)}</i>`).join('')}${ev.length>2?`<i class="ev-Other">+${ev.length-2}</i>`:''}</div>`;if(i>=34&&dd.getMonth()!==mo-1&&dd.getDay()===6)break}
+  const monthEv=S.events.filter(e=>e.date.slice(0,7)===S.month||(e.to||e.date).slice(0,7)===S.month).sort((a,b)=>a.date.localeCompare(b.date));
+  const sel=S.calSel?evOn(S.calSel):null;
+  m.innerHTML=`<div class="card"><div class="row"><button class="btn sm" id="pm">‹</button><h2 class="grow" style="text-align:center;margin:0">${MONTHS[mo-1]} ${y}</h2><button class="btn sm" id="nm">›</button></div>
+    <div class="cal" style="margin-top:10px">${DOW.map(d=>`<div class="h">${d}</div>`).join('')}${cells}</div>
+    <div class="row" style="margin-top:8px;font-size:11px">${EVT.map(t=>`<span class="pill ev-${t}">${t}</span>`).join('')}</div></div>
+   ${sel?`<div class="card"><div class="row"><h3 class="grow" style="margin:0">${fmtDate(S.calSel)}</h3>${canCal()?`<button class="btn sm pri" id="addE">+ Add</button>`:''}</div>${sel.length?sel.map(evRow).join(''):'<div class="empty">Nothing on this day.</div>'}</div>`:''}
+   <div class="card"><div class="row"><h3 class="grow" style="margin:0">This month (${monthEv.length})</h3>${canCal()?`<button class="btn sm" id="addE2">+ Add event</button><button class="btn sm" id="pasteE">Paste list</button>`:''}${monthEv.length?'<button class="btn sm" id="pCal">Print</button>':''}</div>${monthEv.length?monthEv.map(evRow).join(''):'<div class="empty">No events this month.</div>'}</div>`;
+  $('#pm').onclick=()=>{const d=new Date(y,mo-2,1);S.month=iso(d).slice(0,7);S.calSel=null;vCal(m)};$('#nm').onclick=()=>{const d=new Date(y,mo,1);S.month=iso(d).slice(0,7);S.calSel=null;vCal(m)};
+  m.querySelectorAll('[data-d]').forEach(c=>c.onclick=()=>{S.calSel=c.dataset.d;vCal(m)});
+  [$('#addE'),$('#addE2')].forEach(b=>b&&(b.onclick=()=>evEdit({date:S.calSel||td},m)));
+  m.querySelectorAll('[data-eed]').forEach(b=>b.onclick=()=>evEdit(S.events.find(e=>e.id===b.dataset.eed),m));
+  const pc=$('#pCal');if(pc)pc.onclick=()=>printHTML('Calendar',SJS.printHead('SCHOOL CALENDAR – '+MONTHS[mo-1].toUpperCase()+' '+y)+`<table><tr><th>Date</th><th>Day</th><th class="l">Event</th><th>Type</th><th class="l">Details</th></tr>${monthEv.map(e=>`<tr><td>${fmtDate(e.date)}${e.to&&e.to!==e.date?' – '+fmtDate(e.to):''}</td><td>${DOW[parse(e.date).getDay()]}</td><td class="l">${esc(e.title)}</td><td>${esc(e.type)}</td><td class="l">${esc(e.note||'')}</td></tr>`).join('')}</table>`);
+  const pe=$('#pasteE');if(pe)pe.onclick=()=>{sheet(`<h3>Paste events</h3><p class="sub">Columns: <b>Date | To date (optional) | Title | Type</b>. Type is one of ${EVT.join(', ')}.</p><textarea class="inp" id="pT" rows="10"></textarea><div class="row" style="margin-top:10px"><div class="grow"></div><button class="btn" onclick="SJS.closeSheet()">Cancel</button><button class="btn pri" id="pOk">Add all</button></div>`);
+    $('#pOk').onclick=async()=>{const rows=pasteRows($('#pT').value);let n=0;for(const r of rows){const d=toISO(r[0]);if(!d)continue;const t2=toISO(r[1]);const title=t2?r[2]:r[1];const type=(t2?r[3]:r[2])||'Other';if(!title)continue;
+        try{await SJS.db.add('cal_events',{date:d,to:t2||d,title,type:EVT.find(x=>x.toLowerCase()===String(type).toLowerCase())||'Other',note:'',at:SJS.db.now()});n++}catch(e){toast('Could not save – check the Firestore rules');break}}
+      closeSheet();toast(n+' events added')}}}
+function evRow(e){return `<div class="li"><span class="pill ev-${esc(e.type||'Other')}">${esc(e.type||'Other')}</span><span class="grow"><b>${esc(e.title)}</b><br><span class="tmeta">${fmtDate(e.date)}${e.to&&e.to!==e.date?' – '+fmtDate(e.to):''}${e.note?' · '+esc(e.note):''}</span></span>${canCal()?`<button class="btn sm" data-eed="${esc(e.id)}">Edit</button>`:''}</div>`}
+function evEdit(e,m){e=e||{};sheet(`<h3>${e.id?'Edit':'Add'} event</h3><div class="grid2"><label class="f">Title<input class="inp" id="eT" value="${esc(e.title||'')}" maxlength="100"></label><label class="f">Type<select class="inp" id="eY">${EVT.map(t=>`<option ${t===(e.type||'Other')?'selected':''}>${t}</option>`).join('')}</select></label>
+  <label class="f">From<input type="date" class="inp" id="eF" value="${esc(e.date||todayISO())}"></label><label class="f">To<input type="date" class="inp" id="eTo" value="${esc(e.to||e.date||todayISO())}"></label></div>
+  <label class="f" style="margin-top:8px">Details<input class="inp" id="eN" value="${esc(e.note||'')}" maxlength="200"></label>
+  <div class="row" style="margin-top:12px">${e.id?'<button class="btn danger" id="eDel">Delete</button>':''}<div class="grow"></div><button class="btn" onclick="SJS.closeSheet()">Cancel</button><button class="btn pri" id="eOk">Save</button></div>`);
+  $('#eOk').onclick=async()=>{const d={title:$('#eT').value.trim(),type:$('#eY').value,date:$('#eF').value,to:$('#eTo').value<$('#eF').value?$('#eF').value:$('#eTo').value,note:$('#eN').value.trim(),at:SJS.db.now()};if(!d.title||!d.date){toast('Title and date please');return}
+    try{if(e.id)await SJS.db.set('cal_events/'+e.id,d);else await SJS.db.add('cal_events',d);closeSheet();toast('Saved')}catch(x){toast('Could not save – check the Firestore rules')}};
+  const dl=$('#eDel');if(dl)dl.onclick=async()=>{if(!confirm('Delete this event?'))return;try{await SJS.db.del('cal_events/'+e.id);closeSheet()}catch(x){toast('Not allowed')}}}
+
+/* ================= FEES ================= */
+async function vFees(m){pickClass();if(!S.cid){m.innerHTML=classSel();return}m.innerHTML='<div class="empty">Loading…</div>';
+  const cl=SJS.classes.find(c=>c.id===S.cid);const [sts,fd]=await Promise.all([SJS.students(S.cid),SJS.db.get('c/'+S.cid+'/fees/status')]);const rows=(fd&&fd.rows)||{};
+  const list=sts.map(st=>({st,f:rows[st.roll]||null}));const due=list.filter(x=>x.f&&+x.f.due>0);const total=due.reduce((a,x)=>a+(+x.f.due||0),0);
+  const msg=x=>`Dear Parent,\nThis is a gentle reminder that the school fee of *Rs ${x.f.due}*${x.f.months?' ('+x.f.months+')':''} for ${x.st.name} (Class ${classLabel(cl)}, Roll ${x.st.roll}) is pending. Kindly pay at the school office at the earliest.\n\n– ${SJS.school.name}`;
+  m.innerHTML=`<div class="card"><div class="grid2">${classSel()}</div>${fd&&fd.upto?`<div class="tmeta" style="margin-top:6px">Status as on ${fmtDate(fd.upto)}</div>`:''}</div>
+   <div class="stats"><div class="stat"><b>${sts.length}</b><span>Students</span></div><div class="stat"><b style="color:var(--crit)">${due.length}</b><span>With dues</span></div><div class="stat"><b>₹${total.toLocaleString('en-IN')}</b><span>Total due</span></div></div>
+   <div class="card"><div class="row"><h3 class="grow" style="margin:0">Students with dues</h3>${due.length?'<button class="btn sm" id="fPrint">Print</button><button class="btn sm" id="fCsv">Excel</button>':''}</div>
+    ${due.length?due.map(x=>`<div class="li"><span class="pill">${esc(x.st.roll)}</span><span class="grow"><b>${esc(x.st.name)}</b><br><span class="tmeta">${esc(x.f.months||'')}${x.f.note?' · '+esc(x.f.note):''}</span></span><b style="color:var(--crit)">₹${esc(x.f.due)}</b>${waPhone(x.st.phone)?`<a class="btn sm green" target="_blank" rel="noopener" href="https://wa.me/${waPhone(x.st.phone)}?text=${encodeURIComponent(msg(x))}">WA</a>`:''}</div>`).join(''):`<div class="empty">${fd?'No dues 🎉':'No fee status uploaded yet.'}</div>`}</div>
+   ${SJS.isAdmin?`<div class="card"><h3>Update fee status (Admin)</h3><p class="sub">From the Fee Collection workbook, copy: <b>Roll No | Due amount | Months due | Note</b> and paste. This replaces this class's list.</p><div class="row"><button class="btn sm pri" id="fPaste">Paste from Excel</button>${fd?'<button class="btn sm danger" id="fClr">Clear</button>':''}</div></div>`:''}`;
+  bindClass(()=>vFees(m));
+  const T='Fee dues – Class '+classLabel(cl);
+  const fp=$('#fPrint');if(fp)fp.onclick=()=>printHTML(T,SJS.printHead('FEE DUE LIST – CLASS '+classLabel(cl))+`<table><tr><th>Roll</th><th class="l">Name</th><th class="l">Parent</th><th>Phone</th><th>Months</th><th>Due (₹)</th></tr>${due.map(x=>`<tr><td>${esc(x.st.roll)}</td><td class="l">${esc(x.st.name)}</td><td class="l">${esc(x.st.parent||'')}</td><td>${esc(x.st.phone||'')}</td><td>${esc(x.f.months||'')}</td><td>${esc(x.f.due)}</td></tr>`).join('')}<tr><th colspan="5" class="l">Total</th><th>${total}</th></tr></table>`);
+  const fc=$('#fCsv');if(fc)fc.onclick=()=>csvDownload(T.replace(/[^\w-]+/g,'_')+'.csv',[['Roll','Name','Parent','Phone','Months','Due'],...due.map(x=>[x.st.roll,x.st.name,x.st.parent||'',x.st.phone||'',x.f.months||'',x.f.due])]);
+  const pa=$('#fPaste');if(pa)pa.onclick=()=>{sheet(`<h3>Paste fee status – ${esc(classLabel(cl))}</h3><p class="sub">Columns: <b>Roll No | Due amount | Months due | Note</b>. Students not in the list = no dues.</p><label class="f">Status as on<input type="date" class="inp" id="fUp" value="${todayISO()}"></label><textarea class="inp" id="pT" rows="10" style="margin-top:8px"></textarea><div class="row" style="margin-top:10px"><div class="grow"></div><button class="btn" onclick="SJS.closeSheet()">Cancel</button><button class="btn pri" id="pOk">Save</button></div>`);
+    $('#pOk').onclick=async()=>{const r={};pasteRows($('#pT').value).forEach(x=>{const roll=String(x[0]).trim();const amt=+String(x[1]||'').replace(/[^\d.]/g,'');if(roll&&/^\d+$/.test(roll)&&amt>0)r[roll]={due:amt,months:x[2]||'',note:x[3]||''}});
+      try{await SJS.db.set('c/'+S.cid+'/fees/status',{rows:r,upto:$('#fUp').value||todayISO(),at:SJS.db.now()});closeSheet();toast(Object.keys(r).length+' dues saved');vFees(m)}catch(e){toast('Could not save – check the Firestore rules')}}};
+  const fx=$('#fClr');if(fx)fx.onclick=async()=>{if(!confirm('Clear the fee status for this class?'))return;await SJS.db.del('c/'+S.cid+'/fees/status');vFees(m)}}
+
+window.SJS_DEMO_SEED=D=>{const names=['Lalremruata','Vanlalhriati','Zothanpuii','Lalrinfela','Malsawmtluanga'];
+  [['vi-a','VI','A',1],['vi-b','VI','B',2]].forEach(([id,c,s,o])=>{D['classes/'+id]={id,cls:c,section:s,order:o,teacherUids:['demo-admin']};names.forEach((n,i)=>{D[`c/${id}/students/${i+1}`]={roll:i+1,name:n,parent:'Pu '+n.slice(0,4),phone:'98620'+(10000+i)}})});
+  D['att_teachers/t1']={name:'Sir Lalkunga Molsom',uid:'demo-admin',ttc:'LK',order:1};
+  const t=todayISO();D['cal_events/e1']={date:addDays(t,2),to:addDays(t,2),title:'Inter-House Quiz',type:'CCA'};D['cal_events/e2']={date:addDays(t,9),to:addDays(t,13),title:'PT-II Examination',type:'Exam'};D['cal_events/e3']={date:addDays(t,20),to:addDays(t,20),title:'Parent-Teacher Meeting',type:'PTM'};
+  D['ex_data/pt1']={routine:[{date:addDays(t,9),cls:'VI-A',subj:'English',time:'11:00 AM–12:30 PM'},{date:addDays(t,9),cls:'VII-A',subj:'Mathematics',time:'11:00 AM–12:30 PM'},{date:addDays(t,10),cls:'VI-A',subj:'Mathematics',time:'11:00 AM–12:30 PM'}],
+    invig:[{date:addDays(t,9),time:'11:00 AM',room:'18',t:'Sir Lalkunga Molsom'},{date:addDays(t,9),time:'11:00 AM',room:'21',t:'Mdm Lalbiaki Molsom'},{date:addDays(t,10),time:'11:00 AM',room:'7',t:'Sir Lalkunga Molsom'}],
+    seats:[{room:'18',cls:'VI-A',from:'1',to:'20'},{room:'18',cls:'VII-B',from:'1',to:'20'},{room:'21',cls:'VI-B',from:'1',to:'25'}]};
+  D['c/vi-a/hw/h1']={date:t,subj:'English',text:'Learn the poem "Daffodils" – lines 1 to 12.',by:'demo-admin',byName:'Sir Lalkunga Molsom'};
+  D['c/vi-a/fees/status']={rows:{'2':{due:900,months:'Oct, Nov',note:''},'4':{due:450,months:'Nov',note:'Promised Friday'}},upto:t}};
+SJS.boot('School Diary',()=>{const h=location.hash.slice(1);S.tab=TABS.some(t=>t[0]===h)?h:'hw';
+  SJS.db.watch('mk_cfg/main',d=>{S.mk=d||{}});
+  SJS.db.watchList('cal_events',ev=>{S.events=ev.filter(e=>e.date);if(S.tab==='cal')vCal($('#main'))});
+  render();window.addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(TABS.some(t=>t[0]===h)&&h!==S.tab){S.tab=h;render()}})});
+</script>
+</body>
+</html>
