@@ -78,6 +78,9 @@ main{padding:14px 14px 0}
 .prow.closed{background:#fffbeb;border-left-color:var(--closed)}
 .prow.closed .subj{color:var(--closed);letter-spacing:2px}
 .prow.free{background:#f0fdf4;border-left-color:var(--free)}
+.rmb{flex:none;align-self:center;background:#fff7ed;border:2px solid #fdba74;border-radius:12px;padding:4px 10px;text-align:center;min-width:58px}
+.rmb span{display:block;font-size:9.5px;font-weight:800;letter-spacing:.5px;color:var(--mut);text-transform:uppercase}
+.rmb b{display:block;font-size:20px;color:#9a3412;line-height:1.1}
 .prow.free .subj{color:var(--free)}
 .prow.subst{background:#f5f3ff;border-left-color:var(--sub)}
 .tag{font-size:10px;font-weight:800;padding:2px 7px;border-radius:99px;background:#fef3c7;color:#92400e;margin-left:6px;vertical-align:middle;font-style:normal;letter-spacing:0}
@@ -318,9 +321,10 @@ function render(){header();
 /* ----- period rows ----- */
 function periodRow(d,p,x,o={}){
   const st=status();const isNow=o.isToday&&st.kind==='period'&&st.d===d&&st.p===p;
-  let body,cls='';
+  let body,cls='',rmHtml='';
   if(x.closed){cls='closed';body=`<div class="subj">${esc(x.closed)}</div>`}
   else if(o.teacherView){
+    if(x.cls){const rs=String(x.cls).split(' + ').map(c=>(CM()[c.trim()]||{}).room||'-');rmHtml=`<div class="rmb"><span>Room</span><b>${esc(rs.join(' + '))}</b></div>`}
     if(x.subFor){cls='subst';body=`<div class="subj" style="font-size:20px">${esc(x.cls)}<span class="tag v">SUBSTITUTE</span></div><div class="tch" style="color:var(--sub);font-style:normal;font-weight:700">${esc(sname(x.s))} · for ${esc(tfull(x.subFor))}</div>`}
     else if(!x.cls){cls='free';body=`<div class="subj">FREE</div><div class="tch" style="color:var(--free)">No class this period</div>`}
     else body=`<div class="subj" style="font-size:20px">${esc(x.cls)}${x.absent?'<span class="tag">ON LEAVE</span>':''}</div><div class="tch" style="font-style:normal;font-weight:700">${esc(sname(x.s))}</div>`}
@@ -328,7 +332,7 @@ function periodRow(d,p,x,o={}){
   else if(x.sub){cls='subst';body=`<div class="subj">${esc(sname(x.s))}<span class="tag v">ADJUSTED</span></div><div class="tch" style="color:var(--sub)">${esc(tname(x.sub))} <span style="font-style:normal;color:var(--mut)">(for ${esc(tname(x.absent))})</span></div>`}
   else body=`<div class="subj">${esc(sname(x.s))}${x.changed?'<span class="tag">changed</span>':''}</div><div class="tch">${esc(tname(x.t))}</div>`;
   return`<div class="prow ${cls} ${isNow?'now':''} ${o.editable?'edit':''}" style="--dc:${DC[d]}" ${o.editable?`data-edit="${d}|${o.cls}|${p}"`:''}>
-   <div class="pnum"><b>${PN[p]}</b><small>${shortT(timing().p[p]||'')}</small></div><div class="pbody">${body}</div></div>`}
+   <div class="pnum"><b>${PN[p]}</b><small>${shortT(timing().p[p]||'')}</small></div><div class="pbody">${body}</div>${rmHtml}</div>`}
 function breaks(after){const b=timing().b;
   if(after===1)return`<div class="brk">Recess · ${esc(b[1]||'')}</div>`;if(after===3)return`<div class="brk">Lunch · ${esc(b[2]||'')}</div>`;return''}
 function classDay(d,cls){const isT=d===today(),date=todayISO();let h='<div class="plist">';
