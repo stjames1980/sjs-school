@@ -87,6 +87,13 @@ h3{font-family:var(--f-display);font-weight:600;font-size:16px;margin:0}
 .seg button[aria-pressed="true"]{background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--line);display:inline-block}
 .dot.on{background:var(--present)}
+.daybar{display:flex;align-items:center;gap:10px;border-radius:12px;padding:10px 12px;border:1px solid var(--line);background:var(--surface)}
+.daybar .dt{font-weight:700;font-size:14px}
+.daybar .ddot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--present)}
+.daybar.is-off{background:var(--sunk)}
+.daybar.is-off .ddot{background:var(--muted)}
+.daybar .btn{flex:none;white-space:nowrap}
+.daybar .grow{flex:1;min-width:0}
 .banner{border-radius:12px;padding:12px 14px;font-weight:600;font-size:14px}
 .banner.off{background:var(--sunk);color:var(--muted)}
 .banner.warn{background:var(--half-bg);color:var(--half)}
@@ -246,14 +253,26 @@ function C(){const k=S.classes.find(x=>x.id===S.cid)||{};return Object.assign({}
 function months(){const c=C();const out=[];let d=toD(c.start);d.setDate(1);for(let i=0;i<12;i++){out.push(d.getFullYear()+"-"+pad(d.getMonth()+1));d.setMonth(d.getMonth()+1)}return out}
 function daysIn(ym){const [y,m]=ym.split("-").map(Number);return new Date(y,m,0).getDate()}
 function holidayName(s){const c=C();for(const h of c.holidays||[]){if(!h.from)continue;const to=h.to||h.from;if(s>=h.from&&s<=to)return h.name||"Holiday"}return null}
-function status(s){
+// Default rule for a date (Sundays, Saturday setting, holiday list) – ignores a class's own change for that day
+function ruleStatus(s){
   const c=C();
-  if(s<c.start||s>c.end) return "OUT";
   if(holidayName(s)) return "HOL";
   const d=toD(s),wd=d.getDay(),n=Math.floor((d.getDate()-1)/7);
   if(wd===0&&c.sunOff) return "OFF";
   if(wd===6){const o=c.satOff;
     if(o==="All Saturdays"||(o==="1st Saturday"&&n===0)||(o==="2nd Saturday"&&n===1)||(o==="2nd & 4th Saturday"&&(n===1||n===3))||(o==="1st & 3rd Saturday"&&(n===0||n===2))) return "OFF";}
+  return "W";
+}
+// A class can change one date: day="off" (not counted) or day="work" (counted although the rule says off)
+function dayOv(s){const a=S.att[s];return a&&(a.day==="off"||a.day==="work")?a:null}
+function ruleName(s){const r=ruleStatus(s);return r==="HOL"?"Holiday – "+holidayName(s):r==="OFF"?(toD(s).getDay()===0?"Sunday":"Weekly off (Saturday)"):"Working day"}
+function offName(s){const o=dayOv(s);if(o&&o.day==="off")return o.dayReason||"Off day";return holidayName(s)}
+function status(s){
+  const c=C();
+  if(s<c.start||s>c.end) return "OUT";
+  const o=dayOv(s);
+  if(o&&o.day==="off") return "HOL";
+  if(!(o&&o.day==="work")){const r=ruleStatus(s);if(r!=="W")return r}
   if(s<c.countFrom) return "PRE";
   if(s>todayISO()) return "FUT";
   return "W";
@@ -299,11 +318,62 @@ async function saveDraft(){
   if(!S.db){toast("Saving isn't available in this view");return}
   S.saving=true;render();
   const cur=S.att[S.date]||{};
-  const body={AM:cur.AM||{},PM:cur.PM||{},takenAM:!!cur.takenAM,takenPM:!!cur.takenPM};
+  const body=Object.assign({},cur,{AM:cur.AM||{},PM:cur.PM||{},takenAM:!!cur.takenAM,takenPM:!!cur.takenPM});
   body[S.session]=Object.assign({},S.draft);body["taken"+S.session]=true;body.savedAt=new Date().toISOString();
   try{await S.db.doc(P("att")+"/"+S.date).set(body);S.att[S.date]=body;S.dirty=false;toast(S.session+" attendance saved for "+fmtDate(S.date))}
   catch(e){toast(e&&e.code==="invalid_argument"?"You have view-only access":"Couldn't save. Check your connection and try again.")}
   S.saving=false;render();
+}
+
+// ---------- off day / working day for one date ----------
+function whoAmI(){const k=S.classes.find(x=>x.id===S.cid)||{};return S.user?(S.user.displayName||S.user.email||"Teacher"):(k.teacher||"This phone")}
+function dayBar(){
+  const s=S.date,c=C();if(s<c.start||s>c.end)return "";
+  const o=dayOv(s),rule=ruleStatus(s),isOff=status(s)==="HOL"||status(s)==="OFF";
+  const can=canClass();
+  let title,sub,btn="";
+  if(o&&o.day==="off"){title="Off day – "+esc(o.dayReason||"Off day");sub=`Not counted for this class. Usual: ${esc(ruleName(s))}. Set by ${esc(o.dayBy||"–")}.`;btn=can?`<button class="btn sm ghost" id="dayUndo">Undo</button>`:""}
+  else if(o&&o.day==="work"){title="Working day – "+esc(o.dayReason||"Special working day");sub=`Counted for this class. Usual: ${esc(ruleName(s))}. Set by ${esc(o.dayBy||"–")}.`;btn=can?`<button class="btn sm ghost" id="dayUndo">Undo</button>`:""}
+  else if(rule!=="W"){title=esc(ruleName(s));sub="Not counted (school setting). Work today? Make it a working day.";btn=can?`<button class="btn sm" id="dayWork">Make working day</button>`:""}
+  else{title="Working day";sub="Counted. School closed today? Mark it as an off day.";btn=can?`<button class="btn sm ghost" id="dayOff">Mark off day</button>`:""}
+  return `<div class="daybar ${isOff?"is-off":"is-work"}"><span class="ddot"></span><div class="grow"><div class="dt">${title}</div><div class="small muted">${sub}</div></div>${btn}</div>`;
+}
+function daySheet(act){
+  const s=S.date,cur=S.att[s]||{},hasMarks=!!(cur.takenAM||cur.takenPM);
+  const chips=act==="off"?["Rain / bad weather","Local holiday","School programme","Class trip","Election / govt. order"]:act==="work"?["Special working day","Exam work","Make-up class","School programme"]:[];
+  const ttl=act==="off"?"Mark as off day":act==="work"?"Make this a working day":"Undo the change";
+  const note=act==="off"?`This day won't be counted in attendance %.${hasMarks?" P/A/L marks already saved are kept and come back if you undo.":""}`
+    :act==="work"?"This day will be counted like a normal school day. Mark attendance as usual."
+    :`This date goes back to the school setting: ${esc(ruleName(s))}.`;
+  openSheet(`<h3>${ttl}</h3><p class="small muted" style="margin:4px 0 10px">${esc(fmtDate(s))} • ${esc(classLabel(S.classes.find(x=>x.id===S.cid)))}</p>
+    <p style="margin:0 0 10px">${note}</p>
+    ${act!=="undo"?`<label class="field"><span class="label">Reason</span><input id="dReason" maxlength="60" placeholder="e.g. ${esc(chips[0])}"></label>
+    <div class="quick" style="margin-top:8px">${chips.map(x=>`<button class="chip" data-rs="${esc(x)}">${esc(x)}</button>`).join("")}</div>`:""}
+    ${S.canEdit&&S.classes.length>1?`<label class="row small" style="margin-top:12px;gap:8px"><input type="checkbox" id="dAll"> Apply to all ${S.classes.length} classes (Admin)</label>`:""}
+    <div class="btns" style="margin-top:14px"><button class="btn" id="dGo">${act==="off"?"Mark off day":act==="work"?"Make working day":"Undo"}</button><button class="btn ghost" data-close>Cancel</button></div>`);
+  const r=document.getElementById("dReason");
+  document.querySelectorAll("[data-rs]").forEach(b=>b.onclick=()=>{r.value=b.dataset.rs});
+  document.getElementById("dGo").onclick=async e=>{
+    const reason=r?r.value.trim():"";
+    if(act!=="undo"&&!reason){toast("Write a reason or tap one");r.focus();return}
+    const all=!!(document.getElementById("dAll")||{}).checked;
+    e.target.disabled=true;e.target.textContent="Saving…";
+    try{await setDay(s,act,reason,all);closeSheet();toast(act==="off"?"Marked as off day":act==="work"?"Now a working day":"Back to the school setting")}
+    catch(err){e.target.disabled=false;e.target.textContent="Try again";toast("Couldn't save. Check your connection.")}
+  };
+}
+async function setDay(s,act,reason,all){
+  const ids=all?S.classes.map(k=>k.id):[S.cid];const list=[];const by=whoAmI(),at=new Date().toISOString();
+  for(const id of ids){
+    const path="c/"+id+"/att/"+s;let cur;
+    if(id===S.cid)cur=S.att[s]||{};else{const snap=await S.db.doc(path).get();cur=(snap&&snap.exists?snap.data():null)||{}}
+    const body=Object.assign({},cur);
+    const log=(body.dayLog||[]).slice(-19);log.push({act,reason:reason||"",by,at});body.dayLog=log;
+    if(act==="undo"){delete body.day;delete body.dayReason;delete body.dayBy;delete body.dayAt}
+    else Object.assign(body,{day:act,dayReason:reason,dayBy:by,dayAt:at});
+    list.push([path,body]);if(id===S.cid)S.att[s]=body;
+  }
+  await S.db.writeMany(list);S.draftKey="";render();
 }
 
 // ---------- views ----------
@@ -329,8 +399,7 @@ function viewMark(v){
   const can=st==="W"&&canClass();
   const counts={P:0,A:0,L:0};S.students.forEach(s=>counts[draftCode(s.roll)]++);
   let banner="";
-  if(st==="HOL")banner=`<div class="banner off">Holiday: ${esc(holidayName(S.date))}. Not counted.</div>`;
-  else if(st==="OFF")banner=`<div class="banner off">Weekly off. Not counted.</div>`;
+  if(st==="HOL"||st==="OFF")banner="";
   else if(st==="FUT")banner=`<div class="banner off">This date is in the future.</div>`;
   else if(st==="OUT"||st==="PRE")banner=`<div class="banner off">Outside the counted session dates.</div>`;
   else if(!canClass())banner=`<div class="banner off">View only. ${esc((S.classes.find(x=>x.id===S.cid)||{}).teacher||"The class teacher")} and the Admin can mark this class.</div>`;
@@ -343,6 +412,7 @@ function viewMark(v){
     <label class="datebox"><div class="d">${esc(fmtDate(S.date))}</div><div class="small muted">${S.date===todayISO()?"Today":"Tap to pick a date"}</div><input type="date" id="pickD" value="${S.date}" min="${C().start}" max="${C().end}" aria-label="Pick date"></label>
     <button class="iconbtn" id="nextD" aria-label="Next day"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg></button>
   </div>
+  ${dayBar()}
   <div class="seg" role="group" aria-label="Session">
     <button data-ses="AM" aria-pressed="${S.session==="AM"}"><span class="dot ${a.takenAM?"on":""}"></span>Morning (AM)</button>
     <button data-ses="PM" aria-pressed="${S.session==="PM"}"><span class="dot ${a.takenPM?"on":""}"></span>Afternoon (PM)</button>
@@ -360,6 +430,7 @@ function viewMark(v){
   v.querySelector("#prevD").onclick=()=>changeDate(addDays(S.date,-1));
   v.querySelector("#nextD").onclick=()=>changeDate(addDays(S.date,1));
   v.querySelector("#pickD").onchange=e=>e.target.value&&changeDate(e.target.value);
+  [["#dayOff","off"],["#dayWork","work"],["#dayUndo","undo"]].forEach(([id,act])=>{const b=v.querySelector(id);if(b)b.onclick=()=>{if(S.dirty){toast("Save or clear the unsaved marks first");return}daySheet(act)}});
   v.querySelectorAll("[data-ses]").forEach(b=>b.onclick=()=>{if(S.dirty&&!confirmLeave())return;S.session=b.dataset.ses;S.dirty=false;S.draftKey="";render()});
   v.querySelectorAll(".stu").forEach(b=>b.onclick=()=>{cycle(+b.dataset.roll);render()});
   const sEl=v.querySelector("#search");sEl.oninput=e=>{S.search=e.target.value;const pos=e.target.selectionStart;render();const n=document.getElementById("search");n.focus();n.setSelectionRange(pos,pos)};
@@ -384,13 +455,13 @@ function viewDash(v){
   const absList=ses=>Object.entries((ta[ses])||{}).filter(([r,c])=>c==="A").map(([r])=>r);
   const todayCard=tst==="W"?`<div class="card"><div class="row between"><h3>Today</h3><span class="small muted">${esc(fmtDate(t))}</span></div>
     <div class="grid2" style="margin-top:10px">${["AM","PM"].map(ses=>{const ab=absList(ses);return `<div><div class="label">${ses} ${ta["taken"+ses]?"✓ saved":"· not taken"}</div><div style="font-weight:700;margin-top:4px">${ta["taken"+ses]?(S.students.length-Object.keys(ta[ses]||{}).length)+" present, "+ab.length+" absent":"–"}</div><div class="small muted">${ab.map(r=>esc(nameOf(r))).join(", ")}</div></div>`}).join("")}</div></div>`
-    :`<div class="banner off">Today is ${tst==="HOL"?"a holiday ("+esc(holidayName(t))+")":tst==="OFF"?"a weekly off":"not a school day"}.</div>`;
+    :`<div class="banner off">Today is ${tst==="HOL"?"a holiday / off day ("+esc(offName(t))+")":tst==="OFF"?"a weekly off":"not a school day"}.</div>`;
   // daily bars
   const days=daysIn(S.month),tdy=todayISO(),N=S.students.length,mp=c.minPct;let bars="",xl="";const dinfo=[];let best=null,worst=null;
   for(let d=1;d<=days;d++){const s=S.month+"-"+pad(d);const st=status(s);
     const dl=new Date(s+"T00:00:00").toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"});
     xl+=`<span>${d===1||d%5===0?d:""}</span>`;
-    if(st!=="W"){const why=st==="HOL"?"Holiday – "+holidayName(s):st==="OFF"?"Weekly off":st==="FUT"?"Upcoming day":"Not counted";
+    if(st!=="W"){const why=st==="HOL"?(dayOv(s)?"Off day – ":"Holiday – ")+offName(s):st==="OFF"?"Weekly off":st==="FUT"?"Upcoming day":"Not counted";
       dinfo.push(dl+": "+why);bars+=`<button class="off${s===tdy?" today":""}" data-d="${d-1}" aria-label="${esc(dl)} ${esc(why)}"><i style="height:3px"></i></button>`;continue}
     let tot=0,ab=0,hf=0,lv=0;for(const x of S.students){const am=codeOf(s,"AM",x.roll),pm=codeOf(s,"PM",x.roll);tot+=(am==="P")*0.5+(pm==="P")*0.5;
       const pa=(am==="P")+(pm==="P");if(pa===1)hf++;else if(pa===0){if(am==="L"||pm==="L")lv++;else ab++}}
@@ -511,7 +582,7 @@ function openParentMsgs(mode){if(!S.students.length){toast("No students in this 
   PM.mode=mode||PM.mode;if(!PM.date)PM.date=todayISO();PM.ym=S.month;loadSent();renderPM()}
 function renderPM(){const day=PM.date,rows=pmRows(),daily=PM.mode==="daily";
   const st=status(day),taken=(S.att[day]||{}).takenAM||(S.att[day]||{}).takenPM;
-  const warn=daily&&st!=="W"?`<div class="banner off">${esc(fmtDate(day))} is ${st==="HOL"?"a holiday":st==="OFF"?"a weekly off":"not a working day"}.</div>`:daily&&!taken&&!Object.keys(S.att[day]||{}).length?`<div class="banner warn">Attendance for ${esc(fmtDate(day))} hasn't been saved yet. Mark attendance first.</div>`:"";
+  const warn=daily&&st!=="W"?`<div class="banner off">${esc(fmtDate(day))} is ${st==="HOL"?"a holiday / off day ("+esc(offName(day))+")":st==="OFF"?"a weekly off":"not a working day"}.</div>`:daily&&!taken&&!Object.keys(S.att[day]||{}).length?`<div class="banner warn">Attendance for ${esc(fmtDate(day))} hasn't been saved yet. Mark attendance first.</div>`:"";
   const withPh=rows.filter(r=>waPhone(r.phone)),left=withPh.filter(r=>!PM.sent[r.roll]);
   openSheet(`<h2>Messages to parents</h2>
   <div class="seg" style="margin:6px 0 10px"><button data-pm="daily" aria-pressed="${daily}">Daily</button><button data-pm="monthly" aria-pressed="${!daily}">Monthly</button></div>
@@ -591,7 +662,8 @@ function printMonthlyReport(ym){
     return `<tr><td class="c">${st.roll}</td><td class="nm">${esc(st.name)}</td>${cells}<td class="c">${x.present%1?x.present.toFixed(1):x.present}</td><td class="c">${x.full}</td><td class="c">${x.half}</td><td class="c">${x.ldays%1?x.ldays.toFixed(1):x.ldays}</td><td class="c ${low?"low":""}">${pct(x.pct)}</td><td class="c">${x.fine||""}</td></tr>`}).join("");
   let daily="";for(let d=1;d<=n;d++){const s=ym+"-"+pad(d);if(status(s)!=="W"){daily+=`<td class="d sh"></td>`;continue}
     let tot=0;for(const x of S.students)tot+=(codeOf(s,"AM",x.roll)==="P")*0.5+(codeOf(s,"PM",x.roll)==="P")*0.5;daily+=`<td class="d">${tot%1?tot.toFixed(1):tot}</td>`}
-  const hol=(c.holidays||[]).filter(h=>{const to=h.to||h.from;return h.from<=ym+"-31"&&to>=ym+"-01"}).map(h=>esc(h.name)+" ("+h.from.slice(8)+(h.to&&h.to!==h.from?"–"+h.to.slice(8):"")+")").join(", ");
+  const hol=(c.holidays||[]).filter(h=>{const to=h.to||h.from;return h.from<=ym+"-31"&&to>=ym+"-01"}).map(h=>esc(h.name)+" ("+h.from.slice(8)+(h.to&&h.to!==h.from?"–"+h.to.slice(8):"")+")").join(", ")
+  const ovs=Object.keys(S.att).filter(s=>s.startsWith(ym+"-")&&dayOv(s)).sort().map(s=>(S.att[s].day==="off"?"Off ":"Working ")+s.slice(8)+" ("+esc(S.att[s].dayReason||"")+")").join(", ");
   const html=`<!doctype html><html><head><meta charset="utf-8"><title>Monthly Attendance Report - ${esc(classLabel(k))} - ${monthLabel(ym)}</title><style>
   @page{size:A4 landscape;margin:8mm}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:Arial,sans-serif;color:#000;font-size:9px;margin:0}
   h1{font-size:16px;margin:0;text-align:center}.sub{text-align:center;margin:1px 0;font-size:10px}.ttl{text-align:center;font-weight:bold;font-size:12px;margin:3px 0;color:#1E3A8A}
@@ -611,7 +683,7 @@ function printMonthlyReport(ym){
   <table><thead><tr><th>Roll</th><th>Student Name</th>${head}<th>Present</th><th>Full<br>Abs</th><th>Half<br>Abs</th><th>Leave</th><th>%</th><th>Fine<br>Rs</th></tr></thead>
   <tbody>${rows}<tr class="tot"><td colspan="2">Present each day</td>${daily}<td class="c" colspan="6">Class average ${pct(cm.avg)}</td></tr></tbody></table>
   <div class="sum"><div>Students<b>${cm.N}</b></div><div>Working days<b>${cm.W}</b></div><div>Class average<b>${pct(cm.avg)}</b></div><div>Below ${Math.round(c.minPct*100)}%<b>${cm.below.length}</b></div><div>Absences (Full / Half / Leave)<b>${cm.full} / ${cm.half} / ${cm.ldays}</b></div><div>Fine due / collected<b>Rs ${cm.fine} / ${collected}</b></div></div>
-  <div class="key"><b>Key:</b> • Present &nbsp; A Absent (full day) &nbsp; A/P or P/A Half day (AM/PM) &nbsp; L Leave &nbsp; H Holiday &nbsp; S Sunday &nbsp; – Off day${hol?` &nbsp; | <b>Holidays:</b> ${hol}`:""}${cm.below.length?` &nbsp; | <b>Below ${Math.round(c.minPct*100)}%:</b> ${cm.below.map(r=>esc(r.st.name)+" ("+pct(r.x.pct)+")").join(", ")}`:""}</div>
+  <div class="key"><b>Key:</b> • Present &nbsp; A Absent (full day) &nbsp; A/P or P/A Half day (AM/PM) &nbsp; L Leave &nbsp; H Holiday &nbsp; S Sunday &nbsp; – Off day${hol?` &nbsp; | <b>Holidays:</b> ${hol}`:""}${ovs?` &nbsp; | <b>Class day changes:</b> ${ovs}`:""}${cm.below.length?` &nbsp; | <b>Below ${Math.round(c.minPct*100)}%:</b> ${cm.below.map(r=>esc(r.st.name)+" ("+pct(r.x.pct)+")").join(", ")}`:""}</div>
   <div class="sign"><div>Class Teacher${k.teacher?"<br>"+esc(k.teacher):""}</div><div>Checked by</div><div>Principal${c.principal?"<br>"+esc(c.principal):""}</div></div>
   <div class="pb"></div>
   <h1>${esc(c.school||"St. James H.S. School")}</h1>
