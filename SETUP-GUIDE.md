@@ -111,3 +111,5 @@ The **Marks & Report Cards** tile is now **Result Software**. Upload these 5 cha
 * Try it without touching real data: `…/sjs-school/marks.html?demo=1`
 
 **Two report card designs (version 14).** Setup → Class groups → **Report card design**: *Standard* (formal) or *Junior* (colourful, with stars). Junior is already chosen for Nursery–KG and Class I–V. Upload `marks.html` and `sw.js`.
+
+**Bulk photo upload (version 16).** Result Software → **Grades & Remarks** → choose the class → **📷 Bulk photo upload**. Name the photo files by Roll No (`1.jpg`, `2.jpg` …), Admission No or exact name, choose them all together, check the list, then Save. Upload `marks.html` and `sw.js`.

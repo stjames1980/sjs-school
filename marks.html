@@ -175,7 +175,7 @@ function wire(m,again){const c=$('#cSel');if(c)c.onchange=e=>{if(!guard(e,'cid')
   const v=$('#vSel');if(v)v.onchange=e=>{M.view=e.target.value;ls('view',M.view);again(m)}}
 
 /* ---------- Dashboard ---------- */
-async function vDash(m){if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading…</div>';const D=await load(M.cid);
+async function vDash(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading…</div>';const D=await load(M.cid);
   const R=compute(M.cid,M.view),{S,SL}=R,st=stats(R.rows),c=cls(M.cid);
   const terms=M.view==='final'?S.terms:S.terms.filter(t=>t.id===M.view);
   const prog=SL.map(s=>({s,cells:terms.flatMap(t=>t.comps.map(cp=>{if(cdef(cp,s).na)return null;const d=D.marks[cp.id+'__'+s.key];const n=d&&d.m?D.students.filter(x=>d.m[x.roll]!==undefined&&d.m[x.roll]!=='').length:0;return{n,by:d&&d.byName}}))}));
@@ -202,7 +202,7 @@ function schoolHTML(){const o=M.school.out.filter(x=>!x.err),T=o.reduce((a,x)=>(
   <div class="scroll"><table class="tbl"><tr><th>Class</th><th>Students</th><th>Entry</th><th>Pass %</th><th>Average</th><th>Topper</th></tr>${M.school.out.map(x=>x.err?`<tr><td>${esc(classLabel(x.k))}</td><td colspan="5" class="tmeta">could not load</td></tr>`:`<tr><td><b>${esc(classLabel(x.k))}</b></td><td>${x.st.n}</td><td><div class="row" style="flex-wrap:nowrap"><div class="bar ${x.ent>=100?'g':x.ent<50?'y':''}" style="min-width:50px"><i style="width:${Math.min(100,x.ent)}%"></i></div><span class="tmeta">${x.ent}%</span></div></td><td>${x.st.app?x.st.pp+'%':'–'}</td><td>${x.st.avg==null?'–':fmt(x.st.avg)+'%'}</td><td>${x.top?esc(x.top.st.name)+' <span class="tmeta">'+fmt(x.top.p)+'%</span>':'–'}</td></tr>`).join('')}</table></div>`}
 
 /* ---------- Enter marks ---------- */
-async function vEnter(m){if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading students…</div>';const D=await load(M.cid);
+async function vEnter(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading students…</div>';const D=await load(M.cid);
   const S=schemeOf(M.cid),SL=subjOf(M.cid);if(!SL.length){m.innerHTML=`<div class="card">${classSel()}</div><div class="banner warn">No subjects for this class yet. The Admin adds them in Setup.</div>`;wire(m,vEnter);return}
   const term=S.terms.find(t=>t.id===M.term)||S.terms[0];let s=SL.find(x=>x.key===M.subj);if(!s){s=SL.find(x=>x.key===lg('subj'))||SL[0];M.subj=s.key}
   const all=term.comps.filter(c=>!cdef(c,s).na);let comps=M.comp==='all'?all:all.filter(c=>c.id===M.comp);if(!comps.length){comps=all;M.comp='all'}
@@ -238,20 +238,22 @@ async function vEnter(m){if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<di
     toast(navigator.onLine?'Marks saved':'Saved on this phone – it will upload when the internet returns');vEnter(m)}}
 
 /* ---------- Co-scholastic grades, attendance, remarks (class teacher) ---------- */
-async function vCos(m){if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading…</div>';const D=await load(M.cid);
+async function vCos(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading…</div>';const D=await load(M.cid);
   const S=schemeOf(M.cid),term=S.terms.find(t=>t.id===M.term)||S.terms[0],areas=cosAreas(S),scale=cosScale(S),tid=term.id;
   const can=(SJS.canClass(M.cid)||SJS.canView)&&(SJS.isAdmin||!locked('x_'+tid));const ak=a=>xid(tid,'c'+skey(a).slice(0,19));
   const sv=(id,roll)=>{const d=D.marks[id];const v=d&&d.m?d.m[roll]:undefined;return v==null?'':v};
   const A=M.cos||{att:{},rem:{},cos:{},wd:undefined};const wd=A.wd!==undefined?A.wd:(+(D.marks[xid(tid,'att')]||{}).max||'');
   const R=compute(M.cid,tid===S.terms[S.terms.length-1].id?'final':tid);
   m.innerHTML=`<div class="card"><div class="grid2">${classSel()}${sel('tSel','Term',S.terms.map(t=>[t.id,t.name]),tid)}<label class="f">Working days in ${esc(term.name)}<input class="inp" id="wd" type="number" min="0" value="${esc(wd)}" ${can?'':'disabled'}></label></div>
+    ${SJS.canClass(M.cid)&&D.students.length?`<div class="row" style="margin-top:10px"><button class="btn gold sm" id="bpB">📷 Bulk photo upload</button><span class="tmeta">${D.students.filter(x=>x.photo).length} of ${D.students.length} students have a photo</span></div>`:''}
     <p class="sub" style="margin:8px 0 0">For the report card: attendance, co-scholastic grades (${scale.map(esc).join(' / ')}) and the class teacher's remark. Empty remark = automatic remark.</p>
     ${can?`<div class="row" style="margin-top:8px"><button class="btn sm" id="fillA">Give ${esc(scale[0])} to all empty grades</button><div class="grow"></div><button class="btn pri" id="svC" ${M.cos?'':'disabled'}>${M.cos?'Save':'Saved ✓'}</button></div>`:'<div class="banner warn" style="margin:8px 0 0">Only the class teacher and the Admin can change this'+(locked('x_'+tid)?' (🔒 locked)':'')+'.</div>'}</div>
-  ${D.students.map((st,i)=>{const r=R.rows[i];return `<div class="stu"><div class="h"><span class="pill">${esc(st.roll)}</span><b class="grow">${esc(st.name)}</b>${SJS.canClass(M.cid)?`<button class="btn sm" data-det="${i}">Details</button>`:''}</div>
+  ${D.students.map((st,i)=>{const r=R.rows[i];return `<div class="stu"><div class="h"><span class="pill">${esc(st.roll)}</span>${st.photo?`<img src="${st.photo}" alt="" style="width:30px;height:30px;border-radius:50%;object-fit:cover">`:''}<b class="grow">${esc(st.name)}</b>${SJS.canClass(M.cid)?`<button class="btn sm" data-det="${i}">Details</button>`:''}</div>
     <div class="cg"><label>Days present<input class="inp" type="number" min="0" data-att="${esc(st.roll)}" value="${esc(A.att[st.roll]!==undefined?A.att[st.roll]:sv(xid(tid,'att'),st.roll))}" ${can?'':'disabled'}></label>
     ${areas.map(a=>{const v=(A.cos[a]||{})[st.roll]!==undefined?A.cos[a][st.roll]:sv(ak(a),st.roll);return`<label>${esc(a)}<select class="inp" data-cos="${esc(a)}" data-r="${esc(st.roll)}" ${can?'':'disabled'}><option value=""></option>${scale.map(g=>`<option ${g===v?'selected':''}>${esc(g)}</option>`).join('')}</select></label>`}).join('')}</div>
     <label class="f" style="margin-top:6px">Remark<input class="inp" data-rem="${esc(st.roll)}" maxlength="160" value="${esc(A.rem[st.roll]!==undefined?A.rem[st.roll]:sv(xid(tid,'rem'),st.roll))}" placeholder="${esc(autoRemark(r)||'Remark')}" ${can?'':'disabled'}></label></div>`}).join('')||'<div class="card empty">No students in this class yet.</div>'}`;
   wire(m,vCos);$('#tSel').onchange=e=>{if(!guard(e,'term'))return;M.term=e.target.value;vCos(m)};
+  const bp=$('#bpB');if(bp)bp.onclick=()=>{if(dirtyN()&&!confirm('Grades not saved. Continue anyway?'))return;clearDirty();bulkPhotos(m)};
   const touch=()=>{M.cos=A;const b=$('#svC');if(b){b.disabled=false;b.textContent='Save'}};
   $('#wd').oninput=e=>{A.wd=+e.target.value||0;touch()};
   m.querySelectorAll('[data-att]').forEach(i=>i.oninput=()=>{A.att[i.dataset.att]=i.value.trim();touch()});
@@ -267,8 +269,29 @@ async function vCos(m){if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div 
     sheet(`<h3>${esc(st.name)} – details for the report card</h3><div class="grid2">${F.map(([k,l,t])=>`<label class="f">${l}<input class="inp" data-f="${k}" type="${t||'text'}" value="${esc(st[k]||'')}"></label>`).join('')}</div><div class="row" style="margin-top:12px"><div class="grow"></div><button class="btn" onclick="SJS.closeSheet()">Cancel</button><button class="btn pri" id="dOk">Save</button></div>`);
     $('#dOk').onclick=async()=>{const ch={};document.querySelectorAll('[data-f]').forEach(i=>ch[i.dataset.f]=i.value.trim());Object.assign(st,ch);await WRITE('c/'+M.cid+'/students/'+st.id,ch,true);closeSheet();toast('Details saved')}})}
 
+/* ---------- Bulk photo upload: file names are matched to Roll No, Admission No or the student's name ---------- */
+function photoOf(file){return new Promise((ok,no)=>{const r=new FileReader();r.onerror=no;r.onload=()=>{const i=new Image();i.onerror=no;i.onload=()=>{const z=160,cv=document.createElement('canvas');cv.width=cv.height=z;const k=Math.min(i.width,i.height);
+  cv.getContext('2d').drawImage(i,(i.width-k)/2,(i.height-k)*(i.height>i.width?0.2:0.5),k,k,0,0,z,z);ok(cv.toDataURL('image/jpeg',0.72))};i.src=r.result};r.readAsDataURL(file)})}
+function matchStu(D,fname){const stem=fname.replace(/\.[^.]+$/,'').trim(),n=x=>String(x||'').toLowerCase().replace(/[^a-z0-9]/g,''),L=D.students;
+  if(/^\d+$/.test(stem)){const a=L.find(x=>+x.roll===+stem);if(a)return a}
+  const a=L.find(x=>x.adm&&n(x.adm)===n(stem))||L.find(x=>n(x.name)===n(stem));if(a)return a;
+  const m=stem.match(/\d+/);return m?L.find(x=>+x.roll===+m[0])||null:null}
+function bulkPhotos(m){const D=C[M.cid],c=cls(M.cid);let found=[];
+  sheet(`<h3>Bulk photo upload – ${esc(classLabel(c))}</h3><p class="sub">Name each photo file with the student's <b>Roll No</b> (<b>1.jpg</b>, <b>2.jpg</b>, <b>Roll 15.jpg</b>), the <b>Admission No</b>, or the <b>exact name</b>. Then choose all the photos of this class together. Keep the face in the middle of the picture.</p>
+    <input type="file" id="bpF" accept="image/*" multiple><div id="bpOut" style="margin-top:10px"></div>
+    <div class="row" style="margin-top:12px"><div class="grow"></div><button class="btn" onclick="SJS.closeSheet()">Close</button><button class="btn pri" id="bpOk" disabled>Save photos</button></div>`);
+  $('#bpF').onchange=async e=>{const files=[...e.target.files],out=$('#bpOut');found=[];const miss=[];out.innerHTML='<div class="empty">Reading photos…</div>';
+    for(const f of files){const st=matchStu(D,f.name);if(!st){miss.push(f.name);continue}try{const ph=await photoOf(f);const old=found.findIndex(x=>x.st===st);if(old>=0)found.splice(old,1);found.push({st,ph,f:f.name})}catch(x){miss.push(f.name+' (not a picture)')}}
+    found.sort((a,b)=>(+a.st.roll||0)-(+b.st.roll||0));const left=D.students.filter(x=>!x.photo&&!found.some(q=>q.st===x));
+    out.innerHTML=`<div class="row" style="margin-bottom:8px"><span class="pill g">${found.length} matched</span>${miss.length?`<span class="pill r">${miss.length} not matched</span>`:''}${left.length?`<span class="pill y">${left.length} students still without photo</span>`:''}</div>
+      ${found.map(x=>`<div class="li"><img src="${x.ph}" alt="" style="width:40px;height:40px;border-radius:8px;object-fit:cover"><span class="pill">${esc(x.st.roll)}</span><span class="grow"><b>${esc(x.st.name)}</b><div class="tmeta">${esc(x.f)}${x.st.photo?' · replaces the old photo':''}</div></span></div>`).join('')}
+      ${miss.length?`<div class="banner warn" style="margin-top:8px">Not matched (rename with the Roll No and choose again): ${miss.map(esc).join(', ')}</div>`:''}`;
+    const ok=$('#bpOk');ok.disabled=!found.length;ok.textContent=found.length?'Save '+found.length+' photos':'Save photos'};
+  $('#bpOk').onclick=async()=>{const ok=$('#bpOk');ok.disabled=true;ok.textContent='Saving…';for(const x of found){x.st.photo=x.ph;await WRITE('c/'+M.cid+'/students/'+x.st.id,{photo:x.ph},true)}
+    closeSheet();toast(found.length+' photos saved'+(navigator.onLine?'':' on this phone – they upload when the internet returns'));vCos(m)}}
+
 /* ---------- Results ---------- */
-async function vRes(m){if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading…</div>';await load(M.cid);
+async function vRes(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading…</div>';await load(M.cid);
   const c=cls(M.cid),S=schemeOf(M.cid),sibs=SJS.classes.filter(k=>nc(k.cls)===nc(c.cls));if(sibs.length<2)M.scope='sec';
   const head=`<div class="card"><div class="grid2">${classSel()}${viewSel(S)}${sibs.length>1?sel('scSel','Show',[['sec','Section '+(c.section||'')+' only'],['all','Whole Class '+c.cls+' (all sections)']],M.scope):''}</div></div>`;
   const fin=M.view==='final';
@@ -384,7 +407,7 @@ const nextCls=c=>{const i=ROM.indexOf(nc(c&&c.cls));return i>0&&i<12?ROM[i+1]:''
 function waText(cid,R,r,view){const c=cls(cid),S=R.S,L=['*'+SJS.school.name+'*','Result – '+viewName(S,view)+' ('+SJS.school.session+')','','Name: *'+r.st.name+'*','Class: '+classLabel(c)+'   Roll: '+r.st.roll,''];
   R.SL.forEach(s=>{const x=r.sub[s.key];if(x.has&&x.mx>0)L.push(s.name+': '+fmt(x.got)+'/'+fmt(x.mx)+' ('+x.g+')')});
   L.push('','Total: *'+fmt(r.tot)+' / '+fmt(r.full)+'*','Percentage: *'+fmt(r.p)+'%*   Grade: '+r.g);if(r.rank)L.push('Rank: '+r.rank);L.push('Result: *'+stText(r,view==='final')+'*');return L.join('\n')}
-async function vCards(m){if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading…</div>';const D=await load(M.cid);
+async function vCards(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading…</div>';const D=await load(M.cid);
   const S=schemeOf(M.cid),c=cls(M.cid),R=compute(M.cid,M.view),fin=M.view==='final';const O=M.co=M.co||{date:SJS.todayISO(),rank:true,chart:true};
   m.innerHTML=`<div class="card"><div class="grid2">${classSel()}${viewSel(S,'vSel','Report card for')}<label class="f">Date on the card<input class="inp" id="oDate" type="date" value="${esc(O.date||'')}"></label>
     ${fin?`<label class="f">Promoted to Class<input class="inp" id="oPromo" value="${esc(O.promo!==undefined?O.promo:nextCls(c))}"></label><label class="f">School reopens on<input class="inp" id="oRe" type="date" value="${esc(O.reopen||'')}"></label>`:''}</div>
@@ -401,7 +424,7 @@ const compStr=t=>t.comps.map(c=>c.name+'='+c.max+(c.wt!=null&&+c.wt!==+c.max?'>'
 function parseComps(str,old,tix){const used={};const list=String(str||'').split(',').map(x=>x.trim()).filter(Boolean).map(x=>{const q=x.match(/^(.*?)=\s*(\d+(?:\.\d+)?)\s*(?:>\s*(\d+(?:\.\d+)?))?\s*([TPtp])?$/);if(!q)return null;
     const o={name:q[1].trim(),max:+q[2]};if(q[3]!==undefined)o.wt=+q[3];if(q[4])o.kind=q[4].toUpperCase();return o.name?o:null}).filter(Boolean);
   list.forEach((c,i)=>{let id=old.length===list.length?old[i].id:(old.find(o=>o.name.toLowerCase()===c.name.toLowerCase())||{}).id;if(!id||used[id])id=('c'+(tix+1)+skey(c.name).toLowerCase()).slice(0,12);while(used[id])id+='x';used[id]=1;c.id=id});return list}
-async function vSetup(m){const c=JSON.parse(JSON.stringify(cfg())),sc=c.school;const seenCls={};const clsList=SJS.classes.filter(k=>{const n=nc(k.cls);if(seenCls[n])return false;seenCls[n]=1;return true});
+async function vSetup(m){m=$('#main')||m;const c=JSON.parse(JSON.stringify(cfg())),sc=c.school;const seenCls={};const clsList=SJS.classes.filter(k=>{const n=nc(k.cls);if(seenCls[n])return false;seenCls[n]=1;return true});
   const lockIds=[];c.schemes.forEach(s=>s.terms.forEach(t=>{t.comps.forEach(cp=>{if(!lockIds.some(x=>x[0]===cp.id))lockIds.push([cp.id,cp.name])});if(!lockIds.some(x=>x[0]==='x_'+t.id))lockIds.push(['x_'+t.id,t.name+' – grades & remarks'])}));
   m.innerHTML=`<div class="card"><h2>School details</h2><p class="sub">Printed at the top of every report card and result sheet. The school name and session come from SJS App settings.</p>
     <div class="grid2">${[['motto','Motto'],['address','Address'],['affil','CBSE Affiliation No.'],['code','School Code'],['udise','UDISE Code'],['email','Email'],['principal','Principal\'s name (printed on report cards)']].map(([k,l])=>`<label class="f">${l}<input class="inp" data-sc="${k}" value="${esc(sc[k]||'')}"></label>`).join('')}</div></div>
