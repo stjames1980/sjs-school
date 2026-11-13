@@ -33,9 +33,11 @@ const classLabel=k=>k?(k.cls||'–')+(k.section?' - '+k.section:''):'';
 const normN=n=>String(n||'').toLowerCase().replace(/\b(sir|mdm|madam|ms|mrs|mr|miss|dr)\b\.?/g,' ').replace(/[^a-z]/g,'');
 
 /* ---------- data layer: Firebase, or a demo store (?demo=1) for trying the screens ---------- */
+/* Offline: read the copy saved on this phone instead of waiting for the internet */
+async function offGet(ref){if(navigator.onLine){try{return await ref.get()}catch(e){if(e&&e.code==='permission-denied')throw e}}return ref.get({source:'cache'})}
 function fbDB(fs){return{
-  get:async p=>{const s=await fs.doc(p).get();return s.exists?s.data():null},
-  list:async(c,o={})=>{let q=fs.collection(c);if(o.where)q=q.where(...o.where);if(o.order)q=q.orderBy(o.order);if(o.limit)q=q.limit(o.limit);const s=await q.get();return s.docs.map(d=>({id:d.id,...d.data()}))},
+  get:async p=>{const s=await offGet(fs.doc(p));return s.exists?s.data():null},
+  list:async(c,o={})=>{let q=fs.collection(c);if(o.where)q=q.where(...o.where);if(o.order)q=q.orderBy(o.order);if(o.limit)q=q.limit(o.limit);const s=await offGet(q);return s.docs.map(d=>({id:d.id,...d.data()}))},
   set:(p,d,merge)=>fs.doc(p).set(d,merge?{merge:true}:{}),
   add:(c,d)=>fs.collection(c).add(d).then(r=>r.id),
   del:p=>fs.doc(p).delete(),
@@ -73,9 +75,13 @@ const SJS={$,esc,MONTHS,DOW,pad,iso,parse,todayISO,fmtDate,addDays,toast,sheet,c
     const fs=firebase.firestore();this.db=fbDB(fs);
     firebase.auth().onAuthStateChanged(async u=>{this.user=u;
       if(!u){app.innerHTML=this.header(title)+'<main><div class="card empty">Please sign in on the SJS App Home screen first.<br><br><a class="btn pri" href="./">Go to SJS Home</a></div></main>';return}
-      try{await fs.collection('att_links').limit(1).get();this.isAdmin=true}catch(e){this.isAdmin=false}
-      let st=null;try{const r=await fs.doc('att_staff/'+u.uid).get();st=r.exists?r.data():null}catch(e){}
-      this.role=this.isAdmin?'admin':(st&&st.role)||'teacher';this.isStaff=this.isAdmin||!!st;this.canView=this.isAdmin||this.role==='principal'||this.role==='exam';
+      const RK='sjs-role-'+u.uid;let saved=null;try{saved=JSON.parse(localStorage.getItem(RK)||'null')}catch(e){}
+      if(!navigator.onLine&&saved){this.isAdmin=!!saved.a;this.role=saved.r||'teacher';this.isStaff=!!saved.s}   // offline: use what was true the last time online
+      else{try{await fs.collection('att_links').limit(1).get({source:'server'});this.isAdmin=true}catch(e){this.isAdmin=false;if(saved&&!(e&&e.code==='permission-denied'))this.isAdmin=!!saved.a}
+        let st=null;try{const r=await offGet(fs.doc('att_staff/'+u.uid));st=r.exists?r.data():null}catch(e){}
+        this.role=this.isAdmin?'admin':(st&&st.role)||'teacher';this.isStaff=this.isAdmin||!!st;
+        if(navigator.onLine){try{localStorage.setItem(RK,JSON.stringify({a:this.isAdmin,r:this.role,s:this.isStaff}))}catch(e){}}}
+      this.canView=this.isAdmin||this.role==='principal'||this.role==='exam';
       if(!this.isStaff){app.innerHTML=this.header(title)+'<main><div class="card empty">This opens after the Admin confirms you (SJS App → Teachers → Confirm).<br><br><a class="btn pri" href="./">Go to SJS Home</a></div></main>';return}
       await this.loadCommon();onReady()})},
   async loadCommon(){

@@ -84,3 +84,28 @@ If the old data is saved only on one phone, open **Student Attendance** in the n
 * **Student profile.** Photo, date of birth, blood group and address, plus **Call** and **WhatsApp** buttons for the parent.
 
 Files added: `marks.html`, `school.html`, `sjs-common.js`, `sjs-common.css`. Files changed: `index.html`, `attendance.html`, `timetable.html`, `firestore.rules`, `sw.js`, `SETUP-GUIDE.md`.
+
+---
+
+## 8. New in version 13 – Result Software (CBSE pattern, Nursery – XII)
+
+The **Marks & Report Cards** tile is now **Result Software**. Upload these 5 changed files: `marks.html`, `sjs-common.js`, `sw.js`, `index.html`, `SETUP-GUIDE.md`. **No change to the Firestore rules is needed.** Marks already entered (PT-I, Half Yearly, PT-II, Annual) stay.
+
+**Admin first – Setup tab**
+1. **School details**: address, CBSE Affiliation No., School Code, UDISE (already filled – check them).
+2. **Class groups and exams**: five groups (Pre-Primary, I–V, VI–VIII, IX–X, XI–XII). Each has Term 1 and Term 2. Write exams as `PT-I=10, Note Book=5, Sub. Enrichment=5, Half Yearly=80`.
+   `PT-I=25>10` = test out of 25, counted as 10. `>0` = shown but not counted. `T` / `P` = theory / practical (XI–XII).
+3. **Subjects for each class**: `Drawing*` = grade only. `Physics [70+30]` = theory 70 + practical 30.
+4. **Lock** an exam when its result is final.
+
+**Teachers**
+* **Enter Marks**: choose Class → Term → Subject. Type marks (or `AB`). **Save**. "Paste from Excel" also works.
+* **Grades & Remarks** (class teacher): working days, days present, co-scholastic grades, remark, and student details (PEN, APAAR, father's and mother's name).
+* **Results**: result sheet, rank, pass %, Top 10 (one section or the whole class), subject analysis. Print or Excel.
+* **Report Cards**: Term 1, Term 2 or Final. Print one or all (A4). WhatsApp the result to the parent.
+* **Dashboard**: entry progress for each subject; the Admin, Principal and Exam In-Charge can load the whole school.
+
+**Offline**
+* Open the app and each of your classes **once with the internet on**. After that it works without internet.
+* The pill at the bottom-left shows **Online · all saved** or **Offline · saved on this phone**. Offline marks upload by themselves when the internet returns – open the app once when you are back online.
+* Try it without touching real data: `…/sjs-school/marks.html?demo=1`
