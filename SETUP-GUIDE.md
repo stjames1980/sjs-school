@@ -109,3 +109,5 @@ The **Marks & Report Cards** tile is now **Result Software**. Upload these 5 cha
 * Open the app and each of your classes **once with the internet on**. After that it works without internet.
 * The pill at the bottom-left shows **Online · all saved** or **Offline · saved on this phone**. Offline marks upload by themselves when the internet returns – open the app once when you are back online.
 * Try it without touching real data: `…/sjs-school/marks.html?demo=1`
+
+**Two report card designs (version 14).** Setup → Class groups → **Report card design**: *Standard* (formal) or *Junior* (colourful, with stars). Junior is already chosen for Nursery–KG and Class I–V. Upload `marks.html` and `sw.js`.
