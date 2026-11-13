@@ -119,3 +119,7 @@ The **Marks & Report Cards** tile is now **Result Software**. Upload these 5 cha
 **Attendance in results (version 18).** Result sheet, merit list, review sheet and the Excel workbook now show attendance (days present / working days). In **Grades & Remarks**, choose the term's first and last date and tap **Fill attendance from Student Attendance** – the app counts it from the register; check and **Save**. Upload `marks.html` and `sw.js`.
 
 **Report card changes (version 19).** Under GRAND TOTAL the card now has rows for Percentage, Rank, Attendance (with %) and Result – for Term 1, Term 2 and Overall. Overall = Term 1 50% + Term 2 50% (out of 100 in each subject). Subject Enrichment is printed as SEA. The line “(Issued by school as per directives of Central Board of Secondary Education, Delhi)” is under the title (change it in Setup → School details). Upload `marks.html` and `sw.js`.
+
+**Report card changes (version 20).** Final column (marks only, no “out of”), a GRADE row after Percentage, Performance Analysis chart (highest in class, class average, marks obtained), signatures and INSTRUCTIONS (grading scale) at the bottom of the page. Upload `marks.html` and `sw.js`.
+
+**Report card look (version 21).** CBSE logo top-left and school logo top-right (same size), bigger motto, equal margins on all four sides, darker lines and bigger marks so photocopies stay clear. **New file: `cbse.png`** – upload it with `marks.html` and `sw.js`. To use a sharper CBSE logo, upload a bigger picture with the same name `cbse.png`.
