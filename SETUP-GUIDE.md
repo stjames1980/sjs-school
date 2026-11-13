@@ -129,3 +129,5 @@ The **Marks & Report Cards** tile is now **Result Software**. Upload these 5 cha
 **Report card polish (version 23).** Margins are 4 mm on all four sides (in the print window choose Margins: Default or None, Scale 100%), bigger student profile and photo, lighter table lines, bigger marks. KG grade scale: A+ 90–100, A 75–89, B 56–74, C 33–55, D 32 & below. Upload `marks.html` and `sw.js`.
 
 **Version 24.** Health Status prints once (latest height and weight). Margins 6 mm on all sides. A dashed space for the Principal's seal under the signatures. Upload `marks.html` and `sw.js`.
+
+**Result review (version 26).** Results → choose the class and **Final Result** → the **Result review** list at the bottom shows every student below the pass mark. The Admin, Principal or Exam In-Charge taps **Review** to (1) give **grace marks** in a subject, (2) **promote on special consideration**, or (3) **detain**. A failed Final result now reads **DETAINED in Class …**. Grace marks print with a † on the report card. Lock "Final result review" in Setup when the results are issued. Upload `marks.html` and `sw.js`.
