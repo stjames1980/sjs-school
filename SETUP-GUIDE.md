@@ -113,3 +113,5 @@ The **Marks & Report Cards** tile is now **Result Software**. Upload these 5 cha
 **Two report card designs (version 14).** Setup → Class groups → **Report card design**: *Standard* (formal) or *Junior* (colourful, with stars). Junior is already chosen for Nursery–KG and Class I–V. Upload `marks.html` and `sw.js`.
 
 **Bulk photo upload (version 16).** Result Software → **Grades & Remarks** → choose the class → **📷 Bulk photo upload**. Name the photo files by Roll No (`1.jpg`, `2.jpg` …), Admission No or exact name, choose them all together, check the list, then Save. Upload `marks.html` and `sw.js`.
+
+**Results upgrade (version 17).** In **Results**: (1) **Result for** now lists every exam separately (PT-I, Half Yearly, PT-II, Annual …), each term, and the Final Result. (2) **Order** → *Merit order* shows the merit list; with **Show → Whole Class** it is the merit list of all sections together. (3) **⬇ Excel (complete result)** downloads a real `.xlsx` workbook: Result Sheet, Merit List, All Marks, Subject Analysis. (4) **🖨 Review sheet (merit-wise)** prints the result in merit order with a Remarks / Decision column. Upload `marks.html` and `sw.js`.

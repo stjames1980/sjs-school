@@ -44,7 +44,7 @@ details.grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;ma
    mk_cfg/main   locked:{examId:true}  – a locked exam can be changed only by the Admin              (Admin)
    c/<classId>/marks/<examId>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}
    c/<classId>/marks/x_<termId>__att | __rem | __c<Area>   attendance, remarks, co-scholastic grades for a term */
-const {$,esc,toast,sheet,closeSheet,csvDownload,pasteRows,classLabel,waPhone}=SJS;
+const {$,esc,toast,sheet,closeSheet,pasteRows,classLabel,waPhone}=SJS;
 const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const CBSE_T=(n,pt,ex,exn)=>({id:'t'+n,name:'Term '+n,comps:[{id:'pt'+n,name:pt,max:10},{id:'nb'+n,name:'Note Book',max:5},{id:'se'+n,name:'Sub. Enrichment',max:5},{id:ex,name:exn,max:80}]});
 const DEF={
@@ -68,7 +68,7 @@ const DEF={
   subj:{}};
 let CFG=null,OLD=null;                       // mk_cfg/cbse , mk_cfg/main
 const C={};                                  // class data cache: cid -> {students, marks}
-const M={tab:'dash',cid:null,view:'t1',term:'t1',subj:null,comp:'all',dirty:{},maxd:{},scope:'sec',cos:null,school:null};
+const M={tab:'dash',order:'roll',cid:null,view:'t1',term:'t1',subj:null,comp:'all',dirty:{},maxd:{},scope:'sec',cos:null,school:null};
 const LSK='sjs-res-';const lg=k=>{try{return localStorage.getItem(LSK+k)}catch(e){return null}};const ls=(k,v)=>{try{localStorage.setItem(LSK+k,v)}catch(e){}};
 const cfg=()=>CFG||DEF;
 const locked=id=>!!((OLD&&OLD.locked)||{})[id];
@@ -124,10 +124,13 @@ const stars=p=>{if(p==null)return'';const n=p>=91?5:p>=75?4:p>=60?3:p>=45?2:1;re
 const cosAreas=S=>String(S.cos||'').split(',').map(x=>x.trim()).filter(Boolean);
 const cosScale=S=>String(S.cosScale||'A, B, C').split(',').map(x=>x.trim()).filter(Boolean);
 const xid=(tid,k)=>'x_'+tid+'__'+k;
-const viewName=(S,v)=>v==='final'?'Final Result':((S.terms.find(t=>t.id===v)||{}).name||v);
+const compOfView=(S,v)=>{if(String(v).slice(0,2)!=='c:')return null;for(const t of S.terms){const c=t.comps.find(q=>q.id===v.slice(2));if(c)return{t,c}}return null};
+const validView=(S,v)=>(v==='final'||S.terms.some(t=>t.id===v)||compOfView(S,v))?v:S.terms[0].id;
+const viewTerms=(S,v)=>{const cv=compOfView(S,v);return v==='final'?S.terms:cv?[cv.t]:S.terms.filter(t=>t.id===v)};
+const viewName=(S,v)=>{const cv=compOfView(S,v);return v==='final'?'Final Result':cv?cv.c.name+(S.terms.length>1?' ('+cv.t.name+')':''):((S.terms.find(t=>t.id===v)||{}).name||v)};
 
 /* ---------- the result calculation ---------- */
-function compute(cid,view){const D=C[cid],S=schemeOf(cid),SL=subjOf(cid),pass=+cfg().pass||33;
+function compute(cid,view){const D=C[cid],S=schemeOf(cid),SL=subjOf(cid),pass=+cfg().pass||33,cm=compOfView(S,view);
   const agg=(view==='final'?(S.final==='last'?[S.terms[S.terms.length-1]]:S.terms):S.terms.filter(t=>t.id===view)).map(t=>t.id);
   const rows=D.students.map(st=>{const sub={};let tot=0,full=0,nf=0;const failed=[];
     SL.forEach(s=>{const T={};let g=0,mx=0,has=false,fs=false;
@@ -138,6 +141,7 @@ function compute(cid,view){const D=C[cid],S=schemeOf(cid),SL=subjOf(cid),pass=+c
           const sc=em?(+v)/em*df.wt:0;tg+=sc;tm+=df.wt;if(c.kind&&df.wt>0&&S.sepPass&&r2((+v)/em*100)<pass)tf=true;return{v:+v,em,sc,wt:df.wt}});
         T[t.id]={cells,got:tg,mx:tm,has:th,p:tm?tg/tm*100:null,failSep:tf};
         if(agg.includes(t.id)&&th){has=true;g+=tg;mx+=tm;if(tf)fs=true}});
+      if(cm){const q=T[cm.t.id].cells[cm.t.comps.indexOf(cm.c)];if(q&&q.v!==undefined){has=true;g=q.v==='AB'?0:q.v;mx=q.em}}   // one exam only: raw marks
       const p=mx?g/mx*100:null,fail=has&&mx>0&&(r2(p)<pass||fs);
       sub[s.key]={T,got:g,mx,p,has,fail,g:grade(p)};
       if(has&&mx>0&&!s.graded){tot+=g;full+=mx;if(fail){nf++;failed.push(s.name)}}});
@@ -165,10 +169,10 @@ function render(){const a=$('#app');const h=a.querySelector('.hdr').outerHTML;a.
 const clearDirty=()=>{M.dirty={};M.maxd={};M.cos=null};
 const sel=(id,label,opts,val)=>`<label class="f">${label}<select class="inp" id="${id}">${opts.map(([v,t])=>`<option value="${esc(v)}" ${String(v)===String(val)?'selected':''}>${esc(t)}</option>`).join('')}</select></label>`;
 function classSel(){const cs=SJS.classes;return sel('cSel','Class',cs.map(c=>[c.id,classLabel(c)+(SJS.canClass(c.id)&&!SJS.isAdmin?' ★':'')]),M.cid)}
-function viewSel(S,id='vSel',label='Result for'){return sel(id,label,[...S.terms.map(t=>[t.id,t.name]),['final','Final Result (whole year)']],M.view)}
+function viewSel(S,id='vSel',label='Result for',noExam){return sel(id,label,[...S.terms.flatMap(t=>[...(noExam?[]:t.comps.map(c=>['c:'+c.id,c.name+' – exam result'])),[t.id,t.name+(noExam?'':' – all exams together')]]),['final','Final Result (whole year)']],M.view)}
 function pick(){const cs=SJS.classes;if(!cs.length){M.cid=null;return false}
   if(!M.cid||!cls(M.cid)){const mine=SJS.myClasses()[0],sv=lg('cid');M.cid=sv&&cls(sv)?sv:(mine||cs[0]).id}
-  const S=schemeOf(M.cid);if(M.view!=='final'&&!S.terms.some(t=>t.id===M.view))M.view=S.terms[0].id;if(!S.terms.some(t=>t.id===M.term))M.term=S.terms[0].id;return true}
+  const S=schemeOf(M.cid);M.view=validView(S,M.view);if(!S.terms.some(t=>t.id===M.term))M.term=S.terms[0].id;return true}
 const noClass='<div class="banner warn">No classes yet. The Admin adds classes and students in SJS App → Student Attendance. The same students appear here.</div>';
 function guard(e,prop){if(dirtyN()&&!confirm('Marks not saved. Leave anyway?')){e.target.value=M[prop];return false}clearDirty();return true}
 function wire(m,again){const c=$('#cSel');if(c)c.onchange=e=>{if(!guard(e,'cid'))return;M.cid=e.target.value;ls('cid',M.cid);again(m)};
@@ -177,9 +181,8 @@ function wire(m,again){const c=$('#cSel');if(c)c.onchange=e=>{if(!guard(e,'cid')
 /* ---------- Dashboard ---------- */
 async function vDash(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading…</div>';const D=await load(M.cid);
   const R=compute(M.cid,M.view),{S,SL}=R,st=stats(R.rows),c=cls(M.cid);
-  const terms=M.view==='final'?S.terms:S.terms.filter(t=>t.id===M.view);
-  const prog=SL.map(s=>({s,cells:terms.flatMap(t=>t.comps.map(cp=>{if(cdef(cp,s).na)return null;const d=D.marks[cp.id+'__'+s.key];const n=d&&d.m?D.students.filter(x=>d.m[x.roll]!==undefined&&d.m[x.roll]!=='').length:0;return{n,by:d&&d.byName}}))}));
-  const cols=terms.flatMap(t=>t.comps.map(cp=>({t,cp})));
+  const cvd=compOfView(S,M.view),cols=viewTerms(S,M.view).flatMap(t=>t.comps.filter(cp=>!cvd||cp.id===cvd.c.id).map(cp=>({t,cp})));
+  const prog=SL.map(s=>({s,cells:cols.map(({cp})=>{if(cdef(cp,s).na)return null;const d=D.marks[cp.id+'__'+s.key];const n=d&&d.m?D.students.filter(x=>d.m[x.roll]!==undefined&&d.m[x.roll]!=='').length:0;return{n,by:d&&d.byName}})}));
   const gd=cfg().grades.slice().sort((a,b)=>b.min-a.min).map(g=>({g:g.g,n:R.rows.filter(r=>r.any&&r.g===g.g).length}));const gmax=Math.max(1,...gd.map(x=>x.n));
   const sa=SL.map(s=>{const v=R.rows.map(r=>r.sub[s.key]).filter(x=>x.has&&x.mx>0);return{s,avg:v.length?v.reduce((a,b)=>a+b.p,0)/v.length:null,n:v.length}});
   m.innerHTML=`<div class="card"><div class="grid2">${classSel()}${viewSel(S)}</div><div class="tmeta" style="margin-top:8px">${esc(S.name)} · ${S.terms.map(t=>esc(t.name)+': '+t.comps.map(x=>esc(x.name)).join(' + ')).join(' &nbsp;|&nbsp; ')}</div></div>
@@ -192,11 +195,12 @@ async function vDash(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m
   <div class="card"><h3>Subject average</h3>${sa.map(x=>`<div class="li"><span style="flex:0 0 38%">${esc(x.s.name)}</span><div class="bar ${x.avg==null?'':x.avg<(+cfg().pass)?'r':x.avg>=75?'g':''}"><i style="width:${x.avg==null?0:Math.round(x.avg)}%"></i></div><b style="width:52px;text-align:right">${x.avg==null?'–':fmt(x.avg)+'%'}</b></div>`).join('')}</div>
   ${SJS.canView?`<div class="card"><div class="row"><h3 class="grow" style="margin:0">Whole school – ${esc(viewName(S,M.view))}</h3><button class="btn pri sm" id="schB">${M.school?'Refresh':'Load all classes'}</button>${M.school?'<button class="btn sm" id="schX">Excel</button>':''}</div><div id="schOut">${M.school?schoolHTML():'<p class="sub" style="margin-top:8px">Pass %, average and entry progress of every class on one screen. Needs the internet the first time.</p>'}</div></div>`:''}`;
   wire(m,vDash);
-  const sb=$('#schB');if(sb)sb.onclick=async()=>{sb.disabled=true;const out=[];for(const k of SJS.classes){sb.textContent='Loading '+classLabel(k)+'…';try{const d=await load(k.id,true);const Sx=schemeOf(k.id);const v=M.view==='final'||Sx.terms.some(t=>t.id===M.view)?M.view:Sx.terms[0].id;const r=compute(k.id,v);
-        const SLx=r.SL,tt=v==='final'?Sx.terms:Sx.terms.filter(t=>t.id===v);let cellsN=0,fill=0;SLx.forEach(s=>tt.forEach(t=>t.comps.forEach(cp=>{if(cdef(cp,s).na)return;const dd=d.marks[cp.id+'__'+s.key];const n=dd&&dd.m?d.students.filter(x=>dd.m[x.roll]!==undefined&&dd.m[x.roll]!=='').length:0;if(n){cellsN++;fill+=n/Math.max(1,d.students.length)}else if(Sx.id!=='sr')cellsN++})));
+  const sb=$('#schB');if(sb)sb.onclick=async()=>{sb.disabled=true;const out=[];for(const k of SJS.classes){sb.textContent='Loading '+classLabel(k)+'…';try{const d=await load(k.id,true);const Sx=schemeOf(k.id);const v=validView(Sx,M.view),cx=compOfView(Sx,v);const r=compute(k.id,v);
+        const SLx=r.SL,tt=viewTerms(Sx,v);let cellsN=0,fill=0;SLx.forEach(s=>tt.forEach(t=>t.comps.forEach(cp=>{if(cdef(cp,s).na||(cx&&cp.id!==cx.c.id))return;const dd=d.marks[cp.id+'__'+s.key];const n=dd&&dd.m?d.students.filter(x=>dd.m[x.roll]!==undefined&&dd.m[x.roll]!=='').length:0;if(n){cellsN++;fill+=n/Math.max(1,d.students.length)}else if(Sx.id!=='sr')cellsN++})));
         const top=r.rows.filter(x=>x.rank===1)[0];out.push({k,st:stats(r.rows),ent:cellsN?Math.round(fill/cellsN*100):0,top})}catch(e){out.push({k,err:1})}}
     M.school={view:M.view,out};vDash(m)};
-  const sx=$('#schX');if(sx)sx.onclick=()=>csvDownload('Whole_School_Result.csv',[['Class','Students','Appeared','Passed','Compartment','Failed','Pass %','Average %','Highest %','Entry %','Topper'],...M.school.out.filter(o=>!o.err).map(o=>[classLabel(o.k),o.st.n,o.st.app,o.st.pass,o.st.comp,o.st.fail,o.st.pp,o.st.avg==null?'':fmt(o.st.avg),o.st.hi==null?'':fmt(o.st.hi),o.ent,o.top?o.top.st.name:''])])}
+  const sxb=$('#schX');if(sxb)sxb.onclick=()=>{const hd=['Class','Students','Appeared','Passed','Compartment','Not passed','Pass %','Average %','Highest %','Entry %','Topper'],h=xlHead('WHOLE SCHOOL RESULT',viewName(S,M.school.view),hd.length);
+    XL.save('Whole_School_Result.xlsx',[{name:'Whole School',rows:[...h.rows,hd.map(v=>({v,s:3})),...M.school.out.filter(o=>!o.err).map(o=>[{v:classLabel(o.k),s:6},...[o.st.n,o.st.app,o.st.pass,o.st.comp,o.st.fail,o.st.pp,n1(o.st.avg),n1(o.st.hi),o.ent].map(v=>({v,s:5})),{v:o.top?o.top.st.name:'',s:4}])],merges:h.merges,heights:h.heights,cols:[14,10,10,10,13,11,9,11,11,9,28],freeze:[1,5]}])}}
 function schoolHTML(){const o=M.school.out.filter(x=>!x.err),T=o.reduce((a,x)=>({n:a.n+x.st.n,app:a.app+x.st.app,pass:a.pass+x.st.pass}),{n:0,app:0,pass:0});
   return `<div class="kp" style="margin-top:10px"><div class="k"><b>${T.n}</b><span>Students</span></div><div class="k p"><b>${T.app}</b><span>Results ready</span></div><div class="k g"><b>${T.pass}</b><span>Passed</span></div><div class="k y"><b>${T.app?Math.round(T.pass/T.app*100)+'%':'–'}</b><span>School pass %</span></div></div>
   <div class="scroll"><table class="tbl"><tr><th>Class</th><th>Students</th><th>Entry</th><th>Pass %</th><th>Average</th><th>Topper</th></tr>${M.school.out.map(x=>x.err?`<tr><td>${esc(classLabel(x.k))}</td><td colspan="5" class="tmeta">could not load</td></tr>`:`<tr><td><b>${esc(classLabel(x.k))}</b></td><td>${x.st.n}</td><td><div class="row" style="flex-wrap:nowrap"><div class="bar ${x.ent>=100?'g':x.ent<50?'y':''}" style="min-width:50px"><i style="width:${Math.min(100,x.ent)}%"></i></div><span class="tmeta">${x.ent}%</span></div></td><td>${x.st.app?x.st.pp+'%':'–'}</td><td>${x.st.avg==null?'–':fmt(x.st.avg)+'%'}</td><td>${x.top?esc(x.top.st.name)+' <span class="tmeta">'+fmt(x.top.p)+'%</span>':'–'}</td></tr>`).join('')}</table></div>`}
@@ -290,37 +294,98 @@ function bulkPhotos(m){const D=C[M.cid],c=cls(M.cid);let found=[];
   $('#bpOk').onclick=async()=>{const ok=$('#bpOk');ok.disabled=true;ok.textContent='Saving…';for(const x of found){x.st.photo=x.ph;await WRITE('c/'+M.cid+'/students/'+x.st.id,{photo:x.ph},true)}
     closeSheet();toast(found.length+' photos saved'+(navigator.onLine?'':' on this phone – they upload when the internet returns'));vCos(m)}}
 
+/* ---------- Excel (.xlsx) writer – small, works offline, no extra library ---------- */
+const XL=(()=>{const enc=new TextEncoder();let T=null;
+  const crc=b=>{if(!T){T=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;T[n]=c>>>0}}let c=-1;for(let i=0;i<b.length;i++)c=T[(c^b[i])&255]^(c>>>8);return(c^-1)>>>0};
+  const u16=n=>[n&255,n>>>8&255],u32=n=>[n&255,n>>>8&255,n>>>16&255,n>>>24&255];
+  function zip(files){const parts=[],cen=[];let off=0;
+    files.forEach(([name,str])=>{const nm=enc.encode(name),d=enc.encode(str),c=crc(d),meta=[...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(c),...u32(d.length),...u32(d.length),...u16(nm.length),...u16(0)];
+      const lh=new Uint8Array([0x50,0x4b,3,4,...meta]);parts.push(lh,nm,d);
+      cen.push(new Uint8Array([0x50,0x4b,1,2,...u16(20),...meta,...u16(0),...u16(0),...u16(0),...u32(0),...u32(off)]),nm);off+=lh.length+nm.length+d.length});
+    const cs=cen.reduce((a,x)=>a+x.length,0);
+    return new Blob([...parts,...cen,new Uint8Array([0x50,0x4b,5,6,0,0,0,0,...u16(files.length),...u16(files.length),...u32(cs),...u32(off),0,0])],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})}
+  const x=v=>String(v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const col=n=>{let s='';n++;while(n){s=String.fromCharCode(65+(n-1)%26)+s;n=Math.floor((n-1)/26)}return s};
+  const bd='<border><left style="thin"><color rgb="FF8A93A3"/></left><right style="thin"><color rgb="FF8A93A3"/></right><top style="thin"><color rgb="FF8A93A3"/></top><bottom style="thin"><color rgb="FF8A93A3"/></bottom><diagonal/></border>';
+  const al=(h,w)=>`<alignment horizontal="${h}" vertical="center"${w?' wrapText="1"':''}/>`;
+  const xf=(font,fill,border,a)=>`<xf numFmtId="0" fontId="${font}" fillId="${fill}" borderId="${border}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">${a}</xf>`;
+  /* styles: 0 plain · 1 title · 2 sub-title · 3 header · 4 text · 5 centre · 6 bold text · 7 bold centre · 8 red (below pass) · 9 total row · 10 green · 11 note */
+  const STY=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="7"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="16"/><color rgb="FF13294B"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFC00000"/><name val="Calibri"/></font><font><b/><sz val="12"/><color rgb="FF13294B"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FF0B6B3A"/><name val="Calibri"/></font></fonts>
+<fills count="6"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF13294B"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF3E9C4"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFBE6E6"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE4F6E4"/></patternFill></fill></fills>
+<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>${bd}</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="12"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>${xf(2,0,0,al('center'))}${xf(5,0,0,al('center'))}${xf(3,2,1,al('center',1))}${xf(0,0,1,al('left'))}${xf(0,0,1,al('center'))}${xf(1,0,1,al('left'))}${xf(1,0,1,al('center'))}${xf(4,4,1,al('center'))}${xf(1,3,1,al('center'))}${xf(6,5,1,al('center'))}${xf(1,0,0,al('left'))}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  function sheetXML(sh){const rows=sh.rows.map((r,i)=>`<row r="${i+1}"${sh.heights&&sh.heights[i]?` ht="${sh.heights[i]}" customHeight="1"`:''}>${r.map((cv,j)=>{if(cv==null)return'';const o=typeof cv==='object'?cv:{v:cv,s:0},v=o.v,ref=col(j)+(i+1),s=o.s?` s="${o.s}"`:'';
+      if(v==null||v==='')return o.s?`<c r="${ref}"${s}/>`:'';return typeof v==='number'&&isFinite(v)?`<c r="${ref}"${s}><v>${v}</v></c>`:`<c r="${ref}"${s} t="inlineStr"><is><t xml:space="preserve">${x(v)}</t></is></c>`}).join('')}</row>`).join('');
+    const fz=sh.freeze?`<pane${sh.freeze[0]?` xSplit="${sh.freeze[0]}"`:''}${sh.freeze[1]?` ySplit="${sh.freeze[1]}"`:''} topLeftCell="${col(sh.freeze[0])}${sh.freeze[1]+1}" activePane="${sh.freeze[0]&&sh.freeze[1]?'bottomRight':sh.freeze[1]?'bottomLeft':'topRight'}" state="frozen"/>`:'';
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0">${fz}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="16"/>
+<cols>${(sh.cols||[]).map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${rows}</sheetData>${sh.merges&&sh.merges.length?`<mergeCells count="${sh.merges.length}">${sh.merges.map(m=>`<mergeCell ref="${col(m[1])}${m[0]+1}:${col(m[3])}${m[2]+1}"/>`).join('')}</mergeCells>`:''}
+<printOptions horizontalCentered="1"/><pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="${sh.portrait?'portrait':'landscape'}" fitToWidth="1" fitToHeight="0"/></worksheet>`}
+  function save(name,sheets){const nm=sheets.map((s,i)=>(s.name||'Sheet'+(i+1)).replace(/[\[\]:*?\/\\]/g,' ').slice(0,31));
+    const files=[['[Content_Types].xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((s,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`],
+      ['_rels/.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+      ['xl/workbook.xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${nm.map((n,i)=>`<sheet name="${x(n)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')}</sheets></workbook>`],
+      ['xl/_rels/workbook.xml.rels',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((s,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+      ['xl/styles.xml',STY],...sheets.map((s,i)=>['xl/worksheets/sheet'+(i+1)+'.xml',sheetXML(s)])];
+    const a=document.createElement('a');a.href=URL.createObjectURL(zip(files));a.download=name.replace(/[^\w.-]+/g,'_');document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},5000)}
+  return{save}})();
+const n1=v=>v==null||v===''?'':Math.round(v*10)/10;
+/* title block shared by every Excel sheet */
+function xlHead(title,sub,width){return{rows:[[{v:SJS.school.name,s:1}],[{v:cfg().school.address||SJS.school.place,s:2}],[{v:title+'  ·  '+sub+'  ·  Session '+SJS.school.session,s:2}],[]],merges:[[0,0,0,width-1],[1,0,1,width-1],[2,0,2,width-1]],heights:[24,18,20]}}
+
 /* ---------- Results ---------- */
+const sx=(r,s)=>r.sub[s.key]||{has:false,T:{}};
+const secOf=r=>(cls(r.cid)||{}).section||'';
+const sortMerit=rows=>[...rows].sort((a,b)=>(a.rank||1e6)-(b.rank||1e6)||((b.p==null?-1:b.p)-(a.p==null?-1:a.p))||(+a.st.roll||0)-(+b.st.roll||0));
 async function vRes(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading…</div>';await load(M.cid);
-  const c=cls(M.cid),S=schemeOf(M.cid),sibs=SJS.classes.filter(k=>nc(k.cls)===nc(c.cls));if(sibs.length<2)M.scope='sec';
-  const head=`<div class="card"><div class="grid2">${classSel()}${viewSel(S)}${sibs.length>1?sel('scSel','Show',[['sec','Section '+(c.section||'')+' only'],['all','Whole Class '+c.cls+' (all sections)']],M.scope):''}</div></div>`;
-  const fin=M.view==='final';
-  if(M.scope==='all'){for(const k of sibs)await load(k.id);const parts=sibs.map(k=>({k,R:compute(k.id,M.view)}));const allRows=parts.flatMap(p=>p.R.rows);rankRows(allRows);const st=stats(allRows);
-    const top=allRows.filter(r=>r.rank&&r.rank<=10).sort((a,b)=>a.rank-b.rank);const title=`Class ${c.cls} (all sections) – ${viewName(S,M.view)}`;
-    m.innerHTML=head+kpis(st)+`<div class="card"><h3>Section comparison</h3><div class="scroll"><table class="tbl"><tr><th>Section</th><th>Students</th><th>Passed</th><th>Pass %</th><th>Average</th><th>Highest</th></tr>${parts.map(p=>{const x=stats(p.R.rows);return`<tr><td><b>${esc(classLabel(p.k))}</b></td><td>${x.n}</td><td>${x.pass}</td><td>${x.app?x.pp+'%':'–'}</td><td>${x.avg==null?'–':fmt(x.avg)+'%'}</td><td>${x.hi==null?'–':fmt(x.hi)+'%'}</td></tr>`}).join('')}</table></div></div>
-     <div class="card"><div class="row"><h3 class="grow" style="margin:0">Top 10 rank holders – Class ${esc(c.cls)}</h3><button class="btn sm" id="tPrint">Print</button><button class="btn sm" id="tCsv">Excel</button></div>${topList(top,true)}</div>`;
-    wire(m,vRes);$('#scSel').onchange=e=>{M.scope=e.target.value;vRes(m)};
-    $('#tPrint').onclick=()=>printDoc(title,'portrait',headHTML('TOP 10 RANK HOLDERS',title)+`<table class="g"><tr><th>Rank</th><th class="l">Name</th><th>Section</th><th>Roll</th><th>Total</th><th>%</th><th>Grade</th></tr>${top.map(r=>`<tr><td><b>${r.rank}</b></td><td class="l">${esc(r.st.name)}</td><td>${esc((cls(r.cid)||{}).section||'')}</td><td>${esc(r.st.roll)}</td><td>${fmt(r.tot)} / ${fmt(r.full)}</td><td>${fmt(r.p)}</td><td>${r.g}</td></tr>`).join('')}</table>${sigHTML(['Examination In-Charge','Principal'])}`);
-    $('#tCsv').onclick=()=>csvDownload('Class_'+c.cls+'_All_Sections.csv',[['Rank','Name','Section','Roll','Total','Full','%','Grade','Result'],...[...allRows].sort((a,b)=>(a.rank||9999)-(b.rank||9999)).map(r=>[r.rank||'',r.st.name,(cls(r.cid)||{}).section||'',r.st.roll,r.any?fmt(r.tot):'',r.any?fmt(r.full):'',r.p==null?'':fmt(r.p),r.g,stText(r,fin)])]);return}
-  const R=compute(M.cid,M.view),{SL,rows}=R,st=stats(rows),D=C[M.cid];const top=rows.filter(r=>r.rank&&r.rank<=10).sort((a,b)=>a.rank-b.rank);
-  const used=SL.filter(s=>rows.some(r=>r.sub[s.key].has));const cols=used.length?used:SL;
-  const an=cols.map(s=>{const v=rows.map(r=>r.sub[s.key]).filter(x=>x.has&&x.mx>0);return{s,n:v.length,avg:v.length?v.reduce((a,b)=>a+b.p,0)/v.length:null,hi:v.length?Math.max(...v.map(x=>x.p)):null,lo:v.length?Math.min(...v.map(x=>x.p)):null,ps:v.filter(x=>!x.fail).length}});
-  const weak=rows.filter(r=>r.status==='FAIL'||r.status==='COMP');const title=`Result Sheet – Class ${classLabel(c)} – ${viewName(S,M.view)}`;
-  const cell=(r,s)=>{const x=r.sub[s.key];return x.has?(x.mx>0?fmt(x.got):'✓'):''};
-  m.innerHTML=head+kpis(st)+`<div class="card"><div class="row"><h3 class="grow" style="margin:0">Result sheet – ${esc(classLabel(c))}</h3><button class="btn sm" id="rPrint">🖨 Print</button><button class="btn sm" id="rCsv">Excel</button><button class="btn sm" id="rCsv2">Excel (all marks)</button></div>
-    <div class="scroll" style="margin-top:8px"><table class="tbl"><tr><th>Roll</th><th>Name</th>${cols.map(s=>`<th>${esc(s.name)}${s.graded?'*':''}</th>`).join('')}<th>Total</th><th>%</th><th>Grade</th><th>Rank</th><th>Result</th></tr>
-    ${rows.map(r=>`<tr><td>${esc(r.st.roll)}</td><td>${esc(r.st.name)}</td>${cols.map(s=>`<td class="${r.sub[s.key].fail?'red':''}">${cell(r,s)}</td>`).join('')}<td><b>${r.any?fmt(r.tot)+'/'+fmt(r.full):''}</b></td><td>${r.p!=null?fmt(r.p):''}</td><td>${r.g}</td><td>${r.rank||''}</td><td>${stPill(r)}</td></tr>`).join('')}</table></div>
-    <div class="tmeta" style="margin-top:6px">Marks shown are the weighted totals for ${esc(viewName(S,M.view))}. Red = below ${cfg().pass}%.${cols.some(s=>s.graded)?' * = grade only, not counted in the total.':''}</div></div>
-   <div class="card"><h3>Top 10 rank holders</h3>${topList(top)}</div>
+  const c=cls(M.cid),S=schemeOf(M.cid),sibs=SJS.classes.filter(k=>nc(k.cls)===nc(c.cls));if(sibs.length<2)M.scope='sec';const all=M.scope==='all';
+  const parts=[];for(const k of (all?sibs:[c])){await load(k.id);parts.push({k,R:compute(k.id,M.view)})}
+  const rows0=parts.flatMap(p=>p.R.rows);if(all)rankRows(rows0);
+  const SLa=[];parts.forEach(p=>p.R.SL.forEach(s=>{if(!SLa.some(q=>q.key===s.key))SLa.push(s)}));
+  const used=SLa.filter(s=>rows0.some(r=>sx(r,s).has)),cols=used.length?used:SLa;
+  const merit=M.order==='merit',rows=merit?sortMerit(rows0):rows0,st=stats(rows0),fin=M.view==='final',vn=viewName(S,M.view),cv=compOfView(S,M.view);
+  const who=all?'Class '+c.cls+' (all sections)':'Class '+classLabel(c);
+  const top=rows0.filter(r=>r.rank&&r.rank<=10).sort((a,b)=>a.rank-b.rank);
+  const an=cols.map(s=>{const v=rows0.map(r=>sx(r,s)).filter(q=>q.has&&q.mx>0);return{s,n:v.length,avg:v.length?v.reduce((a,b)=>a+b.p,0)/v.length:null,hi:v.length?Math.max(...v.map(q=>q.p)):null,lo:v.length?Math.min(...v.map(q=>q.p)):null,ps:v.filter(q=>!q.fail).length}});
+  const weak=rows0.filter(r=>r.status==='FAIL'||r.status==='COMP');
+  const cell=(r,s)=>{const q=sx(r,s);return q.has?(q.mx>0?fmt(q.got):'✓'):''};
+  m.innerHTML=`<div class="card"><div class="grid2">${classSel()}${viewSel(S)}${sibs.length>1?sel('scSel','Show',[['sec','Section '+(c.section||'')+' only'],['all','Whole Class '+c.cls+' (all sections)']],M.scope):''}${sel('oSel','Order',[['roll','Roll No. order'],['merit','Merit order (rank 1 first)']],M.order)}</div></div>`+kpis(st)+
+   (all?`<div class="card"><h3>Section comparison</h3><div class="scroll"><table class="tbl"><tr><th>Section</th><th>Students</th><th>Passed</th><th>Pass %</th><th>Average</th><th>Highest</th></tr>${parts.map(p=>{const q=stats(p.R.rows);return`<tr><td><b>${esc(classLabel(p.k))}</b></td><td>${q.n}</td><td>${q.pass}</td><td>${q.app?q.pp+'%':'–'}</td><td>${q.avg==null?'–':fmt(q.avg)+'%'}</td><td>${q.hi==null?'–':fmt(q.hi)+'%'}</td></tr>`}).join('')}</table></div></div>`:'')+
+   `<div class="card"><h3 style="margin-bottom:6px">${merit?'Merit list':'Result sheet'} – ${esc(who)} · ${esc(vn)}</h3><div class="row"><button class="btn pri sm" id="rXl">⬇ Excel (complete result)</button><button class="btn sm" id="rPrint">🖨 Print ${merit?'merit list':'result sheet'}</button><button class="btn gold sm" id="rRev">🖨 Review sheet (merit-wise)</button></div>
+    <div class="scroll" style="margin-top:8px"><table class="tbl"><tr>${merit?'<th>Rank</th>':''}<th>Roll</th><th>Name</th>${all?'<th>Sec</th>':''}${cols.map(s=>`<th>${esc(s.name)}${s.graded?'*':''}</th>`).join('')}<th>Total</th><th>%</th><th>Grade</th>${merit?'':'<th>Rank</th>'}<th>Result</th></tr>
+    ${rows.map(r=>`<tr>${merit?`<td><span class="pill b">${r.rank||'–'}</span></td>`:''}<td>${esc(r.st.roll)}</td><td>${esc(r.st.name)}</td>${all?`<td>${esc(secOf(r))}</td>`:''}${cols.map(s=>`<td class="${sx(r,s).fail?'red':''}">${cell(r,s)}</td>`).join('')}<td><b>${r.any?fmt(r.tot)+'/'+fmt(r.full):''}</b></td><td>${r.p!=null?fmt(r.p):''}</td><td>${r.g}</td>${merit?'':`<td>${r.rank||''}</td>`}<td>${stPill(r)}</td></tr>`).join('')}</table></div>
+    <div class="tmeta" style="margin-top:6px">${cv?'Marks of '+esc(cv.c.name)+' as entered.':'Marks shown are the weighted totals for '+esc(vn)+'.'} Red = below ${cfg().pass}%.${cols.some(s=>s.graded)?' * = grade only, not counted in the total.':''}${cfg().rankPassOnly?' Rank is given to passed students only.':''}</div></div>
+   <div class="card"><h3>Top 10 rank holders</h3>${topList(top,all)}</div>
    <div class="card"><h3>Subject analysis</h3><div class="scroll"><table class="tbl"><tr><th>Subject</th><th>Appeared</th><th>Passed</th><th>Pass %</th><th>Average</th><th>Highest</th><th>Lowest</th></tr>${an.map(a=>`<tr><td><b>${esc(a.s.name)}</b></td><td>${a.n}</td><td>${a.ps}</td><td>${a.n?Math.round(a.ps/a.n*100)+'%':'–'}</td><td>${a.avg==null?'–':fmt(a.avg)+'%'}</td><td>${a.hi==null?'–':fmt(a.hi)+'%'}</td><td>${a.lo==null?'–':fmt(a.lo)+'%'}</td></tr>`).join('')}</table></div></div>
-   ${weak.length?`<div class="card"><h3>Students who need attention (${weak.length})</h3>${weak.map(r=>`<div class="li"><span class="pill">${esc(r.st.roll)}</span><span class="grow"><b>${esc(r.st.name)}</b><div class="tmeta">${r.failed.map(esc).join(', ')}</div></span>${stPill(r)}</div>`).join('')}</div>`:''}`;
-  wire(m,vRes);const sc=$('#scSel');if(sc)sc.onchange=e=>{M.scope=e.target.value;vRes(m)};
-  $('#rPrint').onclick=()=>printDoc(title,'landscape',headHTML('RESULT SHEET',`Class ${classLabel(c)} · ${viewName(S,M.view)}`)+`<table class="g"><tr><th>Roll</th><th class="l">Name</th>${cols.map(s=>`<th>${esc(s.name)}${s.graded?'*':''}</th>`).join('')}<th>Total</th><th>%</th><th>Grade</th><th>Rank</th><th>Result</th></tr>
-    ${rows.map(r=>`<tr><td>${esc(r.st.roll)}</td><td class="l">${esc(r.st.name)}</td>${cols.map(s=>`<td ${r.sub[s.key].fail?'class="f"':''}>${cell(r,s)}</td>`).join('')}<td><b>${r.any?fmt(r.tot)+' / '+fmt(r.full):''}</b></td><td>${r.p!=null?fmt(r.p):''}</td><td>${r.g}</td><td>${r.rank||''}</td><td>${stText(r,fin)}</td></tr>`).join('')}</table>
-    <p style="margin-top:8px">Students: <b>${st.n}</b> · Appeared: <b>${st.app}</b> · Passed: <b>${st.pass}</b>${st.comp?' · Compartment: <b>'+st.comp+'</b>':''} · Not passed: <b>${st.fail}</b> · Pass %: <b>${st.pp}%</b> · Class average: <b>${st.avg==null?'-':fmt(st.avg)+'%'}</b></p>${sigHTML(['Class Teacher','Examination In-Charge','Principal'])}`);
-  $('#rCsv').onclick=()=>csvDownload(title.replace(/[^\w-]+/g,'_')+'.csv',[['Roll','Name','Admission No',...cols.map(s=>s.name),'Total','Full','%','Grade','Rank','Result'],...rows.map(r=>[r.st.roll,r.st.name,r.st.adm||'',...cols.map(s=>cell(r,s)),r.any?fmt(r.tot):'',r.any?fmt(r.full):'',r.p!=null?fmt(r.p):'',r.g,r.rank||'',stText(r,fin)])]);
-  $('#rCsv2').onclick=()=>{const tt=fin?S.terms:S.terms.filter(t=>t.id===M.view);const hd=['Roll','Name'];cols.forEach(s=>tt.forEach(t=>t.comps.forEach(cp=>{if(!cdef(cp,s).na)hd.push(s.name+' – '+cp.name)})));
-    csvDownload(title.replace(/[^\w-]+/g,'_')+'_all_marks.csv',[hd,...rows.map(r=>{const o=[r.st.roll,r.st.name];cols.forEach(s=>tt.forEach(t=>t.comps.forEach(cp=>{if(cdef(cp,s).na)return;const d=D.marks[cp.id+'__'+s.key];const v=d&&d.m?d.m[r.st.roll]:'';o.push(v==null?'':v)})));return o})])}}
+   ${weak.length?`<div class="card"><h3>Students who need attention (${weak.length})</h3>${weak.map(r=>`<div class="li"><span class="pill">${esc(r.st.roll)}</span><span class="grow"><b>${esc(r.st.name)}</b><div class="tmeta">${all?esc(classLabel(cls(r.cid)))+' · ':''}${r.failed.map(esc).join(', ')}</div></span>${stPill(r)}</div>`).join('')}</div>`:''}`;
+  wire(m,vRes);const sc=$('#scSel');if(sc)sc.onchange=e=>{M.scope=e.target.value;vRes(m)};$('#oSel').onchange=e=>{M.order=e.target.value;ls('order',M.order);vRes(m)};
+  const sumLine=`<p style="margin-top:8px">Students: <b>${st.n}</b> · Appeared: <b>${st.app}</b> · Passed: <b>${st.pass}</b>${st.comp?' · Compartment: <b>'+st.comp+'</b>':''} · Not passed: <b>${st.fail}</b> · Pass %: <b>${st.pp}%</b> · Class average: <b>${st.avg==null?'-':fmt(st.avg)+'%'}</b></p>`;
+  const ptable=(list,rev)=>`<table class="g"><tr><th>Rank</th><th>Roll</th><th class="l">Name</th>${all?'<th>Sec</th>':''}${cols.map(s=>`<th>${esc(s.name)}${s.graded?'*':''}</th>`).join('')}<th>Total</th><th>%</th><th>Grade</th><th>Result</th>${rev?'<th class="l">Failed in</th><th style="width:16%">Remarks / Decision</th>':''}</tr>
+    ${list.map(r=>`<tr><td><b>${r.rank||'–'}</b></td><td>${esc(r.st.roll)}</td><td class="l">${esc(r.st.name)}</td>${all?`<td>${esc(secOf(r))}</td>`:''}${cols.map(s=>`<td ${sx(r,s).fail?'class="f"':''}>${cell(r,s)}</td>`).join('')}<td style="white-space:nowrap"><b>${r.any?fmt(r.tot)+' / '+fmt(r.full):''}</b></td><td>${r.p!=null?fmt(r.p):''}</td><td>${r.g}</td><td>${stText(r,fin)}</td>${rev?`<td class="l">${r.failed.map(esc).join(', ')}</td><td></td>`:''}</tr>`).join('')}</table>`;
+  $('#rPrint').onclick=()=>printDoc((merit?'Merit List – ':'Result Sheet – ')+who+' – '+vn,'landscape',headHTML(merit?'MERIT LIST':'RESULT SHEET',who+' · '+vn)+ptable(rows)+sumLine+sigHTML(['Class Teacher','Examination In-Charge','Principal']));
+  $('#rRev').onclick=()=>printDoc('Result Review Sheet – '+who+' – '+vn,'landscape',headHTML('RESULT REVIEW SHEET (MERIT-WISE)',who+' · '+vn)+ptable(sortMerit(rows0),true)+sumLine+`<p>Reviewed on: ____________________ &nbsp;&nbsp; Decisions of the Result Review Committee are written in the last column.</p>`+sigHTML(['Class Teacher','Examination In-Charge','Principal']));
+  $('#rXl').onclick=()=>{const B=v=>({v,s:7}),Lc=v=>({v,s:4}),Cc=v=>({v,s:5}),H=v=>({v,s:3});
+    const hdr=['Rank','Roll No','Adm. No','Name',...(all?['Section']:[]),...cols.map(s=>s.name+(s.graded?' *':'')),'Total','Out of','%','Grade','Result','Failed in'],W=hdr.length,fx=all?5:4;
+    const line=r=>[B(r.rank||''),Cc(isNaN(+r.st.roll)?r.st.roll:+r.st.roll),Cc(r.st.adm||''),{v:r.st.name,s:6},...(all?[Cc(secOf(r))]:[]),...cols.map(s=>{const q=sx(r,s);return{v:q.has?(q.mx>0?n1(q.got):'✓'):'',s:q.fail?8:5}}),B(r.any?n1(r.tot):''),Cc(r.any?n1(r.full):''),B(r.p!=null?n1(r.p):''),B(r.g),{v:stText(r,fin),s:r.status==='PASS'?10:r.status?8:5},Lc(r.failed.join(', '))];
+    const widths=[7,8,13,28,...(all?[8]:[]),...cols.map(s=>Math.max(9,Math.min(16,s.name.length+2))),9,8,8,8,16,30];
+    const main=(title,list,nm)=>{const h=xlHead(title,who+' – '+vn,W);const rws=[...h.rows,hdr.map(H),...list.map(line),[],
+        [{v:'Students: '+st.n+'    Appeared: '+st.app+'    Passed: '+st.pass+(st.comp?'    Compartment: '+st.comp:'')+'    Not passed: '+st.fail+'    Pass %: '+st.pp+'%    Class average: '+(st.avg==null?'-':fmt(st.avg)+'%')+'    Highest: '+(st.hi==null?'-':fmt(st.hi)+'%'),s:11}],
+        [{v:(cv?'Marks of '+cv.c.name+' as entered.':'Marks are the weighted totals for '+vn+'.')+' Pass mark '+cfg().pass+'% in each subject.'+(cols.some(s=>s.graded)?' * = grade only, not counted in the total.':''),s:0}],[],[],
+        [null,{v:'Class Teacher',s:11},null,null,null,null,{v:'Examination In-Charge',s:11},null,null,null,null,{v:'Principal',s:11}]];
+      return{name:nm,rows:rws,merges:h.merges,heights:{...h.heights,4:32},cols:widths,freeze:[fx,5]}};
+    const sheets=[main('RESULT SHEET',rows0,'Result Sheet'),main('MERIT LIST',sortMerit(rows0),'Merit List')];
+    if(!cv){const tt=viewTerms(S,M.view),h1=[H('Roll No'),H('Name'),...(all?[H('Section')]:[])],h2=[H(''),H(''),...(all?[H('')]:[])],mg=[],base=all?3:2;let ci=base;const plan=[];
+      cols.forEach(s=>{const start=ci;tt.forEach(t=>{t.comps.forEach((cp,i)=>{if(cdef(cp,s).na)return;plan.push({s,t,i});h1.push(H(s.name));h2.push(H((tt.length>1?t.name+' ':'')+cp.name));ci++});plan.push({s,t,tot:1});h1.push(H(s.name));h2.push(H((tt.length>1?t.name+' ':'')+'Total'));ci++});
+        if(fin&&tt.length>1){plan.push({s,all:1});h1.push(H(s.name));h2.push(H('Overall'));ci++;plan.push({s,gr:1});h1.push(H(s.name));h2.push(H('Grade'));ci++}mg.push([4,start,4,ci-1])});
+      const tail=['Total','Out of','%','Grade','Rank','Result'];tail.forEach(t=>{h1.push(H(t));h2.push(H(''));mg.push([4,ci,5,ci]);ci++});for(let i=0;i<base;i++)mg.push([4,i,5,i]);
+      const h=xlHead('COMPLETE MARKS',who+' – '+vn,ci);
+      const body=rows0.map(r=>[Cc(isNaN(+r.st.roll)?r.st.roll:+r.st.roll),{v:r.st.name,s:6},...(all?[Cc(secOf(r))]:[]),...plan.map(p=>{const q=sx(r,p.s);if(p.gr)return B(q.mx>0?q.g:'');if(p.all)return{v:q.has&&q.mx>0?n1(q.got):'',s:q.fail?8:7};const T=(q.T||{})[p.t.id];if(!T)return Cc('');
+          if(p.tot)return{v:T.has&&T.mx>0?n1(T.got):'',s:T.has&&T.mx>0&&r2(T.p)<(+cfg().pass)?8:7};const k=T.cells[p.i]||{};return Cc(k.v===undefined?'':k.v)}),B(r.any?n1(r.tot):''),Cc(r.any?n1(r.full):''),B(r.p!=null?n1(r.p):''),B(r.g),B(r.rank||''),{v:stText(r,fin),s:r.status==='PASS'?10:r.status?8:5}]);
+      sheets.push({name:'All Marks',rows:[...h.rows,h1,h2,...body,[],[{v:'Exam columns show the marks as entered. Totals are weighted (converted) marks.',s:0}]],merges:[...h.merges,...mg],heights:{...h.heights,5:44},cols:[8,28,...(all?[8]:[]),...plan.map(()=>10),9,8,8,8,7,16],freeze:[base,6]})}
+    const ha=xlHead('SUBJECT ANALYSIS',who+' – '+vn,7);
+    sheets.push({name:'Subject Analysis',portrait:1,rows:[...ha.rows,['Subject','Appeared','Passed','Pass %','Average %','Highest %','Lowest %'].map(H),...an.map(a=>[{v:a.s.name,s:6},Cc(a.n),Cc(a.ps),Cc(a.n?Math.round(a.ps/a.n*100):''),Cc(n1(a.avg)),Cc(n1(a.hi)),Cc(n1(a.lo))]),[],
+      ['Grade','Students'].map(H),...cfg().grades.slice().sort((a,b)=>b.min-a.min).map(g=>[B(g.g),Cc(rows0.filter(r=>r.any&&r.g===g.g).length)]),
+      ...(all?[[],['Section','Students','Passed','Pass %','Average %','Highest %'].map(H),...parts.map(p=>{const q=stats(p.R.rows);return[{v:classLabel(p.k),s:6},Cc(q.n),Cc(q.pass),Cc(q.app?q.pp:''),Cc(n1(q.avg)),Cc(n1(q.hi))]})]:[])],merges:ha.merges,heights:ha.heights,cols:[26,11,11,11,12,12,12]});
+    XL.save('Result_'+(all?'Class_'+c.cls+'_All':classLabel(c))+'_'+vn+'.xlsx',sheets);toast('Excel file downloaded')}}
 const kpis=st=>`<div class="kp"><div class="k"><b>${st.app}</b><span>Appeared</span></div><div class="k g"><b>${st.pass}</b><span>Passed</span></div>${st.comp?`<div class="k y"><b>${st.comp}</b><span>Compartment</span></div>`:''}<div class="k r"><b>${st.fail}</b><span>Not passed</span></div><div class="k y"><b>${st.app?st.pp+'%':'–'}</b><span>Pass %</span></div><div class="k p"><b>${st.avg==null?'–':fmt(st.avg)+'%'}</b><span>Average</span></div><div class="k"><b>${st.hi==null?'–':fmt(st.hi)+'%'}</b><span>Highest</span></div></div>`;
 const topList=(top,sec)=>top.length?top.map(r=>`<div class="li"><span class="pill b">${r.rank}</span><span class="grow"><b>${esc(r.st.name)}</b> <span class="tmeta">${sec?esc(classLabel(cls(r.cid)))+' · ':''}Roll ${esc(r.st.roll)}</span></span><b>${fmt(r.p)}%</b><span class="pill">${r.g}</span></div>`).join(''):'<div class="empty">No marks yet.</div>';
 
@@ -408,8 +473,8 @@ function waText(cid,R,r,view){const c=cls(cid),S=R.S,L=['*'+SJS.school.name+'*',
   R.SL.forEach(s=>{const x=r.sub[s.key];if(x.has&&x.mx>0)L.push(s.name+': '+fmt(x.got)+'/'+fmt(x.mx)+' ('+x.g+')')});
   L.push('','Total: *'+fmt(r.tot)+' / '+fmt(r.full)+'*','Percentage: *'+fmt(r.p)+'%*   Grade: '+r.g);if(r.rank)L.push('Rank: '+r.rank);L.push('Result: *'+stText(r,view==='final')+'*');return L.join('\n')}
 async function vCards(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading…</div>';const D=await load(M.cid);
-  const S=schemeOf(M.cid),c=cls(M.cid),R=compute(M.cid,M.view),fin=M.view==='final';const O=M.co=M.co||{date:SJS.todayISO(),rank:true,chart:true};
-  m.innerHTML=`<div class="card"><div class="grid2">${classSel()}${viewSel(S,'vSel','Report card for')}<label class="f">Date on the card<input class="inp" id="oDate" type="date" value="${esc(O.date||'')}"></label>
+  const S=schemeOf(M.cid),c=cls(M.cid);{const q=compOfView(S,M.view);if(q)M.view=q.t.id}const R=compute(M.cid,M.view),fin=M.view==='final';const O=M.co=M.co||{date:SJS.todayISO(),rank:true,chart:true};
+  m.innerHTML=`<div class="card"><div class="grid2">${classSel()}${viewSel(S,'vSel','Report card for',true)}<label class="f">Date on the card<input class="inp" id="oDate" type="date" value="${esc(O.date||'')}"></label>
     ${fin?`<label class="f">Promoted to Class<input class="inp" id="oPromo" value="${esc(O.promo!==undefined?O.promo:nextCls(c))}"></label><label class="f">School reopens on<input class="inp" id="oRe" type="date" value="${esc(O.reopen||'')}"></label>`:''}</div>
     <div class="row" style="margin-top:10px"><label class="pill" style="padding:6px 10px"><input type="checkbox" id="oRank" ${O.rank?'checked':''}> Show rank</label><label class="pill" style="padding:6px 10px"><input type="checkbox" id="oChart" ${O.chart?'checked':''}> Show chart</label><div class="grow"></div><button class="btn pri" id="rcAll">🖨 Print all ${D.students.length} report cards</button></div>
     <p class="sub" style="margin:8px 0 0">A4 portrait, one page for each student. In the print window choose “Save as PDF” to keep a copy. Attendance, co-scholastic grades and remarks come from <b>Grades &amp; Remarks</b>.</p></div>
@@ -470,7 +535,7 @@ window.SJS_DEMO_SEED=D=>{const names=['Lalremruata','Vanlalhriati','Zothanpuii',
   ['vi-a','x-a'].forEach(cid=>{const m={},r={};names.forEach((n,i)=>{m[i+1]=96+((i*5)%14)});D[`c/${cid}/marks/x_t1__att`]={exam:'x_t1',subj:'att',max:110,m};
     cosAreas(G('mid')).forEach((a,j)=>{const g={};names.forEach((n,i)=>g[i+1]=['A','A','B','A','C'][(i+j)%5]);D[`c/${cid}/marks/x_t1__c${skey(a).slice(0,19)}`]={exam:'x_t1',subj:'cos:'+a,m:g}})})};
 
-SJS.boot('Result Software',async()=>{M.tab=lg('tab')||'dash';if(M.tab==='setup'&&!SJS.isAdmin)M.tab='dash';M.view=lg('view')||'t1';
+SJS.boot('Result Software',async()=>{M.tab=lg('tab')||'dash';if(M.tab==='setup'&&!SJS.isAdmin)M.tab='dash';M.view=lg('view')||'t1';M.order=lg('order')||'roll';
   let n=0;const go=()=>{if(++n<2)return;if(n===2||!dirtyN())render()};
   SJS.db.watch('mk_cfg/cbse',d=>{if(d){const x=JSON.parse(JSON.stringify(DEF));Object.keys(d).forEach(k=>{if(k==='school')Object.assign(x.school,d.school||{});else x[k]=d[k]});CFG=x}else CFG=null;go()});
   SJS.db.watch('mk_cfg/main',d=>{OLD=d||{};go()})});

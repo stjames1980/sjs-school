@@ -1,5 +1,5 @@
 // SJS App – offline cache for all sections. Change VERSION when you upload new app files.
-const VERSION = "sjs-school-v16";
+const VERSION = "sjs-school-v17";
 const SHELL = ["./", "./index.html", "./manifest.json", "./config.js", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png", "./logo.png", "./favicon.png",
   "./timetable.html", "./attendance.html", "./chart.png",
   "./marks.html", "./school.html", "./sjs-common.js", "./sjs-common.css"];
