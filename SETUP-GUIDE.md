@@ -131,3 +131,5 @@ The **Marks & Report Cards** tile is now **Result Software**. Upload these 5 cha
 **Version 24.** Health Status prints once (latest height and weight). Margins 6 mm on all sides. A dashed space for the Principal's seal under the signatures. Upload `marks.html` and `sw.js`.
 
 **Result review (version 26).** Results → choose the class and **Final Result** → the **Result review** list at the bottom shows every student below the pass mark. The Admin, Principal or Exam In-Charge taps **Review** to (1) give **grace marks** in a subject, (2) **promote on special consideration**, or (3) **detain**. A failed Final result now reads **DETAINED in Class …**. Grace marks print with a † on the report card. Lock "Final result review" in Setup when the results are issued. Upload `marks.html` and `sw.js`.
+
+**Version 27.** The version number shows at the bottom of Result Software. Updates now appear as soon as GitHub has published them (no 10-minute wait). Setup → Class groups → **↺ Use the latest default for this group** brings one group (for example Pre-Primary) up to the newest exams, subjects, grades and card design. Upload `marks.html` and `sw.js`.
