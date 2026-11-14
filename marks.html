@@ -45,7 +45,7 @@ details.grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;ma
    c/<classId>/marks/<examId>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}
    c/<classId>/marks/x_<termId>__att | __rem | __c<Area>   attendance, remarks, co-scholastic grades for a term */
 const {$,esc,toast,sheet,closeSheet,pasteRows,classLabel,waPhone}=SJS;
-const VER='42';
+const VER='43';
 const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const CBSE_T=(n,pt,ex,exn)=>({id:'t'+n,name:'Term '+n,comps:[{id:'pt'+n,name:pt,max:10},{id:'nb'+n,name:'Note Book',max:5},{id:'se'+n,name:'SEA',max:5},{id:ex,name:exn,max:80}]});
 const DEF={
@@ -280,18 +280,19 @@ async function vCos(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.
   const S=schemeOf(M.cid),term=S.terms.find(t=>t.id===M.term)||S.terms[0],areas=cosAreas(S),scale=cosScale(S),tid=term.id;
   const can=(SJS.canClass(M.cid)||SJS.canView)&&(SJS.isAdmin||!locked('x_'+tid));const ak=a=>xid(tid,'c'+skey(a).slice(0,19));
   const sv=(id,roll)=>{const d=D.marks[id];const v=d&&d.m?d.m[roll]:undefined;return v==null?'':v};
-  const fst=cardOf(S)==='first';const A=M.cos||{att:{},rem:{},cos:{},ht:{},wk:{},spl:{},wd:undefined};A.spl=A.spl||{};const ad=D.marks[xid(tid,'att')]||{};const aFrom=A.from!==undefined?A.from:(ad.from||''),aTo=A.to!==undefined?A.to:(ad.to||'');const wd=A.wd!==undefined?A.wd:(+(D.marks[xid(tid,'att')]||{}).max||'');
+  const fst=cardOf(S)==='first';const A=M.cos||{att:{},rem:{},cos:{},ht:{},wk:{},spl:{},wd:undefined};A.spl=A.spl||{};A.mode=A.mode||{rem:modeOf(D,tid,'rem'),spl:modeOf(D,tid,'spl')};const MO=[['mix','Automatic + teacher can change (empty box = automatic)'],['auto','Automatic only'],['manual','Teacher writes only (empty = blank lines)']];const ad=D.marks[xid(tid,'att')]||{};const aFrom=A.from!==undefined?A.from:(ad.from||''),aTo=A.to!==undefined?A.to:(ad.to||'');const wd=A.wd!==undefined?A.wd:(+(D.marks[xid(tid,'att')]||{}).max||'');
   const R=compute(M.cid,tid===mainT(S)[mainT(S).length-1].id?'final':tid);
   m.innerHTML=`<div class="card"><div class="grid2">${classSel()}${sel('tSel','Term',S.terms.map(t=>[t.id,t.name]),tid)}<label class="f">Working days in ${esc(term.name)}<input class="inp" id="wd" type="number" min="0" value="${esc(wd)}" ${can?'':'disabled'}></label></div>
     ${SJS.canClass(M.cid)&&D.students.length?`<div class="row" style="margin-top:10px"><button class="btn gold sm" id="bpB">📷 Bulk photo upload</button><span class="tmeta">${D.students.filter(x=>x.photo).length} of ${D.students.length} students have a photo</span></div>`:''}
     ${can?`<div class="grid2" style="margin-top:10px"><label class="f">${esc(term.name)} from<input class="inp" id="aF" type="date" value="${esc(aFrom)}"></label><label class="f">${esc(term.name)} to<input class="inp" id="aT" type="date" value="${esc(aTo)}"></label><label class="f">&nbsp;<button class="btn green" id="aFill">Fill attendance from Student Attendance</button></label></div>`:''}
+    <div class="grid2" style="margin-top:10px">${sel('mRem',"Class teacher's remarks on the card",MO,A.mode.rem)}${fst?sel('mSpl','“I am special because…” on the card',MO,A.mode.spl):''}</div>
     <p class="sub" style="margin:8px 0 0">For the report card and result sheets: attendance, ${fst?'My Skills stars':'co-scholastic grades'} (${scale.map(esc).join(' / ')}) and the class teacher's remark. Empty remark = automatic remark.</p>
-    ${can?`<div class="row" style="margin-top:8px"><button class="btn sm" id="fillA">Give ${esc(scale[0])} to all empty grades</button><button class="btn sm" id="fillR">Write automatic remarks in empty boxes</button><div class="grow"></div><button class="btn pri" id="svC" ${M.cos?'':'disabled'}>${M.cos?'Save':'Saved ✓'}</button></div>`:'<div class="banner warn" style="margin:8px 0 0">Only the class teacher and the Admin can change this'+(locked('x_'+tid)?' (🔒 locked)':'')+'.</div>'}</div>
+    ${can?`<div class="row" style="margin-top:8px"><button class="btn sm" id="fillA">Give ${esc(scale[0])} to all empty grades</button><button class="btn sm" id="fillR">Write automatic remarks in empty boxes</button>${fst?'<button class="btn sm" id="fillS">Write automatic “I am special” in empty boxes</button>':''}<div class="grow"></div><button class="btn pri" id="svC" ${M.cos?'':'disabled'}>${M.cos?'Save':'Saved ✓'}</button></div>`:'<div class="banner warn" style="margin:8px 0 0">Only the class teacher and the Admin can change this'+(locked('x_'+tid)?' (🔒 locked)':'')+'.</div>'}</div>
   ${D.students.map((st,i)=>{const r=R.rows[i];return `<div class="stu"><div class="h"><span class="pill">${esc(st.roll)}</span>${st.photo?`<img src="${st.photo}" alt="" style="width:30px;height:30px;border-radius:50%;object-fit:cover">`:''}<b class="grow">${esc(st.name)}</b>${SJS.canClass(M.cid)?`<button class="btn sm" data-det="${i}">Details</button>`:''}</div>
     <div class="cg"><label>Days present<input class="inp" type="number" min="0" data-att="${esc(st.roll)}" value="${esc(A.att[st.roll]!==undefined?A.att[st.roll]:sv(xid(tid,'att'),st.roll))}" ${can?'':'disabled'}></label>
     ${[['ht','Height (cm)'],['wk','Weight (kg)']].map(([k,l])=>`<label>${l}<input class="inp" type="number" min="0" step="0.1" data-hw="${k}" data-r="${esc(st.roll)}" value="${esc(A[k][st.roll]!==undefined?A[k][st.roll]:sv(xid(tid,k==='ht'?'ht':'wt'),st.roll))}" ${can?'':'disabled'}></label>`).join('')}
     ${areas.map(a=>{const v=(A.cos[a]||{})[st.roll]!==undefined?A.cos[a][st.roll]:sv(ak(a),st.roll);return`<label>${esc(a)}<select class="inp" data-cos="${esc(a)}" data-r="${esc(st.roll)}" ${can?'':'disabled'}><option value=""></option>${scale.map(g=>`<option ${g===v?'selected':''}>${esc(g)}</option>`).join('')}</select></label>`}).join('')}</div>
-    <label class="f" style="margin-top:6px">Remark<input class="inp" data-rem="${esc(st.roll)}" maxlength="160" value="${esc(A.rem[st.roll]!==undefined?A.rem[st.roll]:sv(xid(tid,'rem'),st.roll))}" placeholder="${esc(autoRemark(r)||'Remark')}" ${can?'':'disabled'}></label>${fst?`<label class="f" style="margin-top:6px">I am special because…<input class="inp" data-spl="${esc(st.roll)}" maxlength="120" value="${esc(A.spl[st.roll]!==undefined?A.spl[st.roll]:sv(xid(tid,'spl'),st.roll))}" placeholder="Empty = blank lines on the card, to write by hand" ${can?'':'disabled'}></label>`:''}</div>`}).join('')||'<div class="card empty">No students in this class yet.</div>'}`;
+    <label class="f" style="margin-top:6px">Remark<input class="inp" data-rem="${esc(st.roll)}" maxlength="160" value="${esc(A.rem[st.roll]!==undefined?A.rem[st.roll]:sv(xid(tid,'rem'),st.roll))}" placeholder="${esc(A.mode.rem==='manual'?'Remark (empty = blank lines on the card)':autoRemark(r)||'Remark')}" ${can&&A.mode.rem!=='auto'?'':'disabled'}></label>${fst?`<label class="f" style="margin-top:6px">I am special because…<input class="inp" data-spl="${esc(st.roll)}" maxlength="120" value="${esc(A.spl[st.roll]!==undefined?A.spl[st.roll]:sv(xid(tid,'spl'),st.roll))}" placeholder="${esc(A.mode.spl==='manual'?'Empty = blank lines on the card, to write by hand':autoSpecial(r,S,D,tid)||'Empty = blank lines on the card')}" ${can&&A.mode.spl!=='auto'?'':'disabled'}></label>`:''}</div>`}).join('')||'<div class="card empty">No students in this class yet.</div>'}`;
   wire(m,vCos);$('#tSel').onchange=e=>{if(!guard(e,'term'))return;M.term=e.target.value;vCos(m)};
   const bp=$('#bpB');if(bp)bp.onclick=()=>{if(dirtyN()&&!confirm('Grades not saved. Continue anyway?'))return;clearDirty();bulkPhotos(m)};
   const touch=()=>{M.cos=A;const b=$('#svC');if(b){b.disabled=false;b.textContent='Save'}};
@@ -299,6 +300,8 @@ async function vCos(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.
   m.querySelectorAll('[data-att]').forEach(i=>i.oninput=()=>{A.att[i.dataset.att]=i.value.trim();touch()});
   m.querySelectorAll('[data-rem]').forEach(i=>i.oninput=()=>{A.rem[i.dataset.rem]=i.value.trim();touch()});
   m.querySelectorAll('[data-spl]').forEach(i=>i.oninput=()=>{A.spl[i.dataset.spl]=i.value.trim();touch()});
+  $('#mRem').onchange=e=>{A.mode.rem=e.target.value;A.modeCh=1;touch();vCos(m)};const ms=$('#mSpl');if(ms)ms.onchange=e=>{A.mode.spl=e.target.value;A.modeCh=1;touch();vCos(m)};
+  const fs=$('#fillS');if(fs)fs.onclick=()=>{let n=0;m.querySelectorAll('[data-spl]').forEach(i=>{if(!i.value.trim()&&!i.disabled){const t=autoSpecial(R.rows[D.students.findIndex(x=>String(x.roll)===i.dataset.spl)],S,D,tid);if(t){i.value=t;A.spl[i.dataset.spl]=t;n++}}});if(n){touch();toast(n+' written – edit any of them, then Save')}else toast('No empty boxes (or no marks yet)')};
   m.querySelectorAll('[data-hw]').forEach(i=>i.oninput=()=>{A[i.dataset.hw][i.dataset.r]=i.value.trim();touch()});
   m.querySelectorAll('[data-cos]').forEach(i=>i.onchange=()=>{(A.cos[i.dataset.cos]=A.cos[i.dataset.cos]||{})[i.dataset.r]=i.value;touch()});
   const fr=$('#fillR');if(fr)fr.onclick=()=>{let n=0;m.querySelectorAll('[data-rem]').forEach(i=>{if(!i.value.trim()&&i.placeholder&&i.placeholder!=='Remark'){i.value=i.placeholder;A.rem[i.dataset.rem]=i.value;n++}});if(n){touch();toast(n+' remarks written – edit any of them, then Save')}else toast('No empty remark boxes (or no marks yet)')};
@@ -310,6 +313,7 @@ async function vCos(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.
     if(Object.keys(att).length||A.wd!==undefined)jobs.push(saveMk(M.cid,xid(tid,'att'),{exam:ex,subj:'att',max:+$('#wd').value||0,from:$('#aF')?$('#aF').value:'',to:$('#aT')?$('#aT').value:''},att));
     [['ht','ht'],['wk','wt']].forEach(([k,id])=>{const ch={};Object.entries(A[k]).forEach(([r,v])=>ch[r]=v===''?null:+v);if(Object.keys(ch).length)jobs.push(saveMk(M.cid,xid(tid,id),{exam:ex,subj:id},ch))});
     const rem={};Object.entries(A.rem).forEach(([r,v])=>rem[r]=v||null);if(Object.keys(rem).length)jobs.push(saveMk(M.cid,xid(tid,'rem'),{exam:ex,subj:'rem'},rem));
+    if(A.modeCh)jobs.push(saveMk(M.cid,xid(tid,'opt'),{exam:ex,subj:'opt',rem:A.mode.rem,spl:A.mode.spl},{}));
     const spl={};Object.entries(A.spl).forEach(([r,v])=>spl[r]=v||null);if(Object.keys(spl).length)jobs.push(saveMk(M.cid,xid(tid,'spl'),{exam:ex,subj:'spl'},spl));
     Object.entries(A.cos).forEach(([a,o])=>{const ch={};Object.entries(o).forEach(([r,v])=>ch[r]=v||null);jobs.push(saveMk(M.cid,ak(a),{exam:ex,subj:'cos:'+a},ch))});
     sb.disabled=true;await Promise.all(jobs);M.cos=null;toast(navigator.onLine?'Saved':'Saved on this phone – it will upload when the internet returns');vCos(m)};
@@ -518,25 +522,25 @@ const FSYM=`<svg width="0" height="0" style="position:absolute"><defs>
 <symbol id="f_ball" viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="#fde047"/><path d="M50 6 A44 44 0 0 1 94 50 L50 50z" fill="#f87171"/><path d="M50 94 A44 44 0 0 1 6 50 L50 50z" fill="#60a5fa"/><circle cx="50" cy="50" r="10" fill="#fff"/></symbol>
 </defs></svg>`;
 /* clip art: [picture, left mm, top mm, width mm, height mm, turn°, colour] – they sit in the two side margins of the card */
-const FART=[['star',4,4,7,7,-12],['star',187,5,6,6,14],['star',36,3,4,4,10],['star',158,3.5,4,4,-8],['cloud',1.5,33,12,7],['cloud',184.5,33,12,7],
-  ['balloon',2.5,62,7,11.2,-6,'#fb7185'],['balloon',6,66,6,9.6,8,'#60a5fa'],['book',1.5,93,12,9.5,-8],['pencil',5,112,4.5,22,12],['fly',1.5,143,12,10,-8],['apple',2.5,166,10,11,6],
-  ['kite',2,188,11,17,-8],['star',4,214,6,6,10],['flower',3,228,9,13.5,0,'#f472b6'],
-  ['kite',185,58,11,17,10],['nums',184,86,10.5,6],['crayon',185.5,104,3.6,15.5,-12,'#f87171'],['crayon',190,105,3.6,15.5,8,'#34d399'],['ball',186,134,9.5,9.5],['plane',185,157,11,11,6],
-  ['balloon',186,180,7,11.2,6,'#a78bfa'],['balloon',190,185,5.5,8.8,-8,'#fbbf24'],['heart',187,212,7,6.5,10],['flower',186,228,9,13.5,0,'#fb923c'],
-  ['blocks',2,258,12,12],['flower',184.5,256,7,10.5,-6,'#60a5fa'],['flower',190,259,6,9,6,'#f472b6']]
+const FART=[['star',3,3.5,6.5,6.5,-12],['star',188.5,4.5,6,6,14],['star',36,3,4,4,10],['star',158,3.5,4,4,-8],['cloud',1.5,34,9.5,5.6],['cloud',187,34,9.5,5.6],
+  ['balloon',1.5,60,5.5,8.8,-6,'#fb7185'],['balloon',5,64,5,8,8,'#60a5fa'],['book',1.5,92,9.5,7.5,-8],['pencil',4.5,110,3.8,19,12],['fly',1.5,140,9.5,8],['apple',2,163,8.5,9.4,6],
+  ['kite',1.5,186,9,14,-8],['star',3.5,212,5.5,5.5,10],['flower',2.5,227,7.5,11.3,0,'#f472b6'],
+  ['kite',187.5,57,9,14,10],['nums',186.5,86,8.6,5],['crayon',188,104,3.2,14,-12,'#f87171'],['crayon',192,105,3.2,14,8,'#34d399'],['ball',188,134,8,8],['plane',187.5,157,9,9,6],
+  ['balloon',188,180,5.5,8.8,6,'#a78bfa'],['balloon',191.5,185,4.6,7.4,-8,'#fbbf24'],['heart',188.5,212,6.5,6,10],['flower',188,227,7.5,11.3,0,'#fb923c'],
+  ['blocks',1.5,259,10,10],['flower',187,257,5.5,8.3,-6,'#60a5fa'],['flower',191.5,260,5,7.5,6,'#f472b6']]
   .map(([i,x,y,w,h,rot,col])=>`<svg class="f_ca" style="left:${x}mm;top:${y}mm;width:${w}mm;height:${h}mm;${rot?'transform:rotate('+rot+'deg);':''}${col?'color:'+col:''}" preserveAspectRatio="xMidYMin meet"><use href="#f_${i}"/></svg>`).join('');
 const FCSS=`
 .fc{position:relative;min-height:284.7mm;border:2px solid #fbbf24;border-radius:18px;overflow:hidden;background:#fff;display:flex;flex-direction:column;font-family:"Segoe UI",Roboto,Arial,Helvetica,sans-serif;font-size:12.5px;color:#1f2937;margin:0 auto}
 .fc:before{content:'';position:absolute;top:1.6mm;left:1.6mm;right:1.6mm;bottom:1.6mm;border:1.5px dashed #7dd3fc;border-radius:14px;pointer-events:none}
 .f_ca{position:absolute;z-index:0}.f_wm{position:absolute;left:50%;top:52%;width:105mm;transform:translate(-50%,-50%);opacity:.05;z-index:0}
-.f_in{position:relative;z-index:1;flex:1;display:flex;flex-direction:column;padding:5mm 17mm 3.5mm}
+.f_in{position:relative;z-index:1;flex:1;display:flex;flex-direction:column;padding:5mm 11.5mm 3.5mm}
 .f_hd{display:flex;align-items:center;gap:10px}.f_hd img{width:21mm;height:21mm;object-fit:contain;flex:none}.f_hc{flex:1;text-align:center;min-width:0}
-.f_sn{font-size:20.5px;font-weight:900;letter-spacing:.2px;white-space:nowrap;color:#1e3a8a}.f_mo{font-size:14.5px;font-weight:700;font-style:italic;color:#dc2626;margin:1px 0 2px}.f_sa{font-size:10px;color:#475569;line-height:1.35}
+.f_sn{font-size:20.5px;font-weight:900;letter-spacing:.2px;white-space:nowrap;color:#1e3a8a}.f_mo{font-size:14.5px;font-weight:700;font-style:italic;color:#dc2626;margin:1px 0 2px}.f_sa{font-size:10px;color:#334155;line-height:1.35}
 .f_rule{height:4px;border-radius:9px;margin:2.2mm 0 0;background:linear-gradient(90deg,#f87171 0,#f87171 20%,#fbbf24 20%,#fbbf24 40%,#4ade80 40%,#4ade80 60%,#60a5fa 60%,#60a5fa 80%,#c084fc 80%)}
 .f_ttl{display:flex;align-items:center;justify-content:center;gap:9px;margin:1.6mm 0 1.8mm}.f_ttl svg{width:13mm;height:13mm;flex:none}.f_ttl svg.f_rb{width:19mm;height:12mm}
 .f_ttl .f_tx{text-align:center}.f_ttl b{display:block;font-size:25px;font-weight:900;letter-spacing:1.5px;line-height:1.05}.f_ttl b i{font-style:normal}
 .f_chip{display:inline-block;margin-top:3px;background:#fff7ed;color:#c2410c;border:1px solid #fdba74;border-radius:99px;padding:2px 12px;font-weight:700;font-size:11.5px}
-.f_pf{display:flex;gap:12px;border:1.5px solid #bfdbfe;border-radius:14px;padding:7px 12px;background:#fff}.f_pg{flex:1;min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:3px 20px;align-content:space-between;font-size:13px}.f_pg div{border-bottom:1px dotted #cbd5e1;padding-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.f_pg span{color:#64748b;font-size:11px}
+.f_pf{display:flex;gap:12px;border:1.5px solid #bfdbfe;border-radius:14px;padding:7px 12px;background:#fff}.f_pg{flex:1;min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:3px 20px;align-content:space-between;font-size:13px}.f_pg div{border-bottom:1px dotted #cbd5e1;padding-bottom:3px;line-height:1.3}.f_pg span{color:#475569;font-size:11px;white-space:nowrap}
 .f_ph{width:24mm;height:28mm;border:1.5px dashed #f9a8d4;border-radius:12px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:9.5px;background:#fff;flex:none;object-fit:cover}img.f_ph{border-style:solid}
 .fc h3{margin:6px 0 3px;font-size:13.5px;font-weight:900;letter-spacing:.5px;text-transform:uppercase;display:flex;align-items:center;gap:7px;color:#1e3a8a}.fc h3 svg{width:15px;height:15px}.fc h3 small{margin-left:auto;text-transform:none;font-weight:600;color:#475569;letter-spacing:0;font-size:11px}.fc h3 small b{color:#f59e0b;letter-spacing:1px}.fc s{color:#d1d5db;text-decoration:none}
 .f_lr{display:grid;grid-template-columns:1.55fr 1fr;gap:10px}
@@ -548,14 +552,23 @@ table.f_mk{width:100%;border-collapse:separate;border-spacing:0;border:1.5px sol
 .f_sr{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:1.9px 10px 1.9px 12px;border-top:1px solid #f1f5f9;font-size:12px}.f_sr i{font-style:normal;color:#f59e0b;letter-spacing:1.5px;font-size:14px;white-space:nowrap;font-weight:700}
 .f_tri{display:grid;grid-template-columns:1fr 1fr 1.45fr;gap:10px;margin-top:7px}
 .f_bx{border:1.5px solid;border-radius:14px;background:#fff;overflow:hidden;display:flex;flex-direction:column}.f_bx h4{margin:0;font-size:12px;font-weight:900;letter-spacing:.4px;text-transform:uppercase;padding:4px 11px;display:flex;align-items:center;gap:6px}.f_bx h4 svg{width:14px;height:14px}
-.f_bx .f_r{display:flex;justify-content:space-between;padding:2.3px 11px;font-size:12.5px;border-top:1px dotted #e2e8f0}.f_bx .f_r span{color:#475569}.f_bx .f_r b{font-weight:800}
-.f_bx p{margin:0;padding:4px 11px;font-size:12.5px;line-height:1.4;font-style:italic;color:#374151;flex:1}.f_bx p.f_ln{background:repeating-linear-gradient(transparent,transparent 6.4mm,#cbd5e1 6.4mm,#cbd5e1 6.6mm);background-origin:content-box;background-clip:content-box;min-height:14mm;margin:0 0 3px}
-.f_rm{margin-top:7px;border-radius:14px;background:#fffbeb;border:1.5px solid #fcd34d;padding:6px 12px;font-size:13px;line-height:1.45}.f_rm b{color:#b45309}
+.f_bx .f_r{display:flex;justify-content:space-between;padding:2.3px 11px;font-size:12.5px;border-top:1px dotted #e2e8f0}.f_bx .f_r span{color:#334155}.f_bx .f_r b{font-weight:800}
+.f_bx p{margin:0;padding:4px 11px;font-size:12.5px;line-height:1.4;font-style:italic;color:#374151;flex:1}.f_bx p.f_ln{min-height:11mm!important;background:repeating-linear-gradient(transparent,transparent 6.4mm,#cbd5e1 6.4mm,#cbd5e1 6.6mm);background-origin:content-box;background-clip:content-box;min-height:14mm;margin:0 0 3px}
+.f_rm.f_ln{min-height:12mm;background:#fffbeb repeating-linear-gradient(transparent,transparent 6.4mm,#e5d3a1 6.4mm,#e5d3a1 6.6mm);background-origin:content-box;background-clip:content-box}.f_rm{margin-top:7px;border-radius:14px;background:#fffbeb;border:1.5px solid #fcd34d;padding:6px 12px;font-size:13px;line-height:1.45}.f_rm b{color:#b45309}
 .f_rs{margin-top:7px;border-radius:14px;background:#ecfdf5;border:1.5px solid #6ee7b7;padding:6px 14px;font-weight:900;color:#065f46;font-size:14.5px;display:flex;justify-content:space-between;align-items:center;gap:10px}.f_rs span{font-weight:600;font-size:12px;color:#334155;text-align:right}.f_rs.f_bad{background:#fef2f2;border-color:#fca5a5;color:#b91c1c}
-.f_bt{margin-top:auto;padding-top:12.5mm}.f_sig{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}.f_sig div{text-align:center;font-size:11px;color:#475569}.f_sig div b{display:block;border-top:1.2px solid #111;padding-top:3px;font-size:12px;color:#111;margin-top:1px}
+.f_bt{margin-top:auto;padding-top:12.5mm}.f_sig{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;align-items:end}.f_sig div{text-align:center;font-size:11.5px;font-weight:600;color:#111;white-space:nowrap;letter-spacing:-.1px}.f_sig div b{display:block;border-top:1.2px solid #111;padding-top:3px;font-size:12px;color:#111;margin-top:1px}
 .f_seal{display:flex;justify-content:center;margin-top:2px}.f_seal span{width:36mm;height:11mm;border:1px dashed #64748b;border-radius:6px;display:flex;align-items:flex-end;justify-content:center;font-size:8.5px;color:#475569;background:#fff}
 .f_gs{display:flex;justify-content:center;gap:3px;margin-top:5px;font-size:9.2px;flex-wrap:nowrap}.f_gs b{font-size:10px;color:#1e3a8a;margin-right:3px;align-self:center;white-space:nowrap}.f_gs span{border:1px solid #dbeafe;background:#fff;border-radius:99px;padding:2px 5px;white-space:nowrap}.f_gs span i{font-style:normal;font-weight:900;color:#92400e}
 `;
+const modeOf=(D,tid,k)=>{const d=D&&D.marks[xid(tid,'opt')];return(d&&d[k])||'mix'};   /* mix = teacher's text, automatic when empty · auto = automatic only · manual = teacher's text only */
+const pickTxt=(mode,typed,auto)=>mode==='auto'?auto:mode==='manual'?typed:(typed||auto);
+const GPH={'language':'I love to talk, listen and learn new words','number':'I love counting and playing with shapes','creative':'I love drawing, singing and playing','personal':'I am kind and share with my friends','social':'I am kind and share with my friends','physical':'I love to run, jump and play'};
+function autoSpecial(r,S,D,tid){if(!r||!r.any)return'';const st=r.st,sv=k=>{const d=D.marks[xid(tid,k)];const v=d&&d.m?d.m[st.roll]:undefined;return v==null?'':String(v)};
+  const subs=Object.entries(r.sub).filter(([k,x])=>x.has&&x.mx>0).sort((a,b)=>b[1].p-a[1].p);const best=subs.length?(subjOf(r.cid).find(q=>q.key===subs[0][0])||{}).name:'';
+  const sc=x=>(String(x).match(/★/g)||[]).length||({A:3,B:2,C:1}[x]||0);let bg=null,bv=-1;skillGroups(S).forEach(g=>{const v=g.items.reduce((a,it)=>a+sc(sv('c'+skey(it).slice(0,19))),0)/g.items.length;if(v>bv){bv=v;bg=g}});
+  const gk=bg&&bg.name?Object.keys(GPH).find(k=>bg.name.toLowerCase().includes(k)):null,gp=bg&&bv>0?(gk?GPH[gk]:bg.name?'I shine in '+bg.name.toLowerCase():''):'';
+  const d=D.marks[xid(tid,'att')],ap=sv('att'),w=d&&d.max?+d.max:0,att=ap!==''&&w&&+ap/w>=0.9?'I come to school almost every day':'I always try my best with a big smile';
+  const parts=[best&&r.sub[subs[0][0]].p>=56?'I shine in '+noCode(best):'',gp,att].filter(Boolean);return parts.length>1?parts.slice(0,-1).join(', ')+' and '+parts[parts.length-1]+'.':parts[0]+'.'}
 const skillGroups=S=>String(S.cos||'').split(';').map(g=>{const i=g.indexOf(':');return{name:i<0?'':g.slice(0,i).trim(),items:(i<0?g:g.slice(i+1)).split(',').map(x=>x.trim()).filter(Boolean)}}).filter(g=>g.items.length);
 function firstCard(cid,R,r,o){const {S,SL}=R,D=C[cid],c=cls(cid),st=r.st,sc=cfg().school,fin=o.view==='final',shown=fin?mainT(S):S.terms.filter(t=>t.id===o.view),lastT=shown[shown.length-1]||S.terms[0];
   const sv=id=>{const d=D.marks[id];const v=d&&d.m?d.m[st.roll]:undefined;return v==null?'':v};
@@ -573,7 +586,7 @@ function firstCard(cid,R,r,o){const {S,SL}=R,D=C[cid],c=cls(cid),st=r.st,sc=cfg(
   const ic=i=>`<svg viewBox="0 0 100 100"><use href="#f_${i}"/></svg>`;
   const GC=[['#2563eb','#eff6ff'],['#059669','#ecfdf5'],['#db2777','#fdf2f8'],['#d97706','#fffbeb'],['#7c3aed','#f5f3ff'],['#0891b2','#ecfeff']];
   const groups=skillGroups(S),gr=gradesOf(S),words=gr.length===5?['Outstanding','Excellent','Very Good','Good','Needs Help']:[];
-  const remark=o.remark||lastV('rem')||autoRemark(r),spl=lastV('spl'),ht=lastV('ht'),wt=lastV('wt');
+  const remark=o.remark||pickTxt(modeOf(D,lastT.id,'rem'),lastV('rem'),autoRemark(r)),spl=pickTxt(modeOf(D,lastT.id,'spl'),lastV('spl'),autoSpecial(r,S,D,lastT.id)),ht=lastV('ht'),wt=lastV('wt');
   const bad=r.status==='FAIL'||r.status==='COMP';
   const res=r.status==='PASS'?(r.sc?esc(scT().toUpperCase())+(o.promo?' – Promoted to '+esc(o.promo):''):r.sp?'SIMPLE PASS'+(o.promo?' – Promoted to '+esc(o.promo):''):o.promo?'PROMOTED TO '+esc(o.promo).toUpperCase():'PASSED'):r.status==='COMP'?'COMPARTMENT in '+r.failed.map(noCode).map(esc).join(', '):r.status==='FAIL'?'DETAINED in '+esc(c.cls):'–';
   return `<div class="fc">${FSYM}${FART}<img class="f_wm" src="${logoURL()}" alt=""><div class="f_in">
@@ -592,7 +605,7 @@ function firstCard(cid,R,r,o){const {S,SL}=R,D=C[cid],c=cls(cid),st=r.st,sc=cfg(
    <div class="f_bx" style="border-color:#059669"><h4 style="background:#ecfdf5;color:#059669">${ic('apple')} My Health</h4><div class="f_r"><span>Height</span><b>${ht!==''?esc(ht)+' cm':'&nbsp;'}</b></div><div class="f_r"><span>Weight</span><b>${wt!==''?esc(wt)+' kg':'&nbsp;'}</b></div><div class="f_r"><span>Blood group</span><b>${esc(st.blood||'')||'&nbsp;'}</b></div></div>
    <div class="f_bx" style="border-color:#2563eb"><h4 style="background:#eff6ff;color:#2563eb">${ic('ball')} My Attendance</h4><div class="f_r"><span>Working days</span><b>${aW||'&nbsp;'}</b></div><div class="f_r"><span>Days present</span><b>${aHas?aP:'&nbsp;'}</b></div><div class="f_r"><span>Attendance</span><b>${aHas&&aW?pc(aP/aW*100):'&nbsp;'}</b></div></div>
    <div class="f_bx" style="border-color:#db2777"><h4 style="background:#fdf2f8;color:#db2777">${ic('heart')} I am special because…</h4>${spl?`<p>${esc(spl)}</p>`:'<p class="f_ln"></p>'}</div></div>
-  <div class="f_rm"><b>Class Teacher's Remarks:</b> ${esc(remark)}</div>
+  <div class="f_rm${remark?'':' f_ln'}"><b>Class Teacher's Remarks:</b> ${esc(remark)}</div>
   <div class="f_rs${bad?' f_bad':''}"><div>Result: ${res}</div><span>${o.date?'Date of issue: '+esc(fmtD(o.date)):''}${o.reopen?(o.date?'<br>':'')+'School reopens on: '+esc(fmtD(o.reopen)):''}</span></div>
   <div class="f_bt"><div class="f_sig">${[[ct,'Class Teacher'],[principalName(),'Principal'],[st.father||st.parent||st.mother||'','Parent / Guardian']].map(([nm,l])=>`<div>${esc(nm)||'&nbsp;'}<b>${l}</b></div>`).join('')}</div>
    <div class="f_seal"><span>Principal's seal</span></div>
@@ -620,7 +633,7 @@ function cardHTML(cid,R,r,o){if(cardOf(R.S)==='first')return firstCard(cid,R,r,o
   const clab=cp=>{const w=cp.wt==null?cp.max:cp.wt;return esc(cp.name)+(cp.kind?'':w===0?'<br><small>(not counted)</small>':'<br><small>('+w+')</small>')};
   const tmax=t=>t.comps.reduce((a,cp)=>a+(cp.wt==null?+cp.max:+cp.wt),0);
   const sv=(id)=>{const d=D.marks[id];const v=d&&d.m?d.m[st.roll]:undefined;return v==null?'':v};
-  const lastT=shown[shown.length-1];const remark=o.remark||sv(xid(lastT.id,'rem'))||autoRemark(r);
+  const lastT=shown[shown.length-1];const remark=o.remark||pickTxt(modeOf(D,lastT.id,'rem'),sv(xid(lastT.id,'rem')),autoRemark(r));
   const att=shown.map(t=>{const d=D.marks[xid(t.id,'att')];const p=sv(xid(t.id,'att'));return{t,p,w:d&&d.max?+d.max:''}}).filter(x=>x.p!==''||x.w);
   const attP=att.reduce((a,x)=>a+(+x.p||0),0),attW=att.reduce((a,x)=>a+(+x.w||0),0);
   const areas=cosAreas(S);const ak=(t,a)=>xid(t.id,'c'+skey(a).slice(0,19));
