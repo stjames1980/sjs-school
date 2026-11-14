@@ -45,12 +45,12 @@ details.grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;ma
    c/<classId>/marks/<examId>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}
    c/<classId>/marks/x_<termId>__att | __rem | __c<Area>   attendance, remarks, co-scholastic grades for a term */
 const {$,esc,toast,sheet,closeSheet,pasteRows,classLabel,waPhone}=SJS;
-const VER='28';
+const VER='30';
 const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const CBSE_T=(n,pt,ex,exn)=>({id:'t'+n,name:'Term '+n,comps:[{id:'pt'+n,name:pt,max:10},{id:'nb'+n,name:'Note Book',max:5},{id:'se'+n,name:'SEA',max:5},{id:ex,name:exn,max:80}]});
 const DEF={
   school:{issued:'(Issued by school as per directives of Central Board of Secondary Education, Delhi)',motto:'Faith And Service',address:'Gongrai, PO. Kendraicherra, Dist-Sepahijala, Tripura-799102',affil:'2030038',code:'35414',udise:'16050401504',email:'stjames579@gmail.com'},
-  pass:33,compMax:2,rankPassOnly:true,
+  pass:33,compMax:2,compMode:'sp',rankPassOnly:true,
   grades:[{min:91,g:'A1'},{min:81,g:'A2'},{min:71,g:'B1'},{min:61,g:'B2'},{min:51,g:'C1'},{min:41,g:'C2'},{min:33,g:'D'},{min:0,g:'E'}],
   schemes:[
    {id:'pp',name:'Pre-Primary (Nursery – KG)',classes:'Nursery, LKG, UKG, KG, KG-I, KG-II',final:'avg',sepPass:false,grades:'A+=90, A=75, B=56, C=33, D=0',cos:'Conversation, Rhymes & Recitation, Drawing & Colouring, Handwriting, Games, Discipline',cosScale:'A, B, C',
@@ -142,7 +142,7 @@ const viewName=(S,v)=>{const cv=compOfView(S,v);return v==='final'?'Final Result
 
 /* ---------- the result calculation ---------- */
 const gkey=s=>'x_fin__g'+s.key.slice(0,18);const rvOf=(D,k,roll)=>{const d=D.marks['x_fin__'+k];const v=d&&d.m?d.m[roll]:'';return v==null?'':v};
-function compute(cid,view){const isFin=view==='final',D=C[cid],S=schemeOf(cid),SL=subjOf(cid),pass=+cfg().pass||33,cm=compOfView(S,view);
+function compute(cid,view){const isFin=view==='final',D=C[cid],isTerm=schemeOf(cid).terms.some(t=>t.id===view),S=schemeOf(cid),SL=subjOf(cid),pass=+cfg().pass||33,cm=compOfView(S,view);
   const agg=(view==='final'?(S.final==='last'?[S.terms[S.terms.length-1]]:S.terms):S.terms.filter(t=>t.id===view)).map(t=>t.id);
   const eq=view==='final'&&S.final!=='last'&&S.terms.length>1,share=100/S.terms.length;   // Final = Term 1 50% + Term 2 50% (out of 100)
   const rows=D.students.map(st=>{const sub={};let tot=0,full=0,nf=0;const failed=[];
@@ -160,20 +160,20 @@ function compute(cid,view){const isFin=view==='final',D=C[cid],S=schemeOf(cid),S
       sub[s.key]={T,got:g,mx,p,has,fail,grace,g:grade(p,S)};
       if(has&&mx>0&&!s.graded){tot+=g;full+=mx;if(fail){nf++;failed.push(s.name)}}});
     const p=full?tot/full*100:null;
-    let status=!full?'':nf===0?'PASS':(view==='final'&&nf<=(+cfg().compMax||0))?'COMP':'FAIL',sc=false,det=false;
-    const dv=isFin&&full?rvOf(D,'dec',st.roll):'';if(dv==='SC'&&status!=='PASS'){status='PASS';sc=true}else if(dv==='DET'&&status!=='FAIL'){status='FAIL';det=true}   // decision of the review committee
-    return{st,cid,sub,tot,full,p,g:grade(p,S),nf,failed,status,sc,det,fin:isFin,note:isFin?rvOf(D,'note',st.roll):'',any:full>0}});
+    const few=(isFin||isTerm)&&nf>0&&nf<=(+cfg().compMax||0);let sp=few&&cfg().compMode!=='comp',status=!full?'':nf===0?'PASS':few?(sp?'PASS':isFin?'COMP':'FAIL'):'FAIL',sc=false,det=false;if(!full)sp=false;   // failing in 1–2 subjects: Simple Pass (promoted) or Compartment, as chosen in Setup
+    const dv=isFin&&full?rvOf(D,'dec',st.roll):'';if(dv==='SC'&&status!=='PASS'){status='PASS';sc=true}else if(dv==='DET'&&status!=='FAIL'){status='FAIL';det=true;sp=false}   // decision of the review committee
+    return{st,cid,sub,tot,full,p,g:grade(p,S),nf,failed,status,sc,det,sp,fin:isFin,note:isFin?rvOf(D,'note',st.roll):'',any:full>0}});
   rankRows(rows);return{S,SL,rows,view}}
-function rankRows(rows){rows.forEach(r=>delete r.rank);const pool=rows.filter(r=>r.any&&(!cfg().rankPassOnly||(r.status==='PASS'&&!r.sc))).sort((a,b)=>b.p-a.p);
+function rankRows(rows){rows.forEach(r=>delete r.rank);const pool=rows.filter(r=>r.any&&(!cfg().rankPassOnly||(r.status==='PASS'&&!r.sc&&!r.sp))).sort((a,b)=>b.p-a.p);
   let rk=0,last=null;pool.forEach(r=>{const k=r2(r.p);if(k!==last){rk++;last=k}r.rank=rk})}
 const termTot=(r,SL,tid)=>{let g=0,m=0;SL.forEach(s=>{const x=r.sub[s.key].T[tid];if(x&&x.has&&x.mx>0&&!s.graded){g+=x.got;m+=x.mx}});return{g,m,p:m?g/m*100:null}};
-const stText=(r,fin)=>r.status==='PASS'?(fin?(r.sc?'PROMOTED (SPECIAL CONSIDERATION)':'PASSED'):'PASS'):r.status==='COMP'?'COMPARTMENT':r.status==='FAIL'?(fin?'DETAINED':'NEEDS IMPROVEMENT'):'';
+const stText=(r,fin)=>r.status==='PASS'?(r.sp?'SIMPLE PASS':fin?(r.sc?'PROMOTED (SPECIAL CONSIDERATION)':'PASSED'):'PASS'):r.status==='COMP'?'COMPARTMENT':r.status==='FAIL'?(fin?'DETAINED':'NEEDS IMPROVEMENT'):'';
 const rvText=(r,SL)=>[r.sc?'Promoted on special consideration':r.det?'Detained by review':'',SL.filter(s=>(r.sub[s.key]||{}).grace).map(s=>s.name+' +'+fmt(r.sub[s.key].grace)+' grace').join(', '),r.note].filter(Boolean).join('; ');
-const stPill=r=>r.status?`<span class="pill ${r.status==='PASS'?'g':r.status==='COMP'?'y':'r'}">${r.status==='PASS'?(r.sc?'Promoted (S.C.)':'Pass'):r.status==='COMP'?'Compartment':r.fin?'Detained':'Fail'}</span>`:'';
+const stPill=r=>r.status?`<span class="pill ${r.status==='PASS'?(r.sp||r.sc?'y':'g'):r.status==='COMP'?'y':'r'}">${r.status==='PASS'?(r.sc?'Promoted (S.C.)':r.sp?'Simple pass':'Pass'):r.status==='COMP'?'Compartment':r.fin?'Detained':'Fail'}</span>`:'';
 function stats(rows){const a=rows.filter(r=>r.any),p=a.filter(r=>r.status==='PASS'),co=a.filter(r=>r.status==='COMP');
-  return{n:rows.length,app:a.length,pass:p.length,comp:co.length,fail:a.length-p.length-co.length,pp:a.length?Math.round(p.length/a.length*100):0,
+  return{n:rows.length,app:a.length,sp:a.filter(r=>r.sp).length,pass:p.length,comp:co.length,fail:a.length-p.length-co.length,pp:a.length?Math.round(p.length/a.length*100):0,
     avg:a.length?a.reduce((x,r)=>x+r.p,0)/a.length:null,hi:a.length?Math.max(...a.map(r=>r.p)):null}}
-function autoRemark(r){if(r.p==null)return'';if(r.sc)return'Promoted on special consideration. Must work much harder in the next class.';if(r.status==='FAIL')return'Needs to work much harder. Parents are requested to meet the Class Teacher.';if(r.status==='COMP')return'Must prepare well for the compartment subject(s).';
+function autoRemark(r){if(r.p==null)return'';if(r.sp)return'Simple pass. Must work harder in '+r.failed.join(' and ')+'.';if(r.sc)return'Promoted on special consideration. Must work much harder in the next class.';if(r.status==='FAIL')return'Needs to work much harder. Parents are requested to meet the Class Teacher.';if(r.status==='COMP')return'Must prepare well for the compartment subject(s).';
   if(r.p>=90)return'Outstanding performance. Keep it up!';if(r.p>=75)return'Very good performance. Keep working hard.';if(r.p>=60)return'Good. Can do even better with regular study.';if(r.p>=45)return'Satisfactory. Needs more effort and practice.';return'Passed, but must improve with regular study.'}
 
 /* ---------- page frame ---------- */
@@ -273,7 +273,7 @@ async function vCos(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.
     ${SJS.canClass(M.cid)&&D.students.length?`<div class="row" style="margin-top:10px"><button class="btn gold sm" id="bpB">📷 Bulk photo upload</button><span class="tmeta">${D.students.filter(x=>x.photo).length} of ${D.students.length} students have a photo</span></div>`:''}
     ${can?`<div class="grid2" style="margin-top:10px"><label class="f">${esc(term.name)} from<input class="inp" id="aF" type="date" value="${esc(aFrom)}"></label><label class="f">${esc(term.name)} to<input class="inp" id="aT" type="date" value="${esc(aTo)}"></label><label class="f">&nbsp;<button class="btn green" id="aFill">Fill attendance from Student Attendance</button></label></div>`:''}
     <p class="sub" style="margin:8px 0 0">For the report card and result sheets: attendance, co-scholastic grades (${scale.map(esc).join(' / ')}) and the class teacher's remark. Empty remark = automatic remark.</p>
-    ${can?`<div class="row" style="margin-top:8px"><button class="btn sm" id="fillA">Give ${esc(scale[0])} to all empty grades</button><div class="grow"></div><button class="btn pri" id="svC" ${M.cos?'':'disabled'}>${M.cos?'Save':'Saved ✓'}</button></div>`:'<div class="banner warn" style="margin:8px 0 0">Only the class teacher and the Admin can change this'+(locked('x_'+tid)?' (🔒 locked)':'')+'.</div>'}</div>
+    ${can?`<div class="row" style="margin-top:8px"><button class="btn sm" id="fillA">Give ${esc(scale[0])} to all empty grades</button><button class="btn sm" id="fillR">Write automatic remarks in empty boxes</button><div class="grow"></div><button class="btn pri" id="svC" ${M.cos?'':'disabled'}>${M.cos?'Save':'Saved ✓'}</button></div>`:'<div class="banner warn" style="margin:8px 0 0">Only the class teacher and the Admin can change this'+(locked('x_'+tid)?' (🔒 locked)':'')+'.</div>'}</div>
   ${D.students.map((st,i)=>{const r=R.rows[i];return `<div class="stu"><div class="h"><span class="pill">${esc(st.roll)}</span>${st.photo?`<img src="${st.photo}" alt="" style="width:30px;height:30px;border-radius:50%;object-fit:cover">`:''}<b class="grow">${esc(st.name)}</b>${SJS.canClass(M.cid)?`<button class="btn sm" data-det="${i}">Details</button>`:''}</div>
     <div class="cg"><label>Days present<input class="inp" type="number" min="0" data-att="${esc(st.roll)}" value="${esc(A.att[st.roll]!==undefined?A.att[st.roll]:sv(xid(tid,'att'),st.roll))}" ${can?'':'disabled'}></label>
     ${[['ht','Height (cm)'],['wk','Weight (kg)']].map(([k,l])=>`<label>${l}<input class="inp" type="number" min="0" step="0.1" data-hw="${k}" data-r="${esc(st.roll)}" value="${esc(A[k][st.roll]!==undefined?A[k][st.roll]:sv(xid(tid,k==='ht'?'ht':'wt'),st.roll))}" ${can?'':'disabled'}></label>`).join('')}
@@ -287,6 +287,7 @@ async function vCos(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.
   m.querySelectorAll('[data-rem]').forEach(i=>i.oninput=()=>{A.rem[i.dataset.rem]=i.value.trim();touch()});
   m.querySelectorAll('[data-hw]').forEach(i=>i.oninput=()=>{A[i.dataset.hw][i.dataset.r]=i.value.trim();touch()});
   m.querySelectorAll('[data-cos]').forEach(i=>i.onchange=()=>{(A.cos[i.dataset.cos]=A.cos[i.dataset.cos]||{})[i.dataset.r]=i.value;touch()});
+  const fr=$('#fillR');if(fr)fr.onclick=()=>{let n=0;m.querySelectorAll('[data-rem]').forEach(i=>{if(!i.value.trim()&&i.placeholder&&i.placeholder!=='Remark'){i.value=i.placeholder;A.rem[i.dataset.rem]=i.value;n++}});if(n){touch();toast(n+' remarks written – edit any of them, then Save')}else toast('No empty remark boxes (or no marks yet)')};
   const af=$('#aFill');if(af)af.onclick=async()=>{const f=$('#aF').value,t=$('#aT').value;if(!f||!t||f>t){toast('Choose the first and last date of the term');return}af.disabled=true;af.textContent='Counting…';
     try{const x=await attRegister(M.cid,f,t);if(!x.W){toast('No working days found between these dates in Student Attendance');af.disabled=false;af.textContent='Fill attendance from Student Attendance';return}
       A.wd=x.W;A.from=f;A.to=t;Object.entries(x.out).forEach(([r,v])=>A.att[r]=String(v));M.cos=A;toast(x.W+' working days counted – check, then Save');vCos(m)}catch(e){toast('Could not read Student Attendance – check the internet');af.disabled=false;af.textContent='Fill attendance from Student Attendance'}};
@@ -389,7 +390,7 @@ async function vRes(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.
   const who=all?'Class '+c.cls+' (all sections)':'Class '+classLabel(c);
   const top=rows0.filter(r=>r.rank&&r.rank<=10).sort((a,b)=>a.rank-b.rank);
   const an=cols.map(s=>{const v=rows0.map(r=>sx(r,s)).filter(q=>q.has&&q.mx>0);return{s,n:v.length,avg:v.length?v.reduce((a,b)=>a+b.p,0)/v.length:null,hi:v.length?Math.max(...v.map(q=>q.p)):null,lo:v.length?Math.min(...v.map(q=>q.p)):null,ps:v.filter(q=>!q.fail).length}});
-  const weak=rows0.filter(r=>r.status==='FAIL'||r.status==='COMP'||r.sc||r.det||cols.some(s=>sx(r,s).grace));const canRv=fin&&!all&&SJS.canView&&(SJS.isAdmin||!locked('x_fin'));
+  const weak=rows0.filter(r=>r.status==='FAIL'||r.status==='COMP'||r.sp||r.sc||r.det||cols.some(s=>sx(r,s).grace));const canRv=fin&&!all&&SJS.canView&&(SJS.isAdmin||!locked('x_fin'));
   const cell=(r,s)=>{const q=sx(r,s);return q.has?(q.mx>0?fmt(q.got):'✓'):''};
   m.innerHTML=`<div class="card"><div class="grid2">${classSel()}${viewSel(S)}${sibs.length>1?sel('scSel','Show',[['sec','Section '+(c.section||'')+' only'],['all','Whole Class '+c.cls+' (all sections)']],M.scope):''}${sel('oSel','Order',[['roll','Roll No. order'],['merit','Merit order (rank 1 first)']],M.order)}</div></div>`+kpis(st)+
    (all?`<div class="card"><h3>Section comparison</h3><div class="scroll"><table class="tbl"><tr><th>Section</th><th>Students</th><th>Passed</th><th>Pass %</th><th>Average</th><th>Highest</th></tr>${parts.map(p=>{const q=stats(p.R.rows);return`<tr><td><b>${esc(classLabel(p.k))}</b></td><td>${q.n}</td><td>${q.pass}</td><td>${q.app?q.pp+'%':'–'}</td><td>${q.avg==null?'–':fmt(q.avg)+'%'}</td><td>${q.hi==null?'–':fmt(q.hi)+'%'}</td></tr>`}).join('')}</table></div></div>`:'')+
@@ -412,7 +413,7 @@ async function vRes(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.
     $('#rvOk').onclick=async()=>{const jobs=[saveMk(M.cid,'x_fin__dec',{exam:'x_fin',subj:'dec'},{[r.st.roll]:$('#rvD').value||null}),saveMk(M.cid,'x_fin__note',{exam:'x_fin',subj:'note'},{[r.st.roll]:$('#rvN').value.trim()||null})];
       document.querySelectorAll('[data-gr]').forEach(i=>{const q=cnt.find(z=>z.key===i.dataset.gr),v=+i.value||0;if(v!==(sx(r,q).grace||0)||v)jobs.push(saveMk(M.cid,gkey(q),{exam:'x_fin',subj:'grace:'+q.name},{[r.st.roll]:v>0?v:null}))});
       await Promise.all(jobs);closeSheet();toast('Decision saved');vRes(m)}});
-  const sumLine=`<p style="margin-top:8px">Students: <b>${st.n}</b> · Appeared: <b>${st.app}</b> · Passed: <b>${st.pass}</b>${st.comp?' · Compartment: <b>'+st.comp+'</b>':''} · Not passed: <b>${st.fail}</b> · Pass %: <b>${st.pp}%</b> · Class average: <b>${st.avg==null?'-':fmt(st.avg)+'%'}</b></p>`;
+  const sumLine=`<p style="margin-top:8px">Students: <b>${st.n}</b> · Appeared: <b>${st.app}</b> · Passed: <b>${st.pass}</b>${st.sp?' (Simple pass: <b>'+st.sp+'</b>)':''}${st.comp?' · Compartment: <b>'+st.comp+'</b>':''} · Not passed: <b>${st.fail}</b> · Pass %: <b>${st.pp}%</b> · Class average: <b>${st.avg==null?'-':fmt(st.avg)+'%'}</b></p>`;
   const ptable=(list,rev)=>`<table class="g"><tr><th>Rank</th><th>Roll</th><th class="l">Name</th>${all?'<th>Sec</th>':''}${cols.map(s=>`<th>${esc(s.name)}${s.graded?'*':''}</th>`).join('')}<th>Total</th><th>%</th><th>Grade</th><th>Attendance</th><th>Result</th>${rev?'<th class="l">Failed in</th><th style="width:16%">Remarks / Decision</th>':''}</tr>
     ${list.map(r=>`<tr><td><b>${r.rank||'–'}</b></td><td>${esc(r.st.roll)}</td><td class="l">${esc(r.st.name)}</td>${all?`<td>${esc(secOf(r))}</td>`:''}${cols.map(s=>`<td ${sx(r,s).fail?'class="f"':''}>${cell(r,s)}</td>`).join('')}<td style="white-space:nowrap"><b>${r.any?fmt(r.tot)+' / '+fmt(r.full):''}</b></td><td>${r.p!=null?fmt(r.p):''}</td><td>${r.g}</td><td style="white-space:nowrap">${attOf(r,S,M.view).txt}</td><td>${stText(r,fin)}</td>${rev?`<td class="l">${r.failed.map(esc).join(', ')}</td><td class="l">${esc(rvText(r,cols))}</td>`:''}</tr>`).join('')}</table>`;
   $('#rPrint').onclick=()=>printDoc((merit?'Merit List – ':'Result Sheet – ')+who+' – '+vn,'landscape',headHTML(merit?'MERIT LIST':'RESULT SHEET',who+' · '+vn)+ptable(rows)+sumLine+sigHTML(['Class Teacher','Examination In-Charge','Principal']));
@@ -422,7 +423,7 @@ async function vRes(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.
     const line=r=>[B(r.rank||''),Cc(isNaN(+r.st.roll)?r.st.roll:+r.st.roll),Cc(r.st.adm||''),{v:r.st.name,s:6},...(all?[Cc(secOf(r))]:[]),...cols.map(s=>{const q=sx(r,s);return{v:q.has?(q.mx>0?n1(q.got):'✓'):'',s:q.fail?8:5}}),B(r.any?n1(r.tot):''),Cc(r.any?n1(r.full):''),B(r.p!=null?n1(r.p):''),B(r.g),...(q=>[Cc(q.p),Cc(q.w),Cc(n1(q.pct))])(attOf(r,S,M.view)),{v:stText(r,fin),s:r.status==='PASS'?10:r.status?8:5},Lc(r.failed.join(', ')),Lc(rvText(r,cols))];
     const widths=[7,8,13,28,...(all?[8]:[]),...cols.map(s=>Math.max(9,Math.min(16,s.name.length+2))),9,8,8,8,9,9,11,30,30,40];
     const main=(title,list,nm)=>{const h=xlHead(title,who+' – '+vn,W);const rws=[...h.rows,hdr.map(H),...list.map(line),[],
-        [{v:'Students: '+st.n+'    Appeared: '+st.app+'    Passed: '+st.pass+(st.comp?'    Compartment: '+st.comp:'')+'    Not passed: '+st.fail+'    Pass %: '+st.pp+'%    Class average: '+(st.avg==null?'-':fmt(st.avg)+'%')+'    Highest: '+(st.hi==null?'-':fmt(st.hi)+'%'),s:11}],
+        [{v:'Students: '+st.n+'    Appeared: '+st.app+'    Passed: '+st.pass+(st.sp?' (Simple pass: '+st.sp+')':'')+(st.comp?'    Compartment: '+st.comp:'')+'    Not passed: '+st.fail+'    Pass %: '+st.pp+'%    Class average: '+(st.avg==null?'-':fmt(st.avg)+'%')+'    Highest: '+(st.hi==null?'-':fmt(st.hi)+'%'),s:11}],
         [{v:(cv?'Marks of '+cv.c.name+' as entered.':'Marks are the weighted totals for '+vn+'.')+' Pass mark '+cfg().pass+'% in each subject.'+(cols.some(s=>s.graded)?' * = grade only, not counted in the total.':''),s:0}],[],[],
         [null,{v:'Class Teacher',s:11},null,null,null,null,{v:'Examination In-Charge',s:11},null,null,null,null,{v:'Principal',s:11}]];
       return{name:nm,rows:rws,merges:h.merges,heights:{...h.heights,4:32},cols:widths,freeze:[fx,5]}};
@@ -440,7 +441,7 @@ async function vRes(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.
       ['Grade','Students'].map(H),...gradesOf(S).map(g=>[B(g.g),Cc(rows0.filter(r=>r.any&&r.g===g.g).length)]),
       ...(all?[[],['Section','Students','Passed','Pass %','Average %','Highest %'].map(H),...parts.map(p=>{const q=stats(p.R.rows);return[{v:classLabel(p.k),s:6},Cc(q.n),Cc(q.pass),Cc(q.app?q.pp:''),Cc(n1(q.avg)),Cc(n1(q.hi))]})]:[])],merges:ha.merges,heights:ha.heights,cols:[26,11,11,11,12,12,12]});
     XL.save('Result_'+(all?'Class_'+c.cls+'_All':classLabel(c))+'_'+vn+'.xlsx',sheets);toast('Excel file downloaded')}}
-const kpis=st=>`<div class="kp"><div class="k"><b>${st.app}</b><span>Appeared</span></div><div class="k g"><b>${st.pass}</b><span>Passed</span></div>${st.comp?`<div class="k y"><b>${st.comp}</b><span>Compartment</span></div>`:''}<div class="k r"><b>${st.fail}</b><span>Not passed</span></div><div class="k y"><b>${st.app?st.pp+'%':'–'}</b><span>Pass %</span></div><div class="k p"><b>${st.avg==null?'–':fmt(st.avg)+'%'}</b><span>Average</span></div><div class="k"><b>${st.hi==null?'–':fmt(st.hi)+'%'}</b><span>Highest</span></div></div>`;
+const kpis=st=>`<div class="kp"><div class="k"><b>${st.app}</b><span>Appeared</span></div><div class="k g"><b>${st.pass}</b><span>Passed</span></div>${st.sp?`<div class="k y"><b>${st.sp}</b><span>of them Simple pass</span></div>`:''}${st.comp?`<div class="k y"><b>${st.comp}</b><span>Compartment</span></div>`:''}<div class="k r"><b>${st.fail}</b><span>Not passed</span></div><div class="k y"><b>${st.app?st.pp+'%':'–'}</b><span>Pass %</span></div><div class="k p"><b>${st.avg==null?'–':fmt(st.avg)+'%'}</b><span>Average</span></div><div class="k"><b>${st.hi==null?'–':fmt(st.hi)+'%'}</b><span>Highest</span></div></div>`;
 const topList=(top,sec)=>top.length?top.map(r=>`<div class="li"><span class="pill b">${r.rank}</span><span class="grow"><b>${esc(r.st.name)}</b> <span class="tmeta">${sec?esc(classLabel(cls(r.cid)))+' · ':''}Roll ${esc(r.st.roll)}</span></span><b>${fmt(r.p)}%</b><span class="pill">${r.g}</span></div>`).join(''):'<div class="empty">No marks yet.</div>';
 
 /* ---------- printing ---------- */
@@ -500,9 +501,9 @@ function cardHTML(cid,R,r,o){const {S,SL}=R,D=C[cid],c=cls(cid),fin=o.view==='fi
   const areas=cosAreas(S);const ak=(t,a)=>xid(t.id,'c'+skey(a).slice(0,19));
   const finLabel=S.final==='last'?'Final ('+esc(lastT.name)+')':'Final<br><small>('+shown.map(t=>esc(t.name)+' '+Math.round(100/shown.length)+'%').join(' + ')+')</small>';
   const idx=R.rows.indexOf(r);R._T=R._T||{};const TR=t=>{if(!fin)return R;return R._T[t.id]||(R._T[t.id]=compute(cid,t.id))};const tq=t=>TR(t).rows[idx]||r;
-  const pc=v=>v==null?'–':(Math.round(v*100)/100)+'%';const rs=q=>q.status==='PASS'?(q.sc?'<span class="ok">PROMOTED (S.C.)</span>':'<span class="ok">PASSED</span>'):q.status==='COMP'?'<span style="color:#b45309">COMPARTMENT</span>':q.status==='FAIL'?'<span style="color:#b91c1c">'+(q.fin?'DETAINED':'NOT PASSED')+'</span>':'–';
+  const pc=v=>v==null?'–':(Math.round(v*100)/100)+'%';const rs=q=>q.status==='PASS'?(q.sc?'<span class="ok">PROMOTED (S.C.)</span>':q.sp?'<span class="ok">SIMPLE PASS</span>':'<span class="ok">PASSED</span>'):q.status==='COMP'?'<span style="color:#b45309">COMPARTMENT</span>':q.status==='FAIL'?'<span style="color:#b91c1c">'+(q.fin?'DETAINED':'NOT PASSED')+'</span>':'–';
   const attT=t=>{const d=D.marks[xid(t.id,'att')],pv=sv(xid(t.id,'att')),w=d&&d.max?+d.max:0;return pv===''?'–':pv+(w?' / '+w+' ('+pc(+pv/w*100)+')':'')};
-  const resTxt=r.status==='PASS'?(fin?(r.sc?'PROMOTED'+(o.promo?' to Class '+esc(o.promo):'')+' on Special Consideration':'PASSED'+(o.promo?' – Promoted to Class '+esc(o.promo):'')):'PASS'):r.status==='COMP'?'COMPARTMENT in '+r.failed.map(esc).join(', '):r.status==='FAIL'?(fin?'DETAINED in Class '+esc(c.cls):'Needs improvement in '+r.failed.map(esc).join(', ')):'–';
+  const resTxt=r.status==='PASS'?(fin?(r.sc?'PROMOTED'+(o.promo?' to Class '+esc(o.promo):'')+' on Special Consideration':(r.sp?'SIMPLE PASS':'PASSED')+(o.promo?' – Promoted to Class '+esc(o.promo):'')):(r.sp?'SIMPLE PASS – must improve in '+r.failed.map(esc).join(', '):'PASS')):r.status==='COMP'?'COMPARTMENT in '+r.failed.map(esc).join(', '):r.status==='FAIL'?(fin?'DETAINED in Class '+esc(c.cls):'Needs improvement in '+r.failed.map(esc).join(', ')):'–';
   const anyGrace=subs.some(s=>r.sub[s.key].grace);
   const chart=subs.filter(s=>r.sub[s.key].has&&r.sub[s.key].mx>0);
   const jr=cardOf(S)==='jr';
@@ -579,7 +580,8 @@ async function vSetup(m){m=$('#main')||m;const c=JSON.parse(JSON.stringify(cfg()
   m.innerHTML=`<div class="card"><h2>School details</h2><p class="sub">Printed at the top of every report card and result sheet. The school name and session come from SJS App settings.</p>
     <div class="grid2">${[['motto','Motto'],['address','Address'],['affil','CBSE Affiliation No.'],['code','School Code'],['udise','UDISE Code'],['email','Email'],['principal','Principal\'s name (printed on report cards)'],['issued','Line under the report card title']].map(([k,l])=>`<label class="f">${l}<input class="inp" data-sc="${k}" value="${esc(sc[k]||'')}"></label>`).join('')}</div></div>
   <div class="card"><h2>Pass mark, grades and rank</h2><div class="grid2"><label class="f">Pass mark in each subject (%)<input class="inp" id="pass" type="number" value="${c.pass}"></label>
-    <label class="f">Compartment allowed in up to (subjects)<input class="inp" id="cmx" type="number" min="0" value="${c.compMax}"></label>
+    <label class="f">Simple Pass / Compartment for failing in up to (subjects)<input class="inp" id="cmx" type="number" min="0" value="${c.compMax}"></label>
+    ${sel('cmode','Failing in up to that many subjects gives',[['sp','Simple Pass (promoted to the next class)'],['comp','Compartment']],c.compMode==='comp'?'comp':'sp')}
     ${sel('rpo','Rank is given to',[['1','Passed students only'],['0','All students']],c.rankPassOnly?'1':'0')}
     <label class="f">Grades (grade=minimum %)<input class="inp" id="grd" value="${esc([...c.grades].sort((a,b)=>b.min-a.min).map(g=>g.g+'='+g.min).join(', '))}"></label></div></div>
   <div class="card"><h2>Class groups and exams</h2><p class="sub">Each group has its own terms and exams. Write each exam as <b>Name=full marks</b>, separated by commas.<br>
@@ -599,7 +601,7 @@ async function vSetup(m){m=$('#main')||m;const c=JSON.parse(JSON.stringify(cfg()
   m.querySelectorAll('[data-rs]').forEach(b=>b.onclick=()=>{const i=+b.dataset.rs,d=DEF.schemes.find(q=>q.id===c.schemes[i].id);if(!d||!confirm('Replace the exams, subjects, grades and card design of “'+c.schemes[i].name+'” with the latest default? Marks already entered are not deleted.'))return;const x=JSON.parse(JSON.stringify(cfg()));x.schemes[i]=JSON.parse(JSON.stringify(d));CFG=x;WRITE('mk_cfg/cbse',x,false);toast('Group updated');vSetup(m)});
   $('#rst').onclick=()=>{if(confirm('Put the class groups, exams and grades back to the CBSE defaults? Marks already entered are not deleted.')){const x=JSON.parse(JSON.stringify(DEF));x.subj=c.subj||{};x.school=sc;CFG=x;WRITE('mk_cfg/cbse',x,false);toast('Defaults restored');vSetup(m)}};
   $('#svSet').onclick=async()=>{const x=c;m.querySelectorAll('[data-sc]').forEach(i=>x.school[i.dataset.sc]=i.value.trim());
-    x.pass=+$('#pass').value||33;x.compMax=+$('#cmx').value||0;x.rankPassOnly=$('#rpo').value==='1';
+    x.pass=+$('#pass').value||33;x.compMax=+$('#cmx').value||0;x.compMode=$('#cmode').value;x.rankPassOnly=$('#rpo').value==='1';
     const gs=$('#grd').value.split(',').map(t=>t.split('=')).filter(p=>p.length===2&&p[0].trim()&&!isNaN(+p[1])).map(p=>({g:p[0].trim(),min:+p[1]}));if(gs.length)x.grades=gs;
     let err='';x.schemes.forEach((s,i)=>{m.querySelectorAll(`[data-g="${i}"][data-k]`).forEach(inp=>s[inp.dataset.k]=inp.value.trim());s.final=$('#fin'+i).value;s.card=$('#crd'+i).value;s.sepPass=$('#sep'+i).value==='1';
       s.terms.forEach((t,j)=>{t.name=m.querySelector(`[data-g="${i}"][data-tn="${j}"]`).value.trim()||t.name;const list=parseComps(m.querySelector(`[data-g="${i}"][data-tc="${j}"]`).value,t.comps,j);if(!list.length)err=s.name+' – '+t.name;else t.comps=list})});
