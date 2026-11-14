@@ -135,3 +135,9 @@ The **Marks & Report Cards** tile is now **Result Software**. Upload these 5 cha
 **Version 27.** The version number shows at the bottom of Result Software. Updates now appear as soon as GitHub has published them (no 10-minute wait). Setup → Class groups → **↺ Use the latest default for this group** brings one group (for example Pre-Primary) up to the newest exams, subjects, grades and card design. Upload `marks.html` and `sw.js`.
 
 **Version 29 – Simple Pass.** A student below the pass mark in 1 or 2 subjects in the Final Result gets **SIMPLE PASS** (promoted, no rank). Setup → Pass mark, grades and rank: choose the number of subjects, and Simple Pass or Compartment. Grades & Remarks has **Write automatic remarks in empty boxes** – the teacher can then edit any remark before saving. To change a decision after review: Results → Final Result → Result review → **Review**. Upload `marks.html` and `sw.js`.
+
+**Version 31.** After review, the result reads **CONSIDERED ON SPECIAL CONSIDERATION** (Results → Final Result → Result review → Review → Decision). The wording can be changed in Setup → Pass mark, grades and rank. Upload `marks.html` and `sw.js`.
+
+**Version 32 – absent rule.** Setup → Pass mark, grades and rank → **A student absent (AB) in an exam**: either AB counts as 0 marks (usual), or the result is FAILED for that exam / term / year. With the second choice the result reads FAILED (ABSENT) and names the subject. Upload `marks.html` and `sw.js`.
+
+**Version 33.** The **Save setup** button now stays visible at the bottom of Setup. If the database refuses to save (old Firestore rules), the app says so in a red box with the fix: Firebase console → Firestore Database → Rules → paste the whole `firestore.rules` → Publish. Upload `marks.html` and `sw.js`.
