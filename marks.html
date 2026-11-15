@@ -45,7 +45,7 @@ details.grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;ma
    c/<classId>/marks/<examId>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}
    c/<classId>/marks/x_<termId>__att | __rem | __c<Area>   attendance, remarks, co-scholastic grades for a term */
 const {$,esc,toast,sheet,closeSheet,pasteRows,classLabel,waPhone}=SJS;
-const VER='50';
+const VER='52';
 const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const CBSE_T=(n,pt,ex,exn)=>({id:'t'+n,name:'Term '+n,comps:[{id:'pt'+n,name:pt,max:10},{id:'nb'+n,name:'Note Book',max:5},{id:'se'+n,name:'SEA',max:5},{id:ex,name:exn,max:80}]});
 const DEF={
@@ -623,9 +623,9 @@ function cardHTML(cid,R,r,o){if(cardOf(R.S)==='first')return firstCard(cid,R,r,o
   let subs=SL.filter(s=>shown.some(t=>r.sub[s.key].T[t.id].has));if(!subs.length)subs=SL;
   const ct=(SJS.teachers.find(t=>(c.teacherUids||[]).includes(t.uid))||{}).name||'';const multi=fin&&shown.length>1;
   const srC=!shown.some(t=>t.solo)&&shown.some(t=>t.comps.some(cp=>cp.kind));   /* Class XI–XII normal card: PT score only, Theory and Practical as marks / pass marks */
-  const ctxt=x=>x.na?'–':x.v===undefined?'':x.v==='AB'?'AB':srC&&x.wt===0?fmt(x.v):srC&&x.kind?fmt(x.v)+'<small>/'+passMk(x.em)+'</small>':x.wt===0?fmt(x.v)+'<small>/'+x.em+'</small>':fmt(x.sc);
-  const cmx=cp=>[...new Set(subs.map(s=>{const df=cdef(cp,s);if(df.na)return null;const d=D.marks[cp.id+'__'+s.key];return +(d&&d.max)||df.max}).filter(v=>v>0))].sort((a,b)=>b-a).join('/');
-  const clab=cp=>{const w=cp.wt==null?cp.max:cp.wt;if(srC)return esc(cp.name)+' <small>('+(cmx(cp)||cp.max)+')</small>'+(cp.kind?'':w===0?'<br><small>not counted</small>':'');return esc(cp.name)+(cp.kind?'':w===0?'<br><small>(not counted)</small>':'<br><small>('+w+')</small>')};
+  const ctxt=x=>x.na?'–':x.v===undefined?'':x.v==='AB'?'AB':srC&&x.wt===0?fmt(x.v):srC&&x.kind?fmt(x.v):x.wt===0?fmt(x.v)+'<small>/'+x.em+'</small>':fmt(x.sc);
+  const cmxA=cp=>{const a=[...new Set(subs.map(s=>{const df=cdef(cp,s);if(df.na)return null;const d=D.marks[cp.id+'__'+s.key];return +(d&&d.max)||df.max}).filter(v=>v>0))].sort((a,b)=>b-a);return a.length?a:[+cp.max]};
+  const clab=cp=>{const w=cp.wt==null?cp.max:cp.wt;if(srC){const a=cmxA(cp);return esc(cp.name)+' <small>('+a.join('/')+')</small><br><small><b>P.M. '+a.map(passMk).join('/')+'</b>'+(!cp.kind&&w===0?' · not counted':'')+'</small>'}return esc(cp.name)+(cp.kind?'':w===0?'<br><small>(not counted)</small>':'<br><small>('+w+')</small>')};
   const tmax=t=>t.comps.reduce((a,cp)=>a+(cp.wt==null?+cp.max:+cp.wt),0);
   const sv=(id)=>{const d=D.marks[id];const v=d&&d.m?d.m[st.roll]:undefined;return v==null?'':v};
   const lastT=shown[shown.length-1];const remark=o.remark||pickTxt(modeOf(D,lastT.id,'rem'),sv(xid(lastT.id,'rem')),autoRemark(r));
