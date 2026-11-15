@@ -45,7 +45,7 @@ details.grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;ma
    c/<classId>/marks/<examId>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}
    c/<classId>/marks/x_<termId>__att | __rem | __c<Area>   attendance, remarks, co-scholastic grades for a term */
 const {$,esc,toast,sheet,closeSheet,pasteRows,classLabel,waPhone}=SJS;
-const VER='56';
+const VER='58';
 const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const CBSE_T=(n,pt,ex,exn)=>({id:'t'+n,name:'Term '+n,comps:[{id:'pt'+n,name:pt,max:10},{id:'nb'+n,name:'Note Book',max:5},{id:'se'+n,name:'SEA',max:5},{id:ex,name:exn,max:80}]});
 const DEF={
@@ -97,15 +97,16 @@ const RULEMSG='<b>The database is refusing the Result Software.</b> The Firestor
 const realSet=(path,data,merge)=>FB()?firebase.firestore().doc(path).set(data,merge?{merge:true}:{}):SJS.db.set(path,data,merge);
 function sync(){let el=$('#sync');if(!el){el=document.createElement('div');el.id='sync';document.body.appendChild(el)}const on=navigator.onLine;
   el.className=PEND?'p':on?'':'off';el.textContent=PEND?(on?'⟳ Saving…':'● Offline · '+PEND+' saved on this phone'):(on?'● Online · all saved':'● Offline · you can keep working')}
-function WRITE(path,data,merge){const p=FB()?firebase.firestore().doc(path).set(data,merge?{merge:true}:{}):SJS.db.set(path,data,merge);
+function WRITE(path,data,merge){if(M.arch){toast(ARCH_RO);return Promise.resolve()}const p=FB()?firebase.firestore().doc(path).set(data,merge?{merge:true}:{}):SJS.db.set(path,data,merge);
   PEND++;sync();const done=()=>{PEND=Math.max(0,PEND-1);sync()};
   p.then(done,e=>{done();if(e&&e.code==='permission-denied'&&/^mk_cfg\//.test(path)){RULEERR=true}toast(e&&e.code==='permission-denied'?'Not allowed – this exam is locked, or the Admin has not confirmed you':'A save did not go through – please try again')});
   return navigator.onLine?Promise.race([p.catch(()=>{}),new Promise(r=>setTimeout(r,4000))]):Promise.resolve()}
 window.addEventListener('online',sync);window.addEventListener('offline',sync);
-async function load(cid,force){if(C[cid]&&!force)return C[cid];const [st,mk]=await Promise.all([LIST('c/'+cid+'/students'),LIST('c/'+cid+'/marks')]);
+async function load(cid,force){if(M.arch)return C[cid]||(C[cid]={students:[],marks:{}});if(C[cid]&&!force)return C[cid];const [st,mk]=await Promise.all([LIST('c/'+cid+'/students'),LIST('c/'+cid+'/marks')]);
   const marks={};mk.forEach(d=>marks[d.id]=d);C[cid]={students:st.sort((a,b)=>(+a.roll||0)-(+b.roll||0)||String(a.roll).localeCompare(String(b.roll))),marks};return C[cid]}
 /* save some marks of one document: only the changed rolls are sent, so two teachers do not overwrite each other */
-function saveMk(cid,id,head,ch){const D=C[cid],cur=D.marks[id]||{m:{}},m={...(cur.m||{})};
+const ARCH_RO='Old session – read only. Tap “Back to current session” to make changes.';
+function saveMk(cid,id,head,ch){if(M.arch){toast(ARCH_RO);return Promise.resolve()}const D=C[cid],cur=D.marks[id]||{m:{}},m={...(cur.m||{})};
   Object.entries(ch).forEach(([r,v])=>{if(v==null||v==='')delete m[r];else m[r]=v});
   head={...head,by:SJS.user.uid,byName:SJS.me?SJS.me.name:(SJS.user.email||'')};
   const full={...cur,...head,m};delete full.id;D.marks[id]={id,...full};
@@ -191,9 +192,10 @@ function autoRemark(r){r={...r,failed:(r.failed||[]).map(noCode),absent:(r.absen
   if(r.p>=90)return'Outstanding performance. Keep it up!';if(r.p>=75)return'Very good performance. Keep working hard.';if(r.p>=60)return'Good. Can do even better with regular study.';if(r.p>=45)return'Satisfactory. Needs more effort and practice.';return'Passed, but must improve with regular study.'}
 
 /* ---------- page frame ---------- */
-function tabs(){const T=[['dash','Dashboard'],['enter','Enter Marks'],['cos','Grades & Remarks'],['res','Results'],['cards','Report Cards']];if(SJS.canView||SJS.isAdmin)T.splice(4,0,['rev','Final Review']);if(SJS.isAdmin)T.push(['setup','Setup']);
+function tabs(){let T=[['dash','Dashboard'],['enter','Enter Marks'],['cos','Grades & Remarks'],['res','Results'],['cards','Report Cards']];if(SJS.canView||SJS.isAdmin)T.splice(4,0,['rev','Final Review']);if(SJS.isAdmin)T.push(['setup','Setup']);if(M.arch)T=T.filter(x=>!['enter','cos','setup'].includes(x[0]));
   return `<div class="nav"><div class="nav-in">${T.map(([k,l])=>`<button class="tab ${M.tab===k?'act':''}" data-t="${k}">${l}</button>`).join('')}</div></div>`}
-function render(){const a=$('#app');const h=a.querySelector('.hdr').outerHTML;a.innerHTML=h+tabs()+(RULEERR?'<div class="banner warn" style="margin:12px">'+RULEMSG+'</div>':'')+'<main id="main"></main><div class="tmeta" style="text-align:center;margin:-100px 0 110px">Result Software · version '+VER+'</div>';
+function render(){const a=$('#app');const h=a.querySelector('.hdr').outerHTML;a.innerHTML=h+tabs()+(RULEERR?'<div class="banner warn" style="margin:12px">'+RULEMSG+'</div>':'')+(M.arch?'<div class="banner warn" style="margin:12px">📁 Viewing old session <b>'+esc(M.arch)+'</b> – read only. <button class="btn sm pri" id="archX">Back to current session</button></div>':'')+'<main id="main"></main><div class="tmeta" style="text-align:center;margin:-100px 0 110px">Result Software · version '+VER+'</div>';
+  const ax=a.querySelector('#archX');if(ax)ax.onclick=()=>location.reload();
   a.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{if(dirtyN()&&!confirm('Marks not saved. Leave anyway?'))return;clearDirty();M.tab=b.dataset.t;ls('tab',M.tab);render()});
   sync();({dash:vDash,enter:vEnter,cos:vCos,res:vRes,rev:vRev,cards:vCards,setup:vSetup}[M.tab]||vDash)($('#main')).catch(e=>{console.error(e);$('#main').innerHTML='<div class="card empty">Could not open this class. If you are offline, open this class once with the internet on, then it will also work offline.</div>'})}
 const clearDirty=()=>{M.dirty={};M.maxd={};M.cos=null};
@@ -227,7 +229,8 @@ async function vDash(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m
   wire(m,vDash);
   const sb=$('#schB');if(sb)sb.onclick=async()=>{sb.disabled=true;await schoolLoad(sb);vDash(m)};
   const sv=$('#schV');if(sv)sv.onchange=e=>{M.schV=e.target.value;vDash(m)};
-  const sxb=$('#schX');if(sxb)sxb.onclick=schoolExcel;const spb=$('#schP');if(spb)spb.onclick=schoolPrint}
+  const sxb=$('#schX');if(sxb)sxb.onclick=schoolExcel;const spb=$('#schP');if(spb)spb.onclick=schoolPrint;
+  if(SJS.canView||SJS.isAdmin){const oc=document.createElement('div');oc.className='card';oc.innerHTML='<h3 style="margin:0 0 6px">📁 Old sessions</h3><div id="oldS" class="tmeta">Loading…</div>';m.appendChild(oc);oldSessionsCard(m)}}
 
 /* ---------- Enter marks ---------- */
 async function vEnter(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading students…</div>';const D=await load(M.cid);
@@ -277,20 +280,25 @@ async function vCos(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.
   const S=schemeOf(M.cid),term=S.terms.find(t=>t.id===M.term)||S.terms[0],areas=cosAreas(S),scale=cosScale(S),tid=term.id;
   const can=(SJS.canClass(M.cid)||SJS.canView)&&(SJS.isAdmin||!locked('x_'+tid));const ak=a=>xid(tid,'c'+skey(a).slice(0,19));
   const sv=(id,roll)=>{const d=D.marks[id];const v=d&&d.m?d.m[roll]:undefined;return v==null?'':v};
-  const fst=cardOf(S)==='first';const A=M.cos||{att:{},rem:{},cos:{},ht:{},wk:{},spl:{},wd:undefined};A.spl=A.spl||{};A.mode=A.mode||{rem:modeOf(D,tid,'rem'),spl:modeOf(D,tid,'spl')};const MO=[['mix','Automatic + teacher can change (empty box = automatic)'],['auto','Automatic only'],['manual','Teacher writes only (empty = blank lines)']];const ad=D.marks[xid(tid,'att')]||{};const aFrom=A.from!==undefined?A.from:(ad.from||''),aTo=A.to!==undefined?A.to:(ad.to||'');const wd=A.wd!==undefined?A.wd:(+(D.marks[xid(tid,'att')]||{}).max||'');
+  const fst=cardOf(S)==='first';const A=M.cos||{att:{},rem:{},cos:{},ht:{},wk:{},spl:{},wd:undefined};A.spl=A.spl||{};A.mode=A.mode||{rem:modeOf(D,tid,'rem'),spl:modeOf(D,tid,'spl')};const MO=[['mix','Automatic + teacher can change (empty box = automatic)'],['auto','Automatic only'],['manual','Teacher writes only (empty = blank lines)']];const AO=[[tid,'Whole '+term.name],...(term.comps.length>1&&!term.solo?term.comps.filter(cp=>(!cp.kind||cp.kind==='T')&&!/note ?book|^sea$|enrichment|portfolio/i.test(cp.name)).map(cp=>[cp.id,cp.name.replace(/ Theory$/,'')+' (own attendance)']):[]),['fin','Final – whole year (instead of the automatic total)']];if(!AO.some(x=>x[0]===M.attFor))M.attFor=tid;const af0=M.attFor,isT=af0===tid,afName=AO.find(x=>x[0]===af0)[1].replace(' (own attendance)','').replace(' (instead of the automatic total)',''),aKey=xid(af0,'att');
+  const autoAtt=st=>{if(isT)return'';const D2=D;if(af0==='fin'){let p=0,w=0,h=false;mainT(S).forEach(t=>{const d=D2.marks[xid(t.id,'att')],v=d&&d.m?d.m[st.roll]:undefined;if(v!=null&&v!==''){p+=+v||0;w+=+d.max||0;h=true}});return h?p+' / '+w:''}const d=D2.marks[xid(tid,'att')],v=d&&d.m?d.m[st.roll]:undefined;return v!=null&&v!==''?v+(d.max?' / '+d.max:''):''};
+  const ad=D.marks[aKey]||{};const aFrom=A.from!==undefined?A.from:(ad.from||''),aTo=A.to!==undefined?A.to:(ad.to||'');const wd=A.wd!==undefined?A.wd:(+(D.marks[aKey]||{}).max||'');
   const R=compute(M.cid,tid===mainT(S)[mainT(S).length-1].id?'final':tid);
-  m.innerHTML=`<div class="card"><div class="grid2">${classSel()}${sel('tSel','Term',S.terms.map(t=>[t.id,t.name]),tid)}<label class="f">Working days in ${esc(term.name)}<input class="inp" id="wd" type="number" min="0" value="${esc(wd)}" ${can?'':'disabled'}></label></div>
+  m.innerHTML=`<div class="card"><div class="grid2">${classSel()}${sel('tSel','Term',S.terms.map(t=>[t.id,t.name]),tid)}${sel('aSel','Attendance for',AO,af0)}<label class="f">Working days – ${esc(afName)}<input class="inp" id="wd" type="number" min="0" value="${esc(wd)}" ${can?'':'disabled'} placeholder="${isT?'':'empty = automatic'}"></label></div>
+    ${isT?'':`<div class="banner" style="margin-top:8px">${af0==='fin'?'<b>Final attendance typed by hand.</b> Leave a box empty to use the automatic total of the terms (shown in grey).':'<b>'+esc(afName)+' – its own attendance.</b> Shown on the '+esc(afName)+' result sheet. Leave a box empty to use the '+esc(term.name)+' attendance (shown in grey).'}${can?' <button class="btn sm" id="aClr">Clear all – use automatic</button>':''}</div>`}
     ${SJS.canClass(M.cid)&&D.students.length?`<div class="row" style="margin-top:10px"><button class="btn gold sm" id="bpB">📷 Bulk photo upload</button><span class="tmeta">${D.students.filter(x=>x.photo).length} of ${D.students.length} students have a photo</span></div>`:''}
-    ${can?`<div class="grid2" style="margin-top:10px"><label class="f">${esc(term.name)} from<input class="inp" id="aF" type="date" value="${esc(aFrom)}"></label><label class="f">${esc(term.name)} to<input class="inp" id="aT" type="date" value="${esc(aTo)}"></label><label class="f">&nbsp;<button class="btn green" id="aFill">Fill attendance from Student Attendance</button></label></div>`:''}
+    ${can?`<div class="grid2" style="margin-top:10px"><label class="f">${esc(afName)} – from<input class="inp" id="aF" type="date" value="${esc(aFrom)}"></label><label class="f">${esc(afName)} – to<input class="inp" id="aT" type="date" value="${esc(aTo)}"></label><label class="f">&nbsp;<button class="btn green" id="aFill">Fill attendance from Student Attendance</button></label></div>`:''}
     <div class="grid2" style="margin-top:10px">${sel('mRem',"Class teacher's remarks on the card",MO,A.mode.rem)}${fst?sel('mSpl','“I am special because…” on the card',MO,A.mode.spl):''}</div>
     <p class="sub" style="margin:8px 0 0">For the report card and result sheets: attendance, ${fst?'My Skills stars':'co-scholastic grades'} (${scale.map(esc).join(' / ')}) and the class teacher's remark. Empty remark = automatic remark.</p>
     ${can?`<div class="row" style="margin-top:8px"><button class="btn sm" id="fillA">Give ${esc(scale[0])} to all empty grades</button><button class="btn sm" id="fillR">Write automatic remarks in empty boxes</button>${fst?'<button class="btn sm" id="fillS">Write automatic “I am special” in empty boxes</button>':''}<div class="grow"></div><button class="btn pri" id="svC" ${M.cos?'':'disabled'}>${M.cos?'Save':'Saved ✓'}</button></div>`:'<div class="banner warn" style="margin:8px 0 0">Only the class teacher and the Admin can change this'+(locked('x_'+tid)?' (🔒 locked)':'')+'.</div>'}</div>
   ${D.students.map((st,i)=>{const r=R.rows[i];return `<div class="stu"><div class="h"><span class="pill">${esc(st.roll)}</span>${st.photo?`<img src="${st.photo}" alt="" style="width:30px;height:30px;border-radius:50%;object-fit:cover">`:''}<b class="grow">${esc(st.name)}</b>${SJS.canClass(M.cid)?`<button class="btn sm" data-det="${i}">Details</button>`:''}</div>
-    <div class="cg"><label>Days present<input class="inp" type="number" min="0" data-att="${esc(st.roll)}" value="${esc(A.att[st.roll]!==undefined?A.att[st.roll]:sv(xid(tid,'att'),st.roll))}" ${can?'':'disabled'}></label>
+    <div class="cg"><label>Days present<input class="inp" type="number" min="0" data-att="${esc(st.roll)}" value="${esc(A.att[st.roll]!==undefined?A.att[st.roll]:sv(aKey,st.roll))}" placeholder="${esc(autoAtt(st))}" ${can?'':'disabled'}></label>
     ${[['ht','Height (cm)'],['wk','Weight (kg)']].map(([k,l])=>`<label>${l}<input class="inp" type="number" min="0" step="0.1" data-hw="${k}" data-r="${esc(st.roll)}" value="${esc(A[k][st.roll]!==undefined?A[k][st.roll]:sv(xid(tid,k==='ht'?'ht':'wt'),st.roll))}" ${can?'':'disabled'}></label>`).join('')}
     ${areas.map(a=>{const v=(A.cos[a]||{})[st.roll]!==undefined?A.cos[a][st.roll]:sv(ak(a),st.roll);return`<label>${esc(a)}<select class="inp" data-cos="${esc(a)}" data-r="${esc(st.roll)}" ${can?'':'disabled'}><option value=""></option>${scale.map(g=>`<option ${g===v?'selected':''}>${esc(g)}</option>`).join('')}</select></label>`}).join('')}</div>
     <label class="f" style="margin-top:6px">Remark<input class="inp" data-rem="${esc(st.roll)}" maxlength="160" value="${esc(A.rem[st.roll]!==undefined?A.rem[st.roll]:sv(xid(tid,'rem'),st.roll))}" placeholder="${esc(A.mode.rem==='manual'?'Remark (empty = blank lines on the card)':autoRemark(r)||'Remark')}" ${can&&A.mode.rem!=='auto'?'':'disabled'}></label>${fst?`<label class="f" style="margin-top:6px">I am special because…<input class="inp" data-spl="${esc(st.roll)}" maxlength="120" value="${esc(A.spl[st.roll]!==undefined?A.spl[st.roll]:sv(xid(tid,'spl'),st.roll))}" placeholder="${esc(A.mode.spl==='manual'?'Empty = blank lines on the card, to write by hand':autoSpecial(r,S,D,tid)||'Empty = blank lines on the card')}" ${can&&A.mode.spl!=='auto'?'':'disabled'}></label>`:''}</div>`}).join('')||'<div class="card empty">No students in this class yet.</div>'}`;
   wire(m,vCos);$('#tSel').onchange=e=>{if(!guard(e,'term'))return;M.term=e.target.value;vCos(m)};
+  $('#aSel').onchange=e=>{if(!guard(e,'attFor'))return;M.attFor=e.target.value;vCos(m)};
+  const acl=$('#aClr');if(acl)acl.onclick=()=>{if(!confirm('Clear the attendance typed for '+afName+'? The automatic attendance will be used. (Tap Save to keep this.)'))return;D.students.forEach(st=>A.att[st.roll]='');A.wd=0;A.from='';A.to='';M.cos=A;touch();vCos(m)};
   const bp=$('#bpB');if(bp)bp.onclick=()=>{if(dirtyN()&&!confirm('Grades not saved. Continue anyway?'))return;clearDirty();bulkPhotos(m)};
   const touch=()=>{M.cos=A;const b=$('#svC');if(b){b.disabled=false;b.textContent='Save'}};
   $('#wd').oninput=e=>{A.wd=+e.target.value||0;touch()};
@@ -307,7 +315,7 @@ async function vCos(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.
       A.wd=x.W;A.from=f;A.to=t;Object.entries(x.out).forEach(([r,v])=>A.att[r]=String(v));M.cos=A;toast(x.W+' working days counted – check, then Save');vCos(m)}catch(e){toast('Could not read Student Attendance – check the internet');af.disabled=false;af.textContent='Fill attendance from Student Attendance'}};
   const fa=$('#fillA');if(fa)fa.onclick=()=>{m.querySelectorAll('[data-cos]').forEach(i=>{if(!i.value){i.value=scale[0];(A.cos[i.dataset.cos]=A.cos[i.dataset.cos]||{})[i.dataset.r]=scale[0]}});touch()};
   const sb=$('#svC');if(sb)sb.onclick=async()=>{const jobs=[],ex='x_'+tid;const att={};Object.entries(A.att).forEach(([r,v])=>att[r]=v===''?null:+v);
-    if(Object.keys(att).length||A.wd!==undefined)jobs.push(saveMk(M.cid,xid(tid,'att'),{exam:ex,subj:'att',max:+$('#wd').value||0,from:$('#aF')?$('#aF').value:'',to:$('#aT')?$('#aT').value:''},att));
+    if(Object.keys(att).length||A.wd!==undefined)jobs.push(saveMk(M.cid,aKey,{exam:'x_'+af0,subj:'att',max:+$('#wd').value||0,from:$('#aF')?$('#aF').value:'',to:$('#aT')?$('#aT').value:''},att));
     [['ht','ht'],['wk','wt']].forEach(([k,id])=>{const ch={};Object.entries(A[k]).forEach(([r,v])=>ch[r]=v===''?null:+v);if(Object.keys(ch).length)jobs.push(saveMk(M.cid,xid(tid,id),{exam:ex,subj:id},ch))});
     const rem={};Object.entries(A.rem).forEach(([r,v])=>rem[r]=v||null);if(Object.keys(rem).length)jobs.push(saveMk(M.cid,xid(tid,'rem'),{exam:ex,subj:'rem'},rem));
     if(A.modeCh)jobs.push(saveMk(M.cid,xid(tid,'opt'),{exam:ex,subj:'opt',rem:A.mode.rem,spl:A.mode.spl},{}));
@@ -378,7 +386,9 @@ const n1=v=>v==null||v===''?'':Math.round(v*10)/10;
 function xlHead(title,sub,width){return{rows:[[{v:SJS.school.name,s:1}],[{v:cfg().school.address||SJS.school.place,s:2}],[{v:title+'  ·  '+sub+'  ·  Session '+SJS.school.session,s:2}],[]],merges:[[0,0,0,width-1],[1,0,1,width-1],[2,0,2,width-1]],heights:[24,18,20]}}
 
 /* attendance of a student for the term(s) of a result: days present / working days */
-function attOf(r,S,view){const D=C[r.cid];let p=0,w=0,has=false;viewTerms(S,view).forEach(t=>{const d=D.marks[xid(t.id,'att')];if(!d||!d.m)return;const v=d.m[r.st.roll];if(v!=null&&v!==''){p+=+v||0;w+=+d.max||0;has=true}});
+const attOwn=(D,k,roll)=>{const d=D.marks[xid(k,'att')],v=d&&d.m?d.m[roll]:undefined;return v!=null&&v!==''?{p:+v||0,w:+d.max||0}:null};   /* attendance typed for one exam (k = exam id) or for the Final (k = 'fin') */
+function attOf(r,S,view){const D=C[r.cid];const own=String(view).startsWith('c:')?attOwn(D,String(view).slice(2),r.st.roll):view==='final'?attOwn(D,'fin',r.st.roll):null;if(own)return{p:own.p,w:own.w||'',pct:own.w?own.p/own.w*100:null,txt:fmt(own.p)+(own.w?' / '+fmt(own.w):'')};
+  let p=0,w=0,has=false;viewTerms(S,view).forEach(t=>{const d=D.marks[xid(t.id,'att')];if(!d||!d.m)return;const v=d.m[r.st.roll];if(v!=null&&v!==''){p+=+v||0;w+=+d.max||0;has=true}});
   return has?{p,w,pct:w?p/w*100:null,txt:fmt(p)+(w?' / '+fmt(w):'')}:{p:'',w:'',pct:null,txt:''}}
 /* count attendance from the Student Attendance register (same rules as the register: Sundays, Saturday rule, holidays, off days; A = absent, L = half) */
 async function attRegister(cid,from,to){let cf=null;try{cf=await SJS.db.get('cfg/main')}catch(e){}
@@ -569,7 +579,7 @@ function firstCard(cid,R,r,o){const {S,SL}=R,D=C[cid],c=cls(cid),st=r.st,sc=cfg(
   let subs=SL.filter(s=>r.sub[s.key].has);if(!subs.length)subs=SL;
   const ct=(SJS.teachers.find(t=>(c.teacherUids||[]).includes(t.uid))||{}).name||'',n=R.rows.filter(x=>x.any).length;
   const fullOf=s=>{const x=r.sub[s.key];if(x.has&&x.mx>0)return x.mx;return shown.reduce((a,t)=>a+t.comps.reduce((b,cp)=>b+cdef(cp,s).wt,0),0)/(fin&&S.final!=='last'?shown.length:1)};
-  let aP=0,aW=0,aHas=false;shown.forEach(t=>{const d=D.marks[xid(t.id,'att')],p=sv(xid(t.id,'att'));if(p!==''){aP+=+p||0;aHas=true}if(d&&d.max)aW+=+d.max});
+  let aP=0,aW=0,aHas=false;shown.forEach(t=>{const d=D.marks[xid(t.id,'att')],p=sv(xid(t.id,'att'));if(p!==''){aP+=+p||0;aHas=true}if(d&&d.max)aW+=+d.max});{const fo=fin?attOwn(D,'fin',st.roll):null;if(fo){aP=fo.p;aW=fo.w;aHas=true}}
   const pc=v=>v==null?'–':(Math.round(v*100)/100)+'%';
   const scale=cosScale(S),smax=Math.max(0,...scale.map(q=>(q.match(/★/g)||[]).length));
   const stv=v=>{v=String(v||'');const k=(v.match(/★/g)||[]).length;return k?'★'.repeat(k)+'<s>'+'★'.repeat(Math.max(0,smax-k))+'</s>':esc(v)};
@@ -631,7 +641,7 @@ function cardHTML(cid,R,r,o){if(cardOf(R.S)==='first')return firstCard(cid,R,r,o
   const sv=(id)=>{const d=D.marks[id];const v=d&&d.m?d.m[st.roll]:undefined;return v==null?'':v};
   const lastT=shown[shown.length-1];const remark=o.remark||pickTxt(modeOf(D,lastT.id,'rem'),sv(xid(lastT.id,'rem')),autoRemark(r));
   const att=shown.map(t=>{const d=D.marks[xid(t.id,'att')];const p=sv(xid(t.id,'att'));return{t,p,w:d&&d.max?+d.max:''}}).filter(x=>x.p!==''||x.w);
-  const attP=att.reduce((a,x)=>a+(+x.p||0),0),attW=att.reduce((a,x)=>a+(+x.w||0),0);
+  const finA=fin?attOwn(D,'fin',st.roll):null;let attP=att.reduce((a,x)=>a+(+x.p||0),0),attW=att.reduce((a,x)=>a+(+x.w||0),0);
   const areas=cosAreas(S);const ak=(t,a)=>xid(t.id,'c'+skey(a).slice(0,19));
   const finLabel=S.final==='last'?'Final ('+esc(lastT.name)+')':'Final<br><small>('+shown.map(t=>esc(t.name)+' '+Math.round(100/shown.length)+'%').join(' + ')+')</small>';
   const idx=R.rows.indexOf(r);R._T=R._T||{};const TR=t=>{if(!fin)return R;return R._T[t.id]||(R._T[t.id]=compute(cid,t.id))};const tq=t=>TR(t).rows[idx]||r;
@@ -694,7 +704,7 @@ ${sumBlk}`}
   <div class="st">Scholastic Areas</div>
   <table class="g${kg?' kg':''}">${sch}
    ${soloT?'':totRow}
-   ${soloT?'':[['PERCENTAGE',t=>pc(tq(t).p),pc(r.p)],['GRADE',t=>tq(t).g||'–',r.g||'–'],...(o.rank===false?[]:[['RANK IN CLASS',t=>{const q=tq(t);return q.rank?q.rank+' / '+TR(t).rows.filter(z=>z.any).length:'–'},r.rank?r.rank+' / '+n:'–']]),['ATTENDANCE',attT,att.length?attP+(attW?' / '+attW+' ('+pc(attP/attW*100)+')':''):'–'],['RESULT',t=>rs(tq(t)),rs(r)]]
+   ${soloT?'':[['PERCENTAGE',t=>pc(tq(t).p),pc(r.p)],['GRADE',t=>tq(t).g||'–',r.g||'–'],...(o.rank===false?[]:[['RANK IN CLASS',t=>{const q=tq(t);return q.rank?q.rank+' / '+TR(t).rows.filter(z=>z.any).length:'–'},r.rank?r.rank+' / '+n:'–']]),['ATTENDANCE',attT,finA?(attP=finA.p,attW=finA.w,attP+(attW?' / '+attW+' ('+pc(attP/attW*100)+')':'')):att.length?attP+(attW?' / '+attW+' ('+pc(attP/attW*100)+')':''):'–'],['RESULT',t=>rs(tq(t)),rs(r)]]
      .map(([lab,f,ov])=>`<tr class="xr"><td class="l" colspan="${lc}">${lab}</td>${shown.map(t=>`<td colspan="${tc(t)}">${f(t)}</td>`).join('')}${multi?`<td colspan="2">${ov}</td>`:''}${jr?'<td></td>':''}</tr>`).join('')}</table>
   <div class="two"><div style="flex:0 0 ${o.chart!==false&&chart.length?'39%':'100%'}"><div class="st b">${jr?'My Skills &amp; Habits':'Co-Scholastic Areas'} <small style="text-transform:none;font-weight:400">(${cosScale(S).length}-point grade)</small></div>
     <table class="g"><tr><th class="l">Area</th>${shown.map(t=>`<th>${soloT?'Grade':esc(t.name)}</th>`).join('')}</tr>${areas.map(a=>`<tr><td class="l">${esc(a)}</td>${shown.map(t=>`<td><b>${esc(sv(ak(t,a)))}</b></td>`).join('')}</tr>`).join('')}</table>${o.chart!==false&&chart.length?'':health}</div>
@@ -895,6 +905,58 @@ async function vRev(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.
     const body=sortMerit(rows0).map(r=>{const a=attOf(r,S,'final');return[B(r.rank||''),Cc(isNaN(+r.st.roll)?r.st.roll:+r.st.roll),{v:r.st.name,s:6},...(all?[Cc(secOf(r))]:[]),...cols.map(s=>{const q=sx(r,s);return{v:q.has?(q.mx>0?n1(q.got):'✓'):'',s:q.fail?8:5}}),B(r.any?n1(r.tot):''),Cc(r.any?n1(r.full):''),B(r.p!=null?n1(r.p):''),Cc(r.g),Cc(a.p),Cc(a.w),{v:n1(a.pct),s:a.pct!=null&&a.pct<minAtt()?8:5},{v:r.any?stText(r,true):'',s:r.status==='PASS'?10:r.status?8:5},{v:r.failed.map(noCode).join(', '),s:4},{v:decTxt(r),s:4},{v:r.note||'',s:4}]});
     XL.save('Final_Review_'+(all?'Class_'+c.cls:classLabel(c))+'.xlsx',[{name:'Final Review',rows:[...h.rows,hd.map(H),...body,[],[{v:'Merit order. Rank: equal percentages share a rank (1, 2, 2, 3 …). Red = below '+cfg().pass+'% / attendance below '+minAtt()+'%.',s:0}]],merges:h.merges,heights:{...h.heights,4:32},cols:[7,8,26,...(all?[8]:[]),...cols.map(s=>Math.max(9,Math.min(16,noCode(s.name).length+2))),8,8,8,7,9,9,11,22,26,24,30],freeze:[all?4:3,5]}]);toast('Excel downloaded')}}
 
+/* ---------- New session: save a copy of the whole year, then clear the marks (Admin) · open an old session read-only ---------- */
+const ARCH_PART=700000;   /* characters per saved part (a database document holds about 1 MB) */
+const archId=s=>String(s).trim().replace(/[\/\\#?\s]+/g,'-');
+async function rawSet(p,d){if(FB())return firebase.firestore().doc(p).set(d);return SJS.db.set(p,d,false)}
+async function rawGet(p){if(FB()){const s=await firebase.firestore().doc(p).get({source:'server'});return s.exists?s.data():null}return SJS.db.get(p)}
+async function rawDelMany(paths,prog){if(FB()){for(let i=0;i<paths.length;i+=400){const b=firebase.firestore().batch();paths.slice(i,i+400).forEach(p=>b.delete(firebase.firestore().doc(p)));await b.commit();if(prog)prog(Math.min(paths.length,i+400))}}else{for(let i=0;i<paths.length;i++){await SJS.db.del(paths[i]);if(prog&&i%20===0)prog(i+1)}if(prog)prog(paths.length)}}
+const plainMk=d=>{const o={};Object.keys(d).forEach(k=>{if(k!=='at'&&k!=='id')o[k]=d[k]});return JSON.parse(JSON.stringify(o))};
+async function archList(){try{const d=await SJS.db.get('mk_cfg/arch_list');return(d&&d.list)||[]}catch(e){return[]}}
+async function newSession(ses,log){const S=archId(ses),A='mk_cfg/arch__'+S,ks=SJS.classes.slice(),meta=[],dels=[];
+  if(await rawGet(A))throw new Error('A saved copy of session '+ses+' already exists. Nothing was changed.');
+  log('<b>Step 1 of 4 – saving a copy of every class</b>');
+  for(const k of ks){const D=await load(k.id,true),ids=Object.keys(D.marks);
+    const ct=(SJS.teachers.find(t=>(k.teacherUids||[]).includes(t.uid))||{}).name||'';
+    const json=JSON.stringify({students:D.students.map(st=>JSON.parse(JSON.stringify(st))),marks:Object.fromEntries(ids.map(id=>[id,plainMk(D.marks[id])]))});
+    const parts=[];for(let i=0;i<json.length;i+=ARCH_PART)parts.push(json.slice(i,i+ARCH_PART));if(!parts.length)parts.push('{"students":[],"marks":{}}');
+    for(let i=0;i<parts.length;i++)await rawSet(A+'__'+k.id+'__'+i,{session:ses,cid:k.id,part:i,json:parts[i]});
+    meta.push({id:k.id,cls:k.cls,section:k.section||'',teacherUids:k.teacherUids||[],ct,parts:parts.length,nStu:D.students.length,nDocs:ids.length,len:json.length});
+    ids.forEach(id=>dels.push('c/'+k.id+'/marks/'+id));log('✓ '+esc(classLabel(k))+' – '+D.students.length+' students, '+ids.length+' mark sheets saved')}
+  log('<b>Step 2 of 4 – checking the saved copy</b>');
+  for(const x of meta){let j='';for(let i=0;i<x.parts;i++){const d=await rawGet(A+'__'+x.id+'__'+i);if(!d||typeof d.json!=='string')throw new Error('The saved copy of '+x.cls+' '+x.section+' could not be read back. Nothing was cleared.');j+=d.json}
+    let o;try{o=JSON.parse(j)}catch(e){throw new Error('The saved copy of '+x.cls+' '+x.section+' is incomplete. Nothing was cleared.')}
+    if(j.length!==x.len||Object.keys(o.marks).length!==x.nDocs||o.students.length!==x.nStu)throw new Error('The saved copy of '+x.cls+' '+x.section+' does not match. Nothing was cleared.')}
+  await rawSet(A,{session:ses,at:Date.now(),by:(SJS.user&&SJS.user.email)||'',json:JSON.stringify({cfg:cfg(),locked:(OLD&&OLD.locked)||{},school:{...SJS.school},classes:meta})});
+  const L=await archList();await rawSet('mk_cfg/arch_list',{list:[...L.filter(z=>z.id!==S),{id:S,session:ses,at:Date.now(),classes:meta.length}]});
+  log('✓ Saved copy checked – '+meta.length+' classes');
+  log('<b>Step 3 of 4 – clearing the marks</b>');const pl=log('0 / '+dels.length);
+  await rawDelMany(dels,n=>{pl.innerHTML=n+' / '+dels.length+' mark sheets cleared'});
+  Object.keys(C).forEach(k=>delete C[k]);
+  log('<b>Step 4 of 4 – unlocking the exams for the new session</b>');await rawSet('mk_cfg/main',{...(OLD||{}),locked:{}});OLD={...(OLD||{}),locked:{}};
+  log('✓ Done. Session '+esc(ses)+' is saved and the marks are cleared.')}
+function newSessionDlg(){if(!SJS.isAdmin)return;if(!navigator.onLine&&FB()){toast('Connect to the internet first – the New session needs it');return}
+  sheet(`<h3>🗂 New session</h3><p class="sub">This saves a copy of <b>all marks, attendance, remarks, decisions and students of every class</b>, checks the copy, and then clears the marks so the new session starts empty. Setup, subjects, students and photos are not changed. Old results and report cards can be opened read-only at any time (Dashboard → Old sessions).</p>
+   <div class="banner warn"><b>Before you start:</b> all results of this session must be final, and nobody should be entering marks. Keep the internet on and this page open until it says Done (a few minutes).</div>
+   <label class="f" style="margin-top:10px">Session to save and close<input class="inp" id="nsS" value="${esc(SJS.school.session||'')}"></label>
+   <label class="f" style="margin-top:8px">Type <b>NEW SESSION</b> to confirm<input class="inp" id="nsC" autocomplete="off"></label>
+   <div id="nsLog" class="tmeta" style="margin-top:10px;line-height:1.6;max-height:40vh;overflow:auto"></div>
+   <div class="row" style="margin-top:12px"><div class="grow"></div><button class="btn" id="nsX" onclick="SJS.closeSheet()">Cancel</button><button class="btn danger" id="nsGo">Save copy and clear marks</button></div>`);
+  $('#nsGo').onclick=async()=>{const ses=$('#nsS').value.trim();if(!ses){toast('Type the session, e.g. 2026-2027');return}if($('#nsC').value.trim().toUpperCase()!=='NEW SESSION'){toast('Type NEW SESSION to confirm');return}
+    const go=$('#nsGo'),x=$('#nsX'),box=$('#nsLog');go.disabled=true;x.disabled=true;go.textContent='Working… keep this page open';
+    const log=h=>{const d=document.createElement('div');d.innerHTML=h;box.appendChild(d);box.scrollTop=box.scrollHeight;return d};
+    try{await newSession(ses,log);go.textContent='Done';x.disabled=false;x.textContent='Close';x.onclick=()=>{closeSheet();location.reload()};
+      log('<b>Next:</b> set the new session (e.g. 2027-2028) in the SJS App settings, and update the students and roll numbers in Student Attendance.')}
+    catch(e){console.error(e);log('<b style="color:var(--crit)">Stopped: '+esc(e.message||'a save did not go through – check the internet and try again')+'</b>');go.disabled=false;go.textContent='Try again';x.disabled=false}}}
+async function openArchive(id){const a=await SJS.db.get('mk_cfg/arch__'+id);if(!a){toast('This saved session could not be found');return}const I=JSON.parse(a.json);
+  const out={};for(const x of I.classes){let j='';for(let i=0;i<x.parts;i++){const d=await SJS.db.get('mk_cfg/arch__'+id+'__'+x.id+'__'+i);j+=(d&&d.json)||''}try{const o=JSON.parse(j);out[x.id]={students:o.students,marks:o.marks}}catch(e){out[x.id]={students:[],marks:{}}}}
+  Object.keys(C).forEach(k=>delete C[k]);Object.assign(C,out);M.arch=a.session;CFG=I.cfg;OLD={locked:I.locked||{}};SJS.classes=I.classes.map(x=>({id:x.id,cls:x.cls,section:x.section,teacherUids:x.teacherUids||[]}));
+  SJS.school={...SJS.school,...(I.school||{}),session:a.session};I.classes.forEach(x=>{if(x.ct&&!SJS.teachers.some(t=>(x.teacherUids||[]).includes(t.uid)))SJS.teachers.push({uid:(x.teacherUids||[])[0]||('old-'+x.id),name:x.ct})});
+  M.school=null;M.cid=SJS.classes[0]&&SJS.classes[0].id;if(M.tab==='setup'||M.tab==='enter'||M.tab==='cos')M.tab='res';render()}
+async function oldSessionsCard(m){const box=m.querySelector('#oldS');if(!box)return;const L=await archList();
+  box.innerHTML=L.length?L.slice().reverse().map(z=>`<div class="li"><b class="grow">Session ${esc(z.session)}</b><span class="tmeta">${z.classes} classes · saved ${esc(new Date(z.at).toLocaleDateString())}</span><button class="btn sm" data-os="${esc(z.id)}">Open (read-only)</button></div>`).join(''):'<p class="tmeta">No old sessions yet. At the end of the year the Admin uses Setup → New session.</p>';
+  box.querySelectorAll('[data-os]').forEach(b=>b.onclick=async()=>{b.disabled=true;b.textContent='Opening…';try{await openArchive(b.dataset.os)}catch(e){console.error(e);toast('Could not open – check the internet');b.disabled=false;b.textContent='Open (read-only)'}})}
+
 /* ---------- Setup (Admin) ---------- */
 const compStr=t=>t.comps.map(c=>c.name+'='+c.max+(c.wt!=null&&+c.wt!==+c.max?'>'+c.wt:'')+(c.kind?' '+c.kind:'')).join(', ');
 function parseComps(str,old,tix){const used={};const list=String(str||'').split(',').map(x=>x.trim()).filter(Boolean).map(x=>{const q=x.match(/^(.*?)=\s*(\d+(?:\.\d+)?)\s*(?:>\s*(\d+(?:\.\d+)?))?\s*([TPtp])?$/);if(!q)return null;
@@ -924,9 +986,11 @@ async function vSetup(m){m=$('#main')||m;const c=JSON.parse(JSON.stringify(cfg()
       ${DEF.schemes.some(d=>d.id===s.id)?`<div style="margin-top:14px;padding-top:8px;border-top:1px dashed var(--line2,#c8cfdb)"><button class="btn sm danger" data-rs="${i}">✕ Reset this group (removes my changes)</button> <span class="tmeta">Only to go back to the built-in exams and subjects. To keep what you typed, use <b>Save setup</b> at the bottom.</span></div>`:''}</details>`).join('')}</div>
   <div class="card"><h2>Subjects for each class</h2><p class="sub">Comma separated, in report-card order. Leave empty to use the group's usual subjects. <b>Drawing*</b> = grade only (not counted in the total). <b>Physics [70+30]</b> = theory 70 + practical 30. <b>English {Written 30, Reading 10, Dictation 10}</b> = a subject with parts (aspects) and their full marks in each exam. In Class XI–XII list every subject offered – a student's subjects are the ones that have marks.</p>
     ${clsList.map(k=>{const key='cls:'+nc(k.cls);const leg=((OLD&&OLD.subj)||{})[k.id];return `<label class="f" style="margin-bottom:8px">Class ${esc(k.cls)} <span class="tmeta">${esc(schemeOf(k.id).name)}</span><input class="inp" data-cs="${esc(key)}" value="${esc((c.subj||{})[key]||(leg&&leg.length?leg.join(', '):''))}" placeholder="${esc(schemeOf(k.id).subjects)}"></label>`}).join('')||'<div class="empty">No classes yet.</div>'}</div>
+  <div class="card"><h2>🗂 New session (end of the year)</h2><p class="sub">When all results of this session are final: saves a copy of every class (marks, attendance, remarks, decisions, students), checks it, then clears the marks so the new session starts empty. Setup, subjects, students and photos stay. Old sessions open read-only from the Dashboard.</p><button class="btn danger" id="nsB">🗂 Start a new session…</button></div>
   <div class="card"><h2>🔒 Lock exams</h2><p class="sub">Lock an exam when its result is final. After that only the Admin can change those marks.</p><div class="row">${lockIds.map(([id,n])=>`<label class="pill" style="padding:6px 10px"><input type="checkbox" data-lk="${esc(id)}" ${locked(id)?'checked':''}> ${esc(n)}</label>`).join('')}</div></div>
   <div class="row" style="position:sticky;bottom:0;z-index:6;background:var(--bg,#f4f6fb);padding:10px 0 64px;border-top:1px solid var(--line,#dde2ea)"><button class="btn danger sm" id="rst">Back to CBSE defaults</button><div class="grow"></div><span class="tmeta">Nothing is kept until you tap →</span><button class="btn pri" id="svSet">Save setup</button></div>`;
   m.querySelectorAll('[data-rs]').forEach(b=>b.onclick=()=>{const i=+b.dataset.rs,d=DEF.schemes.find(q=>q.id===c.schemes[i].id);if(!d||!confirm('RESET “'+c.schemes[i].name+'”?\n\nThis REMOVES the exams, subjects and grades you typed for this group and puts back the built-in ones.\n\nIf you only want to SAVE your changes, press Cancel and use the Save setup button.'))return;const x=JSON.parse(JSON.stringify(cfg()));x.schemes[i]=JSON.parse(JSON.stringify(d));CFG=x;WRITE('mk_cfg/cbse',x,false);toast('Group reset to the built-in default');vSetup(m)});
+  $('#nsB').onclick=newSessionDlg;
   $('#rst').onclick=()=>{if(confirm('Put the class groups, exams and grades back to the CBSE defaults? Marks already entered are not deleted.')){const x=JSON.parse(JSON.stringify(DEF));x.subj=c.subj||{};x.school=sc;CFG=x;WRITE('mk_cfg/cbse',x,false);toast('Defaults restored');vSetup(m)}};
   $('#svSet').onclick=async()=>{const x=c;m.querySelectorAll('[data-sc]').forEach(i=>x.school[i.dataset.sc]=i.value.trim());
     x.pass=+$('#pass').value||33;x.compMax=+$('#cmx').value||0;x.compMode=$('#cmode').value;x.abRule=$('#abr').value;x.scText=$('#scTx').value.trim()||'Considered on Special Consideration';x.rankPassOnly=$('#rpo').value==='1';x.minAtt=+$('#mAtt').value||75;
@@ -966,10 +1030,10 @@ window.SJS_DEMO_SEED=D=>{const names=['Lalremruata','Vanlalhriati','Zothanpuii',
 SJS.boot('Result Software',async()=>{if(FB()&&navigator.onLine)firebase.firestore().doc('mk_cfg/cbse').get({source:'server'}).catch(e=>{if(e&&e.code==='permission-denied'){RULEERR=true;if($('#main'))render()}});
   M.tab=lg('tab')||'dash';if(M.tab==='setup'&&!SJS.isAdmin)M.tab='dash';if(M.tab==='rev'&&!(SJS.canView||SJS.isAdmin))M.tab='dash';M.view=lg('view')||'t1';M.order=lg('order')||'roll';
   let n=0;const go=()=>{if(++n<2)return;if(n===2||!dirtyN())render()};
-  SJS.db.watch('mk_cfg/cbse',d=>{if(d){const x=JSON.parse(JSON.stringify(DEF));Object.keys(d).forEach(k=>{if(k==='school')Object.assign(x.school,d.school||{});else x[k]=d[k]});x.schemes.forEach(q=>{if(q.grades==='A+=90, A=75, B=56, C=35, D=0')q.grades='A+=90, A=75, B=56, C=33, D=0'});x.schemes.forEach(q=>q.terms.forEach(t=>t.comps.forEach(c=>{if(c.name==='Sub. Enrichment')c.name='SEA'})));x.schemes.forEach(q=>{const d=DEF.schemes.find(z=>z.id===q.id),pb=d&&d.terms.find(t=>t.solo);if(pb&&!q.terms.some(t=>t.solo))q.terms.push(JSON.parse(JSON.stringify(pb)))});
+  SJS.db.watch('mk_cfg/cbse',d=>{if(M.arch)return;if(d){const x=JSON.parse(JSON.stringify(DEF));Object.keys(d).forEach(k=>{if(k==='school')Object.assign(x.school,d.school||{});else x[k]=d[k]});x.schemes.forEach(q=>{if(q.grades==='A+=90, A=75, B=56, C=35, D=0')q.grades='A+=90, A=75, B=56, C=33, D=0'});x.schemes.forEach(q=>q.terms.forEach(t=>t.comps.forEach(c=>{if(c.name==='Sub. Enrichment')c.name='SEA'})));x.schemes.forEach(q=>{const d=DEF.schemes.find(z=>z.id===q.id),pb=d&&d.terms.find(t=>t.solo);if(pb&&!q.terms.some(t=>t.solo))q.terms.push(JSON.parse(JSON.stringify(pb)))});
       if(!x.schemes.some(q=>q.id==='nur')){x.schemes.forEach(q=>{q.classes=String(q.classes||'').split(',').map(t=>t.trim()).filter(t=>t&&nc(t)!=='NURSERY').join(', ');if(q.name==='Pre-Primary (Nursery – KG)')q.name='Pre-Primary (KG)'});x.schemes.unshift(JSON.parse(JSON.stringify(DEF.schemes[0])));x.subj={...(x.subj||{})};if(/\{/.test(x.subj['cls:NURSERY']||''))delete x.subj['cls:NURSERY']}   /* v42: Nursery gets its own group and the My First Report Card */
       CFG=x}else CFG=null;go()});
-  SJS.db.watch('mk_cfg/main',d=>{OLD=d||{};go()})});
+  SJS.db.watch('mk_cfg/main',d=>{if(M.arch)return;OLD=d||{};go()})});
 </script>
 </body>
 </html>
