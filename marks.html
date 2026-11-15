@@ -45,7 +45,7 @@ details.grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;ma
    c/<classId>/marks/<examId>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}
    c/<classId>/marks/x_<termId>__att | __rem | __c<Area>   attendance, remarks, co-scholastic grades for a term */
 const {$,esc,toast,sheet,closeSheet,pasteRows,classLabel,waPhone}=SJS;
-const VER='47';
+const VER='48';
 const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const CBSE_T=(n,pt,ex,exn)=>({id:'t'+n,name:'Term '+n,comps:[{id:'pt'+n,name:pt,max:10},{id:'nb'+n,name:'Note Book',max:5},{id:'se'+n,name:'SEA',max:5},{id:ex,name:exn,max:80}]});
 const DEF={
@@ -756,21 +756,23 @@ const XLR={async read(file){const buf=new Uint8Array(await file.arrayBuffer()),d
     out.push({name:sh.getAttribute('name'),rows})}return out}};
 async function tplUpload(cid,file,m){const D=C[cid],c=cls(cid);let book;try{book=await XLR.read(file)}catch(e){console.error(e);toast('Could not read this file – it must be an Excel workbook (.xlsx)');return}
   const map={};examCols(cid).forEach(e=>e.cols.forEach(k=>map[k.id]={...k,e}));const byRoll={};D.students.forEach(st=>byRoll[String(st.roll).trim()]=st);
-  const ch={},maxCh={},errs=[],skipLk=new Set();let n=0,same=0,found=0;
-  book.forEach(sh=>{const R=sh.rows,ki=R.findIndex(r=>r&&String(r[0]==null?'':r[0]).trim().toUpperCase()==='KEY');if(ki<0)return;found++;const fi=R.findIndex(r=>r&&/^full marks$/i.test(String(r[0]==null?'':r[0]).trim()));
-    const keys=(R[ki]||[]).map((v,j)=>j>=2&&map[String(v==null?'':v).trim()]||null);
+  const ch={},maxCh={},errs=[],skipLk=new Set(),rep=[];let n=0,same=0,found=0;
+  book.forEach(sh=>{const R=sh.rows,ki=R.findIndex(r=>r&&String(r[0]==null?'':r[0]).trim().toUpperCase()==='KEY');if(ki<0){rep.push({nm:sh.name,why:'not a template sheet (no KEY row) – skipped'});return}found++;const n0=n,s0=same,e0=errs.length;let typed=0,fm0=0;const fi=R.findIndex(r=>r&&/^full marks$/i.test(String(r[0]==null?'':r[0]).trim()));
+    const keys=(R[ki]||[]).map((v,j)=>j>=2&&map[String(v==null?'':v).trim()]||null);const nk=keys.filter(Boolean).length;
     keys.forEach((k,j)=>{if(!k)return;if(locked(k.e.c.id)&&!SJS.isAdmin){skipLk.add(k.e.title);keys[j]=null;return}const fm=fi>=0?+(R[fi]||[])[j]:NaN;if(fm>0&&fm!==k.max)maxCh[k.id]=fm});
     for(let i=ki+1;i<R.length;i++){const r=R[i];if(!r)continue;const roll=String(r[0]==null?'':r[0]).trim();if(!roll)continue;const st=byRoll[roll]||byRoll[String(+roll)];
       if(!st){if(keys.some((k,j)=>k&&r[j]!=null&&String(r[j]).trim()!==''))errs.push(sh.name+': Roll '+roll+' is not in '+classLabel(c));continue}
-      keys.forEach((k,j)=>{if(!k)return;let v=r[j];if(v==null||String(v).trim()==='')return;const mx=maxCh[k.id]||k.max;
+      keys.forEach((k,j)=>{if(!k)return;let v=r[j];if(v==null||String(v).trim()==='')return;typed++;const mx=maxCh[k.id]||k.max;
         if(typeof v==='string'){const u=v.trim().toUpperCase();if(['AB','A','ABS','ABSENT'].includes(u))v='AB';else if(u!==''&&!isNaN(+u))v=+u;else{errs.push(sh.name+': Roll '+roll+', '+k.label+' – “'+v+'” is not a mark');return}}
         if(v!=='AB'){v=Math.round(v*100)/100;if(v<0||v>mx){errs.push(sh.name+': Roll '+roll+', '+k.label+' – '+v+(v<0?' is below 0':' is more than the full marks '+mx));return}}
-        const d=D.marks[k.id],cur=d&&d.m?d.m[st.roll]:undefined;if(cur===v||(cur!=null&&cur!=='AB'&&v!=='AB'&&+cur===v)){same++;return}(ch[k.id]=ch[k.id]||{})[st.roll]=v;n++})}});
+        const d=D.marks[k.id],cur=d&&d.m?d.m[st.roll]:undefined;if(cur===v||(cur!=null&&cur!=='AB'&&v!=='AB'&&+cur===v)){same++;return}(ch[k.id]=ch[k.id]||{})[st.roll]=v;n++})}
+    rep.push({nm:sh.name,n:n-n0,same:same-s0,err:errs.length-e0,typed,nk,lk:keys.filter(Boolean).length<nk})});
   if(!found){toast('This is not a marks template from the Result Software. Download the template first, fill it, then upload it.');return}
   const ids=[...new Set([...Object.keys(ch),...Object.keys(maxCh)])];
   const byEx={};ids.forEach(id=>{const k=map[id];(byEx[k.e.title]=byEx[k.e.title]||[]).push(k.label+' ('+Object.keys(ch[id]||{}).length+')')});
   sheet(`<h3>Upload marks – ${esc(classLabel(c))}</h3><p class="sub"><b>${n}</b> new or changed marks${same?' · '+same+' already saved (no change)':''}.</p>
-    ${Object.entries(byEx).map(([e,l])=>`<div class="li"><b style="flex:0 0 38%">${esc(e)}</b><span class="tmeta">${l.map(esc).join(', ')}</span></div>`).join('')}
+    <div class="tmeta" style="font-weight:700;margin:6px 0 2px">Sheet by sheet</div>${rep.map(x=>`<div class="li"><b style="flex:0 0 38%">${esc(x.nm)}</b><span class="tmeta">${x.why?esc(x.why):!x.nk?'no subject columns recognised – skipped':!x.typed?'<b style="color:var(--crit)">no marks typed in this sheet</b>':`${x.n} new/changed · ${x.same} no change${x.err?' · <b style="color:var(--crit)">'+x.err+' wrong (not used)</b>':''}${x.lk?' · 🔒 locked':''}`}</span></div>`).join('')}
+    ${Object.keys(byEx).length?`<div class="tmeta" style="font-weight:700;margin:10px 0 2px">Marks to be saved</div>`:''}${Object.entries(byEx).map(([e,l])=>`<div class="li"><b style="flex:0 0 38%">${esc(e)}</b><span class="tmeta">${l.map(esc).join(', ')}</span></div>`).join('')}
     ${Object.keys(maxCh).length?`<p class="sub">Full marks changed: ${Object.keys(maxCh).map(id=>esc(map[id].e.title+' · '+map[id].label)+' → <b>'+maxCh[id]+'</b>').join(', ')}</p>`:''}
     ${skipLk.size?`<div class="banner warn">🔒 Locked by the Admin, not uploaded: ${[...skipLk].map(esc).join(', ')}</div>`:''}
     ${errs.length?`<div class="banner warn" style="margin-top:8px"><b>${errs.length} mark${errs.length>1?'s':''} not used – please correct in Excel and upload again:</b><br>${errs.slice(0,15).map(esc).join('<br>')}${errs.length>15?'<br>… and '+(errs.length-15)+' more':''}</div>`:''}
