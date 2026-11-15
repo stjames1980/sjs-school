@@ -178,3 +178,5 @@ Upload `marks.html` and `sw.js`.
 **Version 54 – Class XI–XII card.** The signature lines and names are lower (about 5 mm on the Final card), giving more room to sign under the Result box. The Principal's seal box under them is a little shorter. Other cards unchanged. Upload `marks.html` and `sw.js`.
 
 **Version 55 – Class XI–XII card.** Space between the Result box and the signature lines is about 20.5 mm (Final card 20.7 mm, Term cards about 22 mm). To adjust it yourself: in marks.html search for `.card.sr .seal{height:9.5mm` – a smaller number lowers the signatures, a bigger number raises them (1 mm = 1 mm) – and increase the VERSION in sw.js by one.
+
+**Version 56 – Class XI–XII card.** Signature lines and names lowered about 1.5 mm more (Final card: 22 mm below the Result box). Result box, Instructions and the rest unchanged. Adjust yourself: in marks.html search `.card.sr .seal{height:8mm` (smaller = signatures lower) and raise the VERSION in sw.js by one.
