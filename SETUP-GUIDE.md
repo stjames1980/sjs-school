@@ -172,3 +172,9 @@ Upload `marks.html` and `sw.js`.
 **Version 51 – Class XI–XII card (normal only).** The marks boxes show only the exact score (below the pass marks in red). The pass marks are printed once in each heading, in the same order as the full marks: **PT-I (50) Pass 17 · not counted**, **Half Yearly Theory (80/70) Pass 26/23**, **Practical / IA (30/20) Pass 10/7**. Pre-Board and all other cards unchanged. Upload `marks.html` and `sw.js`.
 
 **Version 52.** On the normal Class XI–XII card the headings now read **P.M.** instead of "Pass" (P.M. = pass marks): PT-I (50) P.M. 17 · not counted, Half Yearly Theory (80/70) P.M. 26/23, Practical / IA (30/20) P.M. 10/7. Upload `marks.html` and `sw.js`.
+
+**Version 53 – signature space on the Class XI–XII card.** The card now keeps up to 24 mm of signing room above the signature lines (other cards keep 15 mm). The space comes from spare room on the page: a Term card gets the full 24 mm; the Final card, which has more rows, gets what is left (about 18 mm with 5–6 subjects). To change it yourself: in marks.html search for `?24:15` and change 24 (millimetres), then upload marks.html and sw.js with the VERSION number in sw.js increased by one.
+
+**Version 54 – Class XI–XII card.** The signature lines and names are lower (about 5 mm on the Final card), giving more room to sign under the Result box. The Principal's seal box under them is a little shorter. Other cards unchanged. Upload `marks.html` and `sw.js`.
+
+**Version 55 – Class XI–XII card.** Space between the Result box and the signature lines is about 20.5 mm (Final card 20.7 mm, Term cards about 22 mm). To adjust it yourself: in marks.html search for `.card.sr .seal{height:9.5mm` – a smaller number lowers the signatures, a bigger number raises them (1 mm = 1 mm) – and increase the VERSION in sw.js by one.
