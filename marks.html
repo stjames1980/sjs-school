@@ -45,7 +45,7 @@ details.grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;ma
    c/<classId>/marks/<examId>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}
    c/<classId>/marks/x_<termId>__att | __rem | __c<Area>   attendance, remarks, co-scholastic grades for a term */
 const {$,esc,toast,sheet,closeSheet,pasteRows,classLabel,waPhone}=SJS;
-const VER='45';
+const VER='46';
 const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const CBSE_T=(n,pt,ex,exn)=>({id:'t'+n,name:'Term '+n,comps:[{id:'pt'+n,name:pt,max:10},{id:'nb'+n,name:'Note Book',max:5},{id:'se'+n,name:'SEA',max:5},{id:ex,name:exn,max:80}]});
 const DEF={
@@ -171,16 +171,16 @@ function compute(cid,view){const isFin=view==='final',D=C[cid],isTerm=schemeOf(c
       if(sab&&has&&!s.graded)absent.push(s.name);
       if(has&&mx>0&&!s.graded){tot+=g;full+=mx;if(fail){nf++;failed.push(s.name)}}});
     const p=full?tot/full*100:null;
-    const few=(isFin||isTerm)&&nf>0&&nf<=(+cfg().compMax||0);let sp=few&&cfg().compMode!=='comp',status=!full?'':nf===0?'PASS':few?(sp?'PASS':isFin?'COMP':'FAIL'):'FAIL',sc=false,det=false;if(!full)sp=false;
-    let ab=false;if(cfg().abRule==='fail'&&absent.length&&full){status='FAIL';sp=false;ab=true;absent.forEach(n=>{if(!failed.includes(n))failed.push(n)})}   // Setup option: absent in any subject = Failed in that result   // failing in 1–2 subjects: Simple Pass (promoted) or Compartment, as chosen in Setup
+    const few=nf>0&&nf<=(+cfg().compMax||0);   /* 1–2 subjects below pass marks: every exam, term and the Final */let sp=few&&cfg().compMode!=='comp',status=!full?'':nf===0?'PASS':few?(sp?'PASS':isFin?'COMP':'FAIL'):'FAIL',sc=false,det=false;if(!full)sp=false;
+    let ab=false;if((cfg().abRule==='fail'||(cfg().abRule==='exam'&&cm))&&absent.length&&full){status='FAIL';sp=false;ab=true;absent.forEach(n=>{if(!failed.includes(n))failed.push(n)})}   // Setup option: absent in any subject = Failed in that result   // failing in 1–2 subjects: Simple Pass (promoted) or Compartment, as chosen in Setup
     const dv=isFin&&full?rvOf(D,'dec',st.roll):'';if(dv==='SC'&&status!=='PASS'){status='PASS';sc=true}else if(dv==='DET'&&status!=='FAIL'){status='FAIL';det=true;sp=false}   // decision of the review committee
-    return{st,cid,sub,tot,full,p,g:grade(p,S),nf,failed,status,sc,det,sp,ab,absent,fin:isFin,note:isFin?rvOf(D,'note',st.roll):'',any:full>0}});
+    return{st,cid,sub,tot,full,p,g:grade(p,S),nf,failed,status,sc,det,sp,ab,absent,fin:isFin,one:!!cm,note:isFin?rvOf(D,'note',st.roll):'',any:full>0}});
   rankRows(rows);return{S,SL,rows,view}}
 function rankRows(rows){rows.forEach(r=>delete r.rank);const pool=rows.filter(r=>r.any&&(!cfg().rankPassOnly||(r.status==='PASS'&&!r.sc&&!r.sp))).sort((a,b)=>b.p-a.p);
   let rk=0,last=null;pool.forEach(r=>{const k=r2(r.p);if(k!==last){rk++;last=k}r.rank=rk})}
 const termTot=(r,SL,tid)=>{let g=0,m=0;SL.forEach(s=>{const x=r.sub[s.key].T[tid];if(x&&x.has&&x.mx>0&&!s.graded){g+=x.got;m+=x.mx}});return{g,m,p:m?g/m*100:null}};
 const scT=()=>(cfg().scText||'Considered on Special Consideration').trim(),scShort=()=>scT().split(' ')[0]+' (S.C.)';
-const stText=(r,fin)=>r.status==='PASS'?(r.sp?'SIMPLE PASS':fin?(r.sc?scT().toUpperCase():'PASSED'):'PASS'):r.status==='COMP'?'COMPARTMENT':r.status==='FAIL'?(fin?'DETAINED':r.ab?'FAILED (ABSENT)':'NEEDS IMPROVEMENT'):'';
+const stText=(r,fin)=>r.status==='PASS'?(r.sp?'SIMPLE PASS':fin?(r.sc?scT().toUpperCase():'PASSED'):'PASS'):r.status==='COMP'?'COMPARTMENT':r.status==='FAIL'?(fin?'DETAINED':r.ab?'FAILED (ABSENT)':r.one?'FAILED':'NEEDS IMPROVEMENT'):'';
 const rvText=(r,SL)=>[r.sc?scT():r.det?'Detained by review':'',SL.filter(s=>(r.sub[s.key]||{}).grace).map(s=>s.name+' +'+fmt(r.sub[s.key].grace)+' grace').join(', '),r.note].filter(Boolean).join('; ');
 const stPill=r=>r.status?`<span class="pill ${r.status==='PASS'?(r.sp||r.sc?'y':'g'):r.status==='COMP'?'y':'r'}">${r.status==='PASS'?(r.sc?scShort():r.sp?'Simple pass':'Pass'):r.status==='COMP'?'Compartment':r.fin?'Detained':r.ab?'Failed (absent)':'Fail'}</span>`:'';
 function stats(rows){const a=rows.filter(r=>r.any),p=a.filter(r=>r.status==='PASS'),co=a.filter(r=>r.status==='COMP');
@@ -902,7 +902,7 @@ async function vSetup(m){m=$('#main')||m;const c=JSON.parse(JSON.stringify(cfg()
   <div class="card"><h2>Pass mark, grades and rank</h2><div class="grid2"><label class="f">Pass mark in each subject (%)<input class="inp" id="pass" type="number" value="${c.pass}"></label>
     <label class="f">Simple Pass / Compartment for failing in up to (subjects)<input class="inp" id="cmx" type="number" min="0" value="${c.compMax}"></label>
     ${sel('cmode','Failing in up to that many subjects gives',[['sp','Simple Pass (promoted to the next class)'],['comp','Compartment']],c.compMode==='comp'?'comp':'sp')}
-    ${sel('abr','A student absent (AB) in an exam',[['zero','AB counts as 0 marks – result worked out as usual'],['fail','Result is FAILED for that exam and term (Final: absent in Term 2)']],c.abRule==='fail'?'fail':'zero')}
+    ${sel('abr','A student absent (AB) in an exam',[['zero','AB counts as 0 marks – result worked out as usual'],['exam','FAILED in that exam (PT-I, PT-II, Half Yearly, Annual) – Term and Final worked out as usual'],['fail','FAILED in that exam, its term and the Final (Final: absent in Term 2)']],['zero','exam','fail'].includes(c.abRule)?c.abRule:'zero')}
     <label class="f">Result wording after review (special consideration)<input class="inp" id="scTx" maxlength="60" value="${esc(c.scText||'Considered on Special Consideration')}"></label>
     <label class="f">Minimum attendance % (shown in red in Final Review)<input class="inp" id="mAtt" type="number" min="0" max="100" value="${c.minAtt||75}"></label>
     ${sel('rpo','Rank is given to',[['1','Passed students only'],['0','All students']],c.rankPassOnly?'1':'0')}

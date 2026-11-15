@@ -158,3 +158,5 @@ The **Marks & Report Cards** tile is now **Result Software**. Upload these 5 cha
 Upload `marks.html` and `sw.js`.
 
 **Version 45 – pass marks.** A subject is passed when the marks reach 33% of its full marks **rounded up**: out of 50 → 17, out of 80 → 27, out of 100 → 33 (so 16.5/50 and 26.5/80 are not passed). Every result sheet, merit list and review sheet (screen, print and Excel) now has a **Full marks** row and a **Pass marks** row under the subject names. For PT-I/PT-II out of 50 counting as 10, write `PT-I=50>10` and `PT-II=50>10` in Setup. Upload `marks.html` and `sw.js`.
+
+**Version 46 – results of single exams.** In PT-I, PT-II, Half Yearly and Annual, a student below the pass marks in 1 or 2 subjects gets **SIMPLE PASS**, and in 3 or more subjects gets **FAILED** (the same rule as Term and Final). New choice in Setup → "A student absent (AB) in an exam": **FAILED in that exam (PT-I, PT-II, Half Yearly, Annual) – Term and Final worked out as usual**. Choose it and tap Save setup. Upload `marks.html` and `sw.js`.
