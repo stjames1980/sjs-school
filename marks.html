@@ -45,7 +45,7 @@ details.grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;ma
    c/<classId>/marks/<examId>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}
    c/<classId>/marks/x_<termId>__att | __rem | __c<Area>   attendance, remarks, co-scholastic grades for a term */
 const {$,esc,toast,sheet,closeSheet,pasteRows,classLabel,waPhone}=SJS;
-const VER='67';
+const VER='68';
 const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const CBSE_T=(n,pt,ex,exn)=>({id:'t'+n,name:'Term '+n,comps:[{id:'pt'+n,name:pt,max:10},{id:'nb'+n,name:'Note Book',max:5},{id:'se'+n,name:'SEA',max:5},{id:ex,name:exn,max:80}]});
 const DEF={
@@ -985,7 +985,7 @@ function newSessionDlg(){if(!SJS.isAdmin)return;if(!navigator.onLine&&FB()){toas
     catch(e){console.error(e);log('<b style="color:var(--crit)">Stopped: '+esc(e.message||'a save did not go through – check the internet and try again')+'</b>');go.disabled=false;go.textContent='Try again';x.disabled=false}}}
 async function openArchive(id){const a=await SJS.db.get('mk_cfg/arch__'+id);if(!a){toast('This saved session could not be found');return}const I=JSON.parse(a.json);
   const out={};for(const x of I.classes){let j='';for(let i=0;i<x.parts;i++){const d=await SJS.db.get('mk_cfg/arch__'+id+'__'+x.id+'__'+i);j+=(d&&d.json)||''}try{const o=JSON.parse(j);out[x.id]={students:o.students,marks:o.marks}}catch(e){out[x.id]={students:[],marks:{}}}}
-  Object.keys(C).forEach(k=>delete C[k]);Object.assign(C,out);M.arch=a.session;CFG=I.cfg;OLD={locked:I.locked||{}};SJS.classes=I.classes.map(x=>({id:x.id,cls:x.cls,section:x.section,teacherUids:x.teacherUids||[]}));
+  Object.keys(C).forEach(k=>delete C[k]);Object.assign(C,out);M.arch=a.session;CFG=I.cfg;OLD={locked:I.locked||{}};SJS.classes=I.classes.map(x=>({id:x.id,cls:x.cls,section:x.section,teacherUids:x.teacherUids||[]})).sort(window.SJSclsSort);
   SJS.school={...SJS.school,...(I.school||{}),session:a.session};I.classes.forEach(x=>{if(x.ct&&!SJS.teachers.some(t=>(x.teacherUids||[]).includes(t.uid)))SJS.teachers.push({uid:(x.teacherUids||[])[0]||('old-'+x.id),name:x.ct})});
   M.school=null;M.cid=SJS.classes[0]&&SJS.classes[0].id;if(M.tab==='setup'||M.tab==='enter'||M.tab==='cos')M.tab='res';render()}
 async function oldSessionsCard(m){const box=m.querySelector('#oldS');if(!box)return;const L=await archList();

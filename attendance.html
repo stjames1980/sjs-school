@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1E3A8A">
 <meta name="description" content="St. James H.S. School attendance register — AM/PM marking, dashboard, fines.">
-<link rel="manifest" href="manifest.json"><script src="config.js"></script>
+<link rel="manifest" href="manifest.json"><script>window.CLRK=window.CLRK||(c=>{let t=String(c||'').toUpperCase().replace(/CLASS|STD|STANDARD|[^A-Z0-9]/g,'');if(/^(PRE|PLAY|PG$|PN$)/.test(t))return 0;if(/^NUR/.test(t))return 1;if(/^(LKG|LOWERKG|JRKG|JUNIORKG|KG1|KGI|KGA)$/.test(t))return 2;if(t==='KG')return 2.5;if(/^(UKG|UPPERKG|SRKG|SENIORKG|KG2|KGII|KGB)$/.test(t))return 3;let m=t.match(/^(\d+)/);if(m&&+m[1]>=1&&+m[1]<=12)return 10+(+m[1]);m=t.match(/^(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)(?![IVX])/);if(m)return 11+['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'].indexOf(m[1]);return 99});window.SJSclsSort=window.SJSclsSort||((a,b)=>CLRK(a.cls)-CLRK(b.cls)||(a.order||0)-(b.order||0)||String(a.cls).localeCompare(String(b.cls))||String(a.section||'').localeCompare(String(b.section||'')));</script>
+<script src="config.js"></script>
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1129,7 +1130,7 @@ function startData(store){if(S.mode!=="online")S.canEdit=true;
   stopData();S.db=store;S.ready=false;
   S.subs.push(store.doc("cfg/main").onSnapshot(s=>{S.cfg=s.exists?s.data():null;S.got.cfg=true;checkReady()},()=>{S.got.cfg=true;checkReady()}));
   S.subs.push(store.collection("classes").onSnapshot(q=>{
-    S.classes=q.docs.map(d=>d.data()).sort((a,b)=>(a.order||0)-(b.order||0)||String(a.cls).localeCompare(String(b.cls))||String(a.section).localeCompare(String(b.section)));
+    S.classes=q.docs.map(d=>d.data()).sort(window.SJSclsSort);
     S.got.cls=true;
     const mine=S.classes.find(x=>myClass(x));const want=S.cid&&S.classes.some(x=>x.id===S.cid)?S.cid:(mine&&!S.canEdit?mine.id:(S.classes.some(x=>x.id===lsGet("sjs-class"))?lsGet("sjs-class"):(mine||S.classes[0]||{}).id||null));
     if(want!==S.cid)attachClass(want);else checkReady();

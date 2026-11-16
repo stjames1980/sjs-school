@@ -1,3 +1,6 @@
+/* School order of classes: Nursery, LKG, UKG, I ... XII, then section */
+window.CLRK=window.CLRK||(c=>{let t=String(c||'').toUpperCase().replace(/CLASS|STD|STANDARD|[^A-Z0-9]/g,'');if(/^(PRE|PLAY|PG$|PN$)/.test(t))return 0;if(/^NUR/.test(t))return 1;if(/^(LKG|LOWERKG|JRKG|JUNIORKG|KG1|KGI|KGA)$/.test(t))return 2;if(t==='KG')return 2.5;if(/^(UKG|UPPERKG|SRKG|SENIORKG|KG2|KGII|KGB)$/.test(t))return 3;let m=t.match(/^(\d+)/);if(m&&+m[1]>=1&&+m[1]<=12)return 10+(+m[1]);m=t.match(/^(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)(?![IVX])/);if(m)return 11+['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'].indexOf(m[1]);return 99});
+window.SJSclsSort=window.SJSclsSort||((a,b)=>CLRK(a.cls)-CLRK(b.cls)||(a.order||0)-(b.order||0)||String(a.cls).localeCompare(String(b.cls))||String(a.section||'').localeCompare(String(b.section||'')));
 /* SJS App – shared code for marks.html and school.html
    Sign-in, roles, classes and students come from the same Firebase project as the rest of SJS App. */
 (function(){
@@ -86,7 +89,7 @@ const SJS={$,esc,MONTHS,DOW,pad,iso,parse,todayISO,fmtDate,addDays,toast,sheet,c
       await this.loadCommon();onReady()})},
   async loadCommon(){
     try{const tq=await this.db.list('att_teachers');this.teachers=tq.filter(t=>t.active!==false).sort((a,b)=>(a.order??999)-(b.order??999));this.me=tq.find(t=>t.uid===this.user.uid)||null}catch(e){}
-    try{const cq=await this.db.list('classes');this.classes=cq.sort((a,b)=>(a.order||0)-(b.order||0)||String(a.cls).localeCompare(String(b.cls))||String(a.section).localeCompare(String(b.section)))}catch(e){}
+    try{const cq=await this.db.list('classes');this.classes=cq.sort(window.SJSclsSort)}catch(e){}
     try{const m=await this.db.get('sjs_tt/main');if(m&&m.school)Object.assign(this.school,{name:m.school.name||this.school.name,place:m.school.place||this.school.place,session:m.school.session||this.school.session})}catch(e){}
     $('#app').querySelector('.hdr').outerHTML=this.header(document.title.split('–')[0].trim())}
 };

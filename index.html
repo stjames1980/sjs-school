@@ -254,6 +254,7 @@ h3.sec:after{content:"";flex:1;height:1px;background:var(--line)}
 <main id="main"><div class="banner info">Loading…</div></main>
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
 <div class="toast" id="toast"></div>
+<script>window.CLRK=window.CLRK||(c=>{let t=String(c||'').toUpperCase().replace(/CLASS|STD|STANDARD|[^A-Z0-9]/g,'');if(/^(PRE|PLAY|PG$|PN$)/.test(t))return 0;if(/^NUR/.test(t))return 1;if(/^(LKG|LOWERKG|JRKG|JUNIORKG|KG1|KGI|KGA)$/.test(t))return 2;if(t==='KG')return 2.5;if(/^(UKG|UPPERKG|SRKG|SENIORKG|KG2|KGII|KGB)$/.test(t))return 3;let m=t.match(/^(\d+)/);if(m&&+m[1]>=1&&+m[1]<=12)return 10+(+m[1]);m=t.match(/^(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)(?![IVX])/);if(m)return 11+['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'].indexOf(m[1]);return 99});window.SJSclsSort=window.SJSclsSort||((a,b)=>CLRK(a.cls)-CLRK(b.cls)||(a.order||0)-(b.order||0)||String(a.cls).localeCompare(String(b.cls))||String(a.section||'').localeCompare(String(b.section||'')));</script>
 <script src="config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script>
@@ -785,7 +786,7 @@ async function loadClasses(ds){
   CL.loading=true;CL.err='';CL.date=ds;render();
   try{
     const cq=await fs.collection('classes').get();
-    const classes=cq.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order||0)-(b.order||0)||String(a.cls).localeCompare(String(b.cls),undefined,{numeric:true})||String(a.section||'').localeCompare(String(b.section||'')));
+    const classes=cq.docs.map(d=>({id:d.id,...d.data()})).sort(window.SJSclsSort);
     const rows=await Promise.all(classes.map(async k=>{
       if(!CL.students[k.id]){const q=await fs.collection('c/'+k.id+'/students').get();CL.students[k.id]=q.docs.map(d=>d.data()).sort((a,b)=>a.roll-b.roll);}
       const a=await fs.doc('c/'+k.id+'/att/'+ds).get();
