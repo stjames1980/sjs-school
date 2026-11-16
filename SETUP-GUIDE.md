@@ -202,3 +202,5 @@ Upload `marks.html` and `sw.js`.
 - **🏆 Top 10 rank holders:** one page per class (all its sections together), ranks 1 to 10 in merit order. Equal percentages share a rank, so a class may list more than 10 students (e.g. 1, 2, 2, 3 … 10). Only passed students are ranked (Setup → Rank is given to).
 - **🖨 Pass % – all exams:** the pass % and average of every class in every exam (was page 2 of the old summary).
 Upload `marks.html` and `sw.js`.
+
+**Version 66 – whole school (Dashboard).** *Pass % – all exams* (print and the Excel "Overall" sheet) no longer has Note Book and SEA columns. **Top 10 rank holders:** choose in the dropdown – all classes (one page each), one class with all its sections together, one section only, or all sections (one page each) – then **🖨 Print / Save as PDF** (in the print window choose "Save as PDF" as the printer) or **⬇ Excel** (one sheet per class/section). Upload `marks.html` and `sw.js` (and the version 64 files if not uploaded yet).
