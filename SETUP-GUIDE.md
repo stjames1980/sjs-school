@@ -209,3 +209,6 @@ Upload `marks.html` and `sw.js`.
 
 ## Version 68
 - Class lists everywhere (Result Software dropdowns, Dashboard whole-school summary, Top 10, Student Attendance, Home) now follow school order: Nursery, LKG (KG-I), UKG (KG-II), I, II … XII, then section A, B, C. The saved "order" number of a class is only used for names the app does not recognise.
+
+## Version 69
+- Report cards now always fit on one A4 page. When a class has many subjects (for example LKG / UKG with many subjects and their parts), the whole card is shrunk a little so it does not run onto a second page. Cards that already fit are not changed.
