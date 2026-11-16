@@ -217,6 +217,21 @@ h3.sec{margin:18px 2px 8px;font-size:13px;letter-spacing:1px;text-transform:uppe
 .nbody{white-space:pre-wrap;font-size:13.5px;color:var(--ink2)}
 .crestimg{flex:none;width:58px;height:58px;border-radius:50%;background:#fff;object-fit:contain;box-shadow:0 0 0 3px rgba(255,255,255,.18)}
 @media (max-width:640px){.crestimg{width:46px;height:46px}}
+
+/* v64 – modern home page and side menu (sjs-nav.js) */
+.hero{background:linear-gradient(120deg,#13294b 0%,#1d3d6e 60%,#24497f 100%)!important;color:#fff;border:0!important;position:relative;overflow:hidden;padding:18px 18px 16px!important}
+.hero:after{content:"";position:absolute;right:-50px;top:-60px;width:190px;height:190px;border-radius:50%;border:28px solid rgba(201,162,39,.18)}
+.hero h2{color:#fff!important}.hero .tmeta{color:#c9d5ea!important;font-weight:600}
+.tiles{gap:12px}
+.tile{position:relative;padding:16px 14px 14px;min-height:128px;border-radius:16px;transition:transform .15s ease,box-shadow .15s ease,border-color .15s}
+.tile:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(19,41,75,.10);border-color:#cfd8e8}
+.tile .ti{width:48px;height:48px;border-radius:13px;display:grid;place-items:center;font-size:24px;background:#eef3fc;margin-bottom:6px}
+.tiles .tile:nth-child(6n+2) .ti{background:#fff4dc}.tiles .tile:nth-child(6n+3) .ti{background:#e7f7ec}.tiles .tile:nth-child(6n+4) .ti{background:#fde9ef}.tiles .tile:nth-child(6n+5) .ti{background:#efe9fd}.tiles .tile:nth-child(6n) .ti{background:#e3f4f8}
+.tile .tt{font-size:15px}
+.tile.hot:before{content:"";position:absolute;top:12px;right:12px;width:9px;height:9px;border-radius:50%;background:#e0a100;box-shadow:0 0 0 4px rgba(224,161,0,.18)}
+h3.sec{display:flex;align-items:center;gap:8px;margin:22px 2px 10px}
+h3.sec:after{content:"";flex:1;height:1px;background:var(--line)}
+@media(min-width:900px){.tiles{grid-template-columns:repeat(auto-fill,minmax(205px,1fr))!important}}
 </style>
 </head>
 <body>
@@ -381,7 +396,7 @@ async function start(){
   }catch(e){ S.err='Could not load. Check the internet connection and open the app again.'; render(); return; }
   auth.onAuthStateChanged(async u=>{
     unsubs.forEach(f=>f()); unsubs=[]; if(monthUnsub){monthUnsub();monthUnsub=null;monthKey='';}
-    S.view='home'; S.user=u; S.isAdmin=false; S.role='teacher'; S.canView=false; S.myLink=null; S.marks={}; S.links={}; S.leaves={}; S.dec={}; S.notices={}; S.noticeErr=false; S.fixes={}; S.fixlog={}; S.ready=false;
+    S.view=(location.hash.slice(1)||'home'); S.user=u; S.isAdmin=false; S.role='teacher'; S.canView=false; S.myLink=null; S.marks={}; S.links={}; S.leaves={}; S.dec={}; S.notices={}; S.noticeErr=false; S.fixes={}; S.fixlog={}; S.ready=false;
     if(!u){ render(); return; }
     render();
     try{ await fs.collection('att_links').limit(1).get(); S.isAdmin=true; }catch(e){ S.isAdmin=false; }
@@ -434,7 +449,9 @@ const pendingCount=()=>Object.keys(S.leaves).filter(id=>leaveState(id)==='pendin
 const ROLE_NAME={teacher:'Teacher',principal:'Principal',exam:'Examination In-Charge'};
 const canApprove=()=>S.isAdmin||S.role==='principal';
 const views=()=>!S.isAdmin&&S.canView?[['home','⌂ Home'],['notices','Notices'+(unreadN()?' ('+unreadN()+')':'')],['me','✓ Teacher Attendance'],['dash','Dashboard'],['classes','All Classes'],['leave','Leave'+(canApprove()&&pendingCount()?' ('+pendingCount()+')':'')],['register','Register'],['report','Teacher Report']]:S.isAdmin?[['home','⌂ Home'],['notices','Notices'+(unreadN()?' ('+unreadN()+')':'')],['me','✓ Teacher Attendance'],['dash','Dashboard'],['classes','All Classes'],['leave','Leave'+(pendingCount()?' ('+pendingCount()+')':'')],['register','Register'],['report','Teacher Report'],['teachers','Teachers'],['settings','Settings']]:[['home','⌂ Home'],['notices','Notices'+(unreadN()?' ('+unreadN()+')':'')],['me','✓ Teacher Attendance']];
-function go(v){S.view=v;render();window.scrollTo(0,0);}
+function go(v){S.view=v;try{history.replaceState(null,'','#'+v)}catch(e){}render();window.scrollTo(0,0);}
+/* v64: every screen has its own address (index.html#notices …) so the side menu can open it */
+window.addEventListener('hashchange',()=>{const h=location.hash.slice(1)||'home';if(S.user&&h!==S.view){S.view=h;render();window.scrollTo(0,0)}});
 
 function render(){
   const c=S.cfg;
@@ -445,6 +462,7 @@ function render(){
   if(S.err){ $('#main').innerHTML=`<div class="banner err"><div>${esc(S.err)}</div></div>`; return; }
   if(!auth){ return; }
   const vs=views(); if(!vs.some(v=>v[0]===S.view)) S.view='home';
+  try{localStorage.setItem('sjs-nav-role',JSON.stringify(S.user?{staff:isStaff(),canView:!!S.canView,isAdmin:!!S.isAdmin,school:c.school,session:c.session,user:staffIdOf(S.user.email)||S.user.email}:{staff:false,school:c.school,session:c.session}))}catch(e){} if(window.SJSNav)SJSNav.refresh();
   $('.nav').classList.toggle('hidden',!S.user||vs.length<2);
   $('#nav').innerHTML=vs.map(([k,l])=>`<button class="tab ${S.view===k?'act':''}" data-go="${k}">${l}</button>`).join('');
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
@@ -511,7 +529,7 @@ function vHome(){
   const ts=activeTeachers(); const presentNow=ts.filter(x=>{const s=statusOf(x,ds);return s==='P'||s==='L'||(isLeaveCode(s)&&ltOf(s).present);}).length;
   const reqs=Object.entries(S.links).filter(([uid,l])=>l&&S.teachers.some(x=>x.id===l.teacherId&&x.uid!==uid)).length;
   const latest=sortedNotices().slice(0,3);
-  return `<div class="card mecard"><div class="tmeta">${DOW[parse(ds).getDay()]}, ${fmtDate(ds)}</div><h2 style="font-size:20px;margin:2px 0 0">${hello()}${t?', '+esc(t.name):''}</h2></div>
+  return `<div class="card mecard hero"><div class="tmeta">${DOW[parse(ds).getDay()]}, ${fmtDate(ds)}</div><h2 style="font-size:20px;margin:2px 0 0">${hello()}${t?', '+esc(t.name):''}</h2></div>
   ${dutyCard()}
   <div class="tiles">
     ${tile('me','✅','Teacher Attendance',esc(today),t&&(statusOf({...t,uid:S.user.uid},ds)==='W'||/sign Afternoon now/.test(today))?'hot':'')}
@@ -1022,5 +1040,6 @@ if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch
 setInterval(()=>{ if(S.user&&!document.querySelector('input:focus,textarea:focus,select:focus')&&!$('#modalBg').classList.contains('show')) render(); },60000);
 start();
 </script>
+<script src="sjs-nav.js" defer></script>
 </body>
 </html>

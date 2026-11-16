@@ -1,8 +1,8 @@
 // SJS App – offline cache for all sections. Change VERSION when you upload new app files.
-const VERSION = "sjs-school-v63";
+const VERSION = "sjs-school-v65";
 const SHELL = ["./", "./index.html", "./manifest.json", "./config.js", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png", "./logo.png", "./cbse.png", "./favicon.png",
   "./timetable.html", "./attendance.html", "./chart.png",
-  "./marks.html", "./school.html", "./sjs-common.js", "./sjs-common.css"];
+  "./marks.html", "./school.html", "./sjs-common.js", "./sjs-common.css", "./sjs-nav.js"];
 const CDN = ["fonts.googleapis.com", "fonts.gstatic.com", "www.gstatic.com", "cdnjs.cloudflare.com"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

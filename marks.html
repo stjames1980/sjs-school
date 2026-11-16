@@ -45,7 +45,7 @@ details.grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;ma
    c/<classId>/marks/<examId>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}
    c/<classId>/marks/x_<termId>__att | __rem | __c<Area>   attendance, remarks, co-scholastic grades for a term */
 const {$,esc,toast,sheet,closeSheet,pasteRows,classLabel,waPhone}=SJS;
-const VER='63';
+const VER='65';
 const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const CBSE_T=(n,pt,ex,exn)=>({id:'t'+n,name:'Term '+n,comps:[{id:'pt'+n,name:pt,max:10},{id:'nb'+n,name:'Note Book',max:5},{id:'se'+n,name:'SEA',max:5},{id:ex,name:exn,max:80}]});
 const DEF={
@@ -195,6 +195,7 @@ function autoRemark(r){r={...r,failed:(r.failed||[]).map(noCode),absent:(r.absen
 
 /* ---------- page frame ---------- */
 function tabs(){let T=[['dash','Dashboard'],['enter','Enter Marks'],['cos','Grades & Remarks'],['res','Results'],['cards','Report Cards']];if(SJS.canView||SJS.isAdmin)T.splice(4,0,['rev','Final Review']);if(SJS.isAdmin)T.push(['setup','Setup']);if(M.arch)T=T.filter(x=>!['enter','cos','setup'].includes(x[0]));
+  window.SJSNAV_SUB={items:T,act:M.tab,go:id=>{const b=document.querySelector('[data-t="'+id+'"]');if(b)b.click()}};setTimeout(()=>{if(window.SJSNav)SJSNav.refresh()},0);   /* side menu (sjs-nav.js) */
   return `<div class="nav"><div class="nav-in">${T.map(([k,l])=>`<button class="tab ${M.tab===k?'act':''}" data-t="${k}">${l}</button>`).join('')}</div></div>`}
 function render(){const a=$('#app');const h=a.querySelector('.hdr').outerHTML;a.innerHTML=h+tabs()+(RULEERR?'<div class="banner warn" style="margin:12px">'+RULEMSG+'</div>':'')+(M.arch?'<div class="banner warn" style="margin:12px">📁 Viewing old session <b>'+esc(M.arch)+'</b> – read only. <button class="btn sm pri" id="archX">Back to current session</button></div>':'')+'<main id="main"></main><div class="tmeta" style="text-align:center;margin:-100px 0 110px">Result Software · version '+VER+'</div>';
   const ax=a.querySelector('#archX');if(ax)ax.onclick=()=>location.reload();
@@ -231,7 +232,7 @@ async function vDash(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m
   wire(m,vDash);
   const sb=$('#schB');if(sb)sb.onclick=async()=>{sb.disabled=true;await schoolLoad(sb);vDash(m)};
   const sv=$('#schV');if(sv)sv.onchange=e=>{M.schV=e.target.value;vDash(m)};
-  const sxb=$('#schX');if(sxb)sxb.onclick=schoolExcel;const spb=$('#schP');if(spb)spb.onclick=schoolPrint;
+  const sxb=$('#schX');if(sxb)sxb.onclick=schoolExcel;const spb=$('#schP');if(spb)spb.onclick=schoolPrint;const stb=$('#schT');if(stb)stb.onclick=topTenPrint;const smb=$('#schM');if(smb)smb.onclick=schoolMatrixPrint;
   if(SJS.canView||SJS.isAdmin){const oc=document.createElement('div');oc.className='card';oc.innerHTML='<h3 style="margin:0 0 6px">📁 Old sessions</h3><div id="oldS" class="tmeta">Loading…</div>';m.appendChild(oc);oldSessionsCard(m)}}
 
 /* ---------- Enter marks ---------- */
@@ -830,21 +831,13 @@ function schoolRows(v){const o=M.school.out.filter(x=>!x.err),groups=[];o.forEac
 const gradeCount=rows=>{const m={};rows.filter(r=>r.any&&r.g).forEach(r=>m[r.g]=(m[r.g]||0)+1);return Object.entries(m).map(([g,n])=>g+': '+n).join(', ')};
 function schoolTot(G){const T={n:0,app:0,pass:0,sp:0,comp:0,fail:0,sum:0};G.forEach(g=>g.secs.forEach(s=>{if(!s.st)return;T.n+=s.st.n;T.app+=s.st.app;T.pass+=s.st.pass;T.sp+=s.st.sp;T.comp+=s.st.comp;T.fail+=s.st.fail;T.sum+=(s.st.avg||0)*s.st.app}));T.pp=T.app?Math.round(T.pass/T.app*100):0;T.avg=T.app?T.sum/T.app:null;return T}
 function schoolHTML(){const v=M.schV,G=schoolRows(v),T=schoolTot(G),pc=x=>x==null?'–':fmt(x)+'%';
-  return `<div class="grid2" style="margin-top:10px">${sel('schV','Exam',M.school.views,v)}<label class="f">&nbsp;<span class="row"><button class="btn pri sm" id="schX">⬇ Excel (complete)</button><button class="btn sm" id="schP">🖨 Print</button></span></label></div>
+  return `<div class="grid2" style="margin-top:10px">${sel('schV','Exam',M.school.views,v)}<label class="f">&nbsp;<span class="row"><button class="btn pri sm" id="schX">⬇ Excel (complete)</button><button class="btn sm" id="schP">🖨 Summary (1 page)</button><button class="btn sm gold" id="schT">🏆 Top 10 rank holders</button><button class="btn sm" id="schM">🖨 Pass % – all exams</button></span></label></div>
   <div class="kp" style="margin-top:10px"><div class="k"><b>${T.n}</b><span>Students</span></div><div class="k p"><b>${T.app}</b><span>Appeared</span></div><div class="k g"><b>${T.pass}</b><span>Passed${T.sp?' ('+T.sp+' simple)':''}</span></div><div class="k r"><b>${T.fail+T.comp}</b><span>Not passed</span></div><div class="k y"><b>${T.app?T.pp+'%':'–'}</b><span>School pass %</span></div><div class="k"><b>${pc(T.avg)}</b><span>School average</span></div></div>
   <div class="scroll"><table class="tbl"><tr><th>Class</th><th>Students</th><th>Appeared</th><th>Passed</th><th>Not passed</th><th>Pass %</th><th>Average</th><th>Highest</th><th>Topper(s)</th></tr>
   ${G.map(g=>[...(g.secs.length>1?g.secs:[]).map(s=>s.st?`<tr><td style="padding-left:18px">${esc(classLabel(s.x.k))}</td><td>${s.st.n}</td><td>${s.st.app}</td><td>${s.st.pass}</td><td>${s.st.fail+s.st.comp}</td><td>${s.st.app?s.st.pp+'%':'–'}</td><td>${pc(s.st.avg)}</td><td>${pc(s.st.hi)}</td><td></td></tr>`:''),
      g.st?`<tr style="font-weight:700;background:var(--soft,#f3f6fb)"><td>Class ${esc(g.cls)}${g.secs.length>1?' (all)':' '+esc(g.secs[0].x.k.section||'')}</td><td>${g.st.n}</td><td>${g.st.app}</td><td>${g.st.pass}</td><td>${g.st.fail+g.st.comp}</td><td>${g.st.app?g.st.pp+'%':'–'}</td><td>${pc(g.st.avg)}</td><td>${pc(g.st.hi)}</td><td style="font-weight:400">${g.top.filter(r=>r.rank===1).map(r=>esc(r.st.name)+(g.secs.length>1?' ('+esc(secOf(r))+')':'')).join(', ')||'–'}</td></tr>`:`<tr><td>Class ${esc(g.cls)}</td><td colspan="8" class="tmeta">${g.held?'no marks yet':'this exam is not held in this class'}</td></tr>`].join('')).join('')}
   <tr style="font-weight:800"><td>WHOLE SCHOOL</td><td>${T.n}</td><td>${T.app}</td><td>${T.pass}</td><td>${T.fail+T.comp}</td><td>${T.app?T.pp+'%':'–'}</td><td>${pc(T.avg)}</td><td></td><td></td></tr></table></div>
   ${M.school.out.some(x=>x.err)?`<p class="tmeta">Could not load: ${M.school.out.filter(x=>x.err).map(x=>esc(classLabel(x.k))).join(', ')}</p>`:''}`}
-function schoolPrint(){const v=M.schV,vn=(M.school.views.find(x=>x[0]===v)||[])[1]||v,G=schoolRows(v),T=schoolTot(G),pc=x=>x==null?'–':fmt(x)+'%';
-  const main=`<table class="g"><tr><th class="l">Class</th><th>Students</th><th>Appeared</th><th>Passed</th><th>Simple pass</th><th>Not passed</th><th>Pass %</th><th>Average</th><th>Highest</th><th class="l">Grades</th></tr>
-   ${G.map(g=>[...(g.secs.length>1?g.secs:[]).map(s=>s.st?`<tr><td class="l" style="padding-left:12px">${esc(classLabel(s.x.k))}</td><td>${s.st.n}</td><td>${s.st.app}</td><td>${s.st.pass}</td><td>${s.st.sp||''}</td><td>${s.st.fail+s.st.comp}</td><td>${s.st.app?s.st.pp+'%':'–'}</td><td>${pc(s.st.avg)}</td><td>${pc(s.st.hi)}</td><td class="l">${esc(gradeCount(s.R.rows))}</td></tr>`:''),
-     g.st?`<tr style="font-weight:700;background:#eef2f8"><td class="l">Class ${esc(g.cls)}${g.secs.length>1?' – total':' '+esc(g.secs[0].x.k.section||'')}</td><td>${g.st.n}</td><td>${g.st.app}</td><td>${g.st.pass}</td><td>${g.st.sp||''}</td><td>${g.st.fail+g.st.comp}</td><td>${g.st.app?g.st.pp+'%':'–'}</td><td>${pc(g.st.avg)}</td><td>${pc(g.st.hi)}</td><td class="l" style="font-weight:400">${g.secs.length>1?'':esc(gradeCount(g.secs[0].R.rows))}</td></tr>`:''].join('')).join('')}
-   <tr style="font-weight:800;background:#f3e9c4"><td class="l">WHOLE SCHOOL</td><td>${T.n}</td><td>${T.app}</td><td>${T.pass}</td><td>${T.sp||''}</td><td>${T.fail+T.comp}</td><td>${T.app?T.pp+'%':'–'}</td><td>${pc(T.avg)}</td><td></td><td></td></tr></table>`;
-  const tops=`<div class="st" style="margin-top:10px">Rank holders (1st – 3rd) of every class</div><table class="g"><tr><th class="l" style="width:9%">Class</th><th class="l">1st</th><th class="l">2nd</th><th class="l">3rd</th></tr>${G.filter(g=>g.top.length).map(g=>`<tr><td class="l"><b>${esc(g.cls)}</b></td>${[1,2,3].map(k=>`<td class="l">${g.top.filter(r=>r.rank===k).map(r=>esc(r.st.name)+' <small>('+(g.secs.length>1?esc(secOf(r))+', ':'')+fmt(r.p)+'%)</small>').join('<br>')||'–'}</td>`).join('')}</tr>`).join('')}</table>`;
-  const VW=M.school.views,mx=`<div class="pb"></div>${headHTML('PASS % IN EVERY EXAM','Whole school')}<table class="g"><tr><th class="l">Class</th>${VW.map(x=>`<th>${esc(x[1])}</th>`).join('')}</tr>${schoolMatrix().map(r=>`<tr><td class="l">${esc(r.name)}</td>${r.cells.map(q=>`<td>${q?q.pp+'%<br><small>avg '+fmt(q.avg)+'%</small>':'–'}</td>`).join('')}</tr>`).join('')}</table>`;
-  printDoc('Whole School Result – '+vn,'landscape',headHTML('WHOLE SCHOOL RESULT SUMMARY',vn)+`<p style="margin:4px 0">Students: <b>${T.n}</b> · Appeared: <b>${T.app}</b> · Passed: <b>${T.pass}</b>${T.sp?' (Simple pass: <b>'+T.sp+'</b>)':''} · Not passed: <b>${T.fail+T.comp}</b> · School pass %: <b>${T.pp}%</b> · School average: <b>${pc(T.avg)}</b></p>`+main+tops+sigHTML(['Examination In-Charge','Principal'])+mx)}
 function schoolMatrix(){const VW=M.school.views,out=[];schoolRowsAll().forEach(row=>out.push({name:row.name,cells:VW.map(([v])=>{const rs=row.R(v);if(!rs||!rs.some(r=>r.any))return null;const s=stats(rs);return s})}));return out}
 function schoolRowsAll(){const o=M.school.out.filter(x=>!x.err),out=[];const byC={};o.forEach(x=>{const n=nc(x.k.cls);(byC[n]=byC[n]||[]).push(x)});
   Object.values(byC).forEach(list=>{if(list.length>1)list.forEach(x=>out.push({name:classLabel(x.k),R:v=>x.R[v]&&x.R[v].rows}));out.push({name:'Class '+list[0].k.cls+(list.length>1?' (all)':' '+(list[0].k.section||'')),R:v=>{const a=list.filter(x=>x.R[v]);return a.length?a.flatMap(x=>x.R[v].rows):null}})});return out}
@@ -984,6 +977,39 @@ function scFull(rows,q,S,view){if(q.s.graded)return null;if(q.k==='tot')return m
 const totTxt=(r,FT)=>r.any?fmt(r.tot)+(FT&&n1(r.full)!==FT?'/'+fmt(r.full):''):'';   /* Total column: marks only – the full total is in the Full marks row */
 const scLabel=q=>q.k==='T'?' – Theory':q.k==='P'?' – Pr/IA':'';
 
+/* ---------- Whole school: one-page summary with boys / girls, and Top 10 rank holders (one class per page) ---------- */
+const genOf=r=>{const g=String(r.st.gender||'').trim().toUpperCase();return g==='M'||g==='B'||g==='BOY'||g==='MALE'?'M':g==='F'||g==='G'||g==='GIRL'||g==='FEMALE'?'F':''};
+function statsBG(rows){const a=rows.filter(r=>r.any),one=list=>{const p=list.filter(r=>r.status==='PASS').length;return{n:0,app:list.length,pass:p,np:list.length-p,pp:list.length?Math.round(p/list.length*1000)/10:null}};
+  const all=one(a),M=one(a.filter(r=>genOf(r)==='M')),F=one(a.filter(r=>genOf(r)==='F'));all.n=rows.length;M.n=rows.filter(r=>genOf(r)==='M').length;F.n=rows.filter(r=>genOf(r)==='F').length;
+  return{all,M,F,sp:a.filter(r=>r.sp).length,avg:a.length?a.reduce((x,r)=>x+r.p,0)/a.length:null,hi:a.length?Math.max(...a.map(r=>r.p)):null}}
+const FIT1=`(function(){var MM=96/25.4,H=283*MM,b=document.body,h=b.scrollHeight;if(h>H)b.style.zoom=(H/h).toFixed(3)})();`;
+function schoolPrint(){const v=M.schV,vn=(M.school.views.find(x=>x[0]===v)||[])[1]||v,G=schoolRows(v),pc=x=>x==null?'–':fmt(x)+'%',p1=x=>x==null?'–':fmt(x);
+  const line=(lab,rows,cls)=>{const s=statsBG(rows);return `<tr${cls?` class="${cls}"`:''}><td class="l">${lab}</td><td>${s.M.n}</td><td>${s.F.n}</td><td><b>${s.all.n}</b></td><td>${s.all.app}</td><td>${s.M.pass}</td><td>${s.F.pass}</td><td><b>${s.all.pass}</b></td><td>${s.sp||''}</td><td>${s.M.np}</td><td>${s.F.np}</td><td><b>${s.all.np}</b></td><td>${p1(s.M.pp)}</td><td>${p1(s.F.pp)}</td><td><b>${p1(s.all.pp)}</b></td><td>${pc(s.avg)}</td><td>${pc(s.hi)}</td></tr>`};
+  let body='',allRows=[];G.forEach(g=>{const rs=g.secs.filter(s=>s.R).flatMap(s=>s.R.rows);if(!rs.some(r=>r.any))return;allRows=allRows.concat(rs);
+    if(g.secs.length>1)g.secs.forEach(s=>{if(s.R&&s.R.rows.some(r=>r.any))body+=line('&nbsp;&nbsp;&nbsp;'+esc(classLabel(s.x.k)),s.R.rows,'')});
+    body+=line('<b>Class '+esc(g.cls)+(g.secs.length>1?' – total':' '+esc(g.secs[0].x.k.section||''))+'</b>',rs,'ct')});
+  const T=statsBG(allRows),noG=allRows.filter(r=>!genOf(r)).length;
+  const html=`<style>table.ws th,table.ws td{font-size:10.5px;padding:3px 4px}table.ws tr.ct td{background:#eef2f8;font-weight:700}table.ws tr.wt td{background:#f3e9c4;font-weight:800;font-size:11px}table.ws th.gp{background:#dfe6f2}.kp1{display:flex;gap:6px;margin:6px 0 8px}.kp1 div{flex:1;border:1px solid #c9d3e3;border-radius:6px;padding:5px 6px;text-align:center;font-size:10px;color:#475569}.kp1 b{display:block;font-size:15px;color:#13294b}</style>
+   ${headHTML('WHOLE SCHOOL RESULT SUMMARY',vn)}
+   <div class="kp1"><div><b>${T.all.n}</b>Students (Boys ${T.M.n} · Girls ${T.F.n})</div><div><b>${T.all.app}</b>Appeared</div><div><b>${T.all.pass}</b>Passed${T.sp?' (Simple pass '+T.sp+')':''}</div><div><b>${T.all.np}</b>Not passed</div><div><b>${p1(T.all.pp)}%</b>Pass % (Boys ${p1(T.M.pp)} · Girls ${p1(T.F.pp)})</div><div><b>${pc(T.avg)}</b>School average</div></div>
+   <table class="g ws"><tr><th class="l" rowspan="2">Class</th><th colspan="3" class="gp">Students</th><th rowspan="2">Appeared</th><th colspan="3" class="gp">Passed</th><th rowspan="2">Simple<br>pass</th><th colspan="3" class="gp">Not passed</th><th colspan="3" class="gp">Pass %</th><th rowspan="2">Average</th><th rowspan="2">Highest</th></tr>
+   <tr><th>Boys</th><th>Girls</th><th>Total</th><th>Boys</th><th>Girls</th><th>Total</th><th>Boys</th><th>Girls</th><th>Total</th><th>Boys</th><th>Girls</th><th>Total</th></tr>
+   ${body}${line('WHOLE SCHOOL',allRows,'wt')}</table>
+   <p style="font-size:9.5px;margin:5px 0 0">Passed includes Simple pass. Pass % = passed ÷ appeared.${noG?' '+noG+' student'+(noG>1?'s have':' has')+' no Boy/Girl entered in Student Attendance – counted only in Total.':''}</p>
+   ${sigHTML(['Examination In-Charge','Principal'])}<script>${FIT1}<\/script>`;
+  printDoc('Whole School Result – '+vn,'portrait',html)}
+function schoolMatrixPrint(){const VW=M.school.views;printDoc('Pass % in every exam','landscape',headHTML('PASS % IN EVERY EXAM','Whole school')+`<table class="g"><tr><th class="l">Class</th>${VW.map(x=>`<th>${esc(x[1])}</th>`).join('')}</tr>${schoolMatrix().map(r=>`<tr><td class="l">${esc(r.name)}</td>${r.cells.map(q=>`<td>${q?q.pp+'%<br><small>avg '+fmt(q.avg)+'%</small>':'–'}</td>`).join('')}</tr>`).join('')}</table>`+`<script>(function(){var MM=96/25.4,H=196*MM,b=document.body,h=b.scrollHeight;if(h>H)b.style.zoom=(H/h).toFixed(3)})();<\/script>`)}
+/* Top 10: ranks 1–10 in merit order; equal percentages share a rank (1, 2, 2, 3 …), so a class can list more than 10 students */
+function topTenPrint(){const v=M.schV,vn=(M.school.views.find(x=>x[0]===v)||[])[1]||v,G=schoolRows(v);const pages=[];
+  G.forEach(g=>{const rs=g.secs.filter(s=>s.R).flatMap(s=>s.R.rows.map(r=>({...r})));if(!rs.some(r=>r.any))return;rankRows(rs);const top=rs.filter(r=>r.rank&&r.rank<=10).sort((a,b)=>a.rank-b.rank||b.p-a.p||String(a.st.name).localeCompare(b.st.name));if(!top.length)return;
+    const multi=g.secs.length>1,medal=k=>k===1?'#c9a227':k===2?'#9aa4b2':k===3?'#b0703a':'';
+    pages.push(`${headHTML('TOP TEN RANK HOLDERS','Class '+esc(g.cls)+(multi?' (all sections)':' '+esc(g.secs[0].x.k.section||''))+' · '+esc(vn))}
+     <table class="g tt"><tr><th style="width:9%">Rank</th><th class="l">Name of the student</th>${multi?'<th>Section</th>':''}<th>Roll No</th><th>Total</th><th>Out of</th><th>Percentage</th><th>Grade</th></tr>
+     ${top.map(r=>`<tr><td><span class="rk" style="${medal(r.rank)?'background:'+medal(r.rank)+';color:#fff;border-color:'+medal(r.rank):''}">${r.rank}</span></td><td class="l"><b>${esc(r.st.name)}</b></td>${multi?`<td>${esc(secOf(r))}</td>`:''}<td>${esc(r.st.roll)}</td><td><b>${fmt(r.tot)}</b></td><td>${fmt(r.full)}</td><td><b>${fmt(r.p)}%</b></td><td>${esc(r.g||'')}</td></tr>`).join('')}</table>
+     <p style="font-size:10px;margin-top:6px">Ranks 1 to 10 in merit order. Students with the same percentage share the same rank${cfg().rankPassOnly?'; only students who passed are ranked':''}.</p>${sigHTML(['Class Teacher','Examination In-Charge','Principal'])}`)});
+  if(!pages.length){toast('No ranks yet for this exam');return}
+  printDoc('Top Ten Rank Holders – '+vn,'portrait','<style>table.tt th,table.tt td{font-size:13px;padding:7px 6px}table.tt td.l{font-size:13.5px}.rk{display:inline-block;min-width:30px;padding:3px 0;border-radius:99px;border:1.5px solid #13294b;font-weight:800;color:#13294b}</style>'+pages.join('<div class="pb"></div>'))}
+
 /* ---------- Setup (Admin) ---------- */
 const compStr=t=>t.comps.map(c=>c.name+'='+c.max+(c.wt!=null&&+c.wt!==+c.max?'>'+c.wt:'')+(c.kind?' '+c.kind:'')).join(', ');
 function parseComps(str,old,tix){const used={};const list=String(str||'').split(',').map(x=>x.trim()).filter(Boolean).map(x=>{const q=x.match(/^(.*?)=\s*(\d+(?:\.\d+)?)\s*(?:>\s*(\d+(?:\.\d+)?))?\s*([TPtp])?$/);if(!q)return null;
@@ -1066,5 +1092,6 @@ SJS.boot('Result Software',async()=>{if(FB()&&navigator.onLine)firebase.firestor
       CFG=x}else CFG=null;go()});
   SJS.db.watch('mk_cfg/main',d=>{if(M.arch)return;OLD=d||{};go()})});
 </script>
+<script src="sjs-nav.js" defer></script>
 </body>
 </html>

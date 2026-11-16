@@ -161,5 +161,6 @@ SJS.boot('School Diary',()=>{const h=location.hash.slice(1);S.tab=TABS.some(t=>t
   SJS.db.watchList('cal_events',ev=>{S.events=ev.filter(e=>e.date);if(S.tab==='cal')vCal($('#main'))});
   render();window.addEventListener('hashchange',()=>{const h=location.hash.slice(1);if(TABS.some(t=>t[0]===h)&&h!==S.tab){S.tab=h;render()}})});
 </script>
+<script src="sjs-nav.js" defer></script>
 </body>
 </html>
