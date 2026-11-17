@@ -41,7 +41,8 @@ button:disabled{cursor:not-allowed;opacity:.5}
 .addr{font-size:11.5px;opacity:.82;margin-top:3px}
 .hdr-right{margin-left:auto;text-align:right;flex:none}
 .sess{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:4px 12px;font-weight:600;font-size:12px}
-.mode{display:block;margin-top:6px;font-size:11px;opacity:.85}
+.mode{display:block;margin-top:6px;font-size:11px;opacity:.95}
+.hso{margin-left:8px;font:inherit;font-size:11px;font-weight:700;color:#fff;background:rgba(220,38,38,.85);border:1px solid rgba(255,255,255,.35);border-radius:99px;padding:3px 10px;cursor:pointer;white-space:nowrap;vertical-align:1px}.hso:hover{background:#dc2626}@media print{.hso{display:none}}
 .mode i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:0;background:#aaa}
 .mode.on i{background:#3ddc6b}.mode.local i{background:var(--warn)}
 .title-strip{max-width:1180px;margin:10px auto 0;position:relative;z-index:1;font-weight:700;font-size:13px;letter-spacing:1.5px;text-transform:uppercase;color:var(--gold2)}
@@ -459,7 +460,8 @@ function render(){
   $('#hSchool').textContent=c.school; $('#hMotto').textContent=c.motto; $('#hAddr').textContent=c.address;
   $('#hSess').textContent='Session '+c.session+' · '+monthLabel(c.start).slice(0,3)+' '+c.start.slice(0,4)+' – '+monthLabel(c.end).slice(0,3)+' '+c.end.slice(0,4);
   const hm=$('#hMode'); hm.className='mode '+(S.user?'on':'');
-  hm.innerHTML='<i></i>'+(S.user?esc(staffIdOf(S.user.email)||S.user.email)+(S.isAdmin?' · Admin':S.role==='principal'?' · Principal':S.role==='exam'?' · Exam In-Charge':''):'Not signed in');
+  hm.innerHTML='<i></i>'+(S.user?esc(staffIdOf(S.user.email)||S.user.email)+(S.isAdmin?' · Admin':S.role==='principal'?' · Principal':S.role==='exam'?' · Exam In-Charge':''):'Not signed in')+(S.user&&auth?'<button class="hso" id="hSO" type="button">⎋ Sign out</button>':'');
+  {const so=$('#hSO');if(so)so.onclick=()=>{if(confirm('Sign out of the SJS App?'))auth.signOut()}}
   if(S.err){ $('#main').innerHTML=`<div class="banner err"><div>${esc(S.err)}</div></div>`; return; }
   if(!auth){ return; }
   const vs=views(); if(!vs.some(v=>v[0]===S.view)) S.view='home';
@@ -469,8 +471,8 @@ function render(){
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
   if(!S.user){ $('#main').innerHTML=vLogin(); bLogin(); return; }
   const V={classes:[vClasses,bClasses],home:[vHome,bHome],notices:[vNotices,bNotices],me:[vMe,bMe],dash:[vDash,bDash],leave:[vLeave,bLeave],register:[vReg,bReg],report:[vRep,bRep],teachers:[vTeach,bTeach],settings:[vSet,bSet]}[S.view];
-  $('#main').innerHTML=V[0]()+`<div class="row" style="justify-content:center;margin-top:16px"><button class="btn sm" id="signOut">Sign out</button></div><div class="foot">${esc(c.school)} · SJS App · Session ${esc(c.session)}${c.principal?' · Principal: '+esc(c.principal):''}</div>`;
-  V[1](); $('#signOut').onclick=()=>auth.signOut();
+  $('#main').innerHTML=V[0]()+`<div class="foot">${esc(c.school)} · SJS App · Session ${esc(c.session)}${c.principal?' · Principal: '+esc(c.principal):''}</div>`;
+  V[1]();
 }
 
 /* ================= LOGIN ================= */

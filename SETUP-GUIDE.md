@@ -212,3 +212,8 @@ Upload `marks.html` and `sw.js`.
 
 ## Version 69
 - Report cards now always fit on one A4 page. When a class has many subjects (for example LKG / UKG with many subjects and their parts), the whole card is shrunk a little so it does not run onto a second page. Cards that already fit are not changed.
+
+## Version 70
+- Student details (Details box and the Excel template): the "Parent / Guardian" box is removed – Father's name and Mother's name are used. Old saved parent names stay as a back-up for the card only.
+- A red "⎋ Sign out" button is now at the top right, beside your name and role (Admin / Principal / Teacher), on Home, Result Software and the Homework / Exams / Calendar / Fees pages. It asks "Sign out of the SJS App?" first. The old Sign out button at the bottom of Home is removed.
+- This version also changes sjs-common.css – upload it too.

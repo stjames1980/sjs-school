@@ -1,4 +1,7 @@
 /* School order of classes: Nursery, LKG, UKG, I ... XII, then section */
+/* Sign out button (top right, beside the name and role) on every page */
+window.SJSsignOut=window.SJSsignOut||(async()=>{if(!confirm('Sign out of the SJS App?'))return;try{if(window.firebase&&firebase.apps&&firebase.apps.length)await firebase.auth().signOut()}catch(e){}try{localStorage.removeItem('sjs-nav-role')}catch(e){}location.href='./'});
+document.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data-signout]');if(b){e.preventDefault();window.SJSsignOut()}});
 window.CLRK=window.CLRK||(c=>{let t=String(c||'').toUpperCase().replace(/CLASS|STD|STANDARD|[^A-Z0-9]/g,'');if(/^(PRE|PLAY|PG$|PN$)/.test(t))return 0;if(/^NUR/.test(t))return 1;if(/^(LKG|LOWERKG|JRKG|JUNIORKG|KG1|KGI|KGA)$/.test(t))return 2;if(t==='KG')return 2.5;if(/^(UKG|UPPERKG|SRKG|SENIORKG|KG2|KGII|KGB)$/.test(t))return 3;let m=t.match(/^(\d+)/);if(m&&+m[1]>=1&&+m[1]<=12)return 10+(+m[1]);m=t.match(/^(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)(?![IVX])/);if(m)return 11+['I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'].indexOf(m[1]);return 99});
 window.SJSclsSort=window.SJSclsSort||((a,b)=>CLRK(a.cls)-CLRK(b.cls)||(a.order||0)-(b.order||0)||String(a.cls).localeCompare(String(b.cls))||String(a.section||'').localeCompare(String(b.section||'')));
 /* SJS App – shared code for marks.html and school.html
@@ -64,7 +67,7 @@ const SJS={$,esc,MONTHS,DOW,pad,iso,parse,todayISO,fmtDate,addDays,toast,sheet,c
   myClasses(){return this.classes.filter(c=>(c.teacherUids||[]).includes(this.user&&this.user.uid))},
   canClass(cid){const c=this.classes.find(x=>x.id===cid);return this.isAdmin||!!(c&&(c.teacherUids||[]).includes(this.user&&this.user.uid))},
   async students(cid){const r=await this.db.list('c/'+cid+'/students');return r.sort((a,b)=>(+a.roll||0)-(+b.roll||0))},
-  header(title){return `<div class="hdr"><div class="hdr-in"><img src="logo.png" alt=""><div><h1>${esc(title)}</h1><div class="s">${esc(this.school.name)} · ${esc(this.school.session)}</div></div><span class="who">${this.user?esc(this.me?this.me.name:(this.user.email||'').split('@')[0])+(this.isAdmin?' · Admin':this.role==='principal'?' · Principal':this.role==='exam'?' · Exam In-Charge':''):'Not signed in'}</span></div></div>`},
+  header(title){return `<div class="hdr"><div class="hdr-in"><img src="logo.png" alt=""><div><h1>${esc(title)}</h1><div class="s">${esc(this.school.name)} · ${esc(this.school.session)}</div></div><span class="who">${this.user?esc(this.me?this.me.name:(this.user.email||'').split('@')[0])+(this.isAdmin?' · Admin':this.role==='principal'?' · Principal':this.role==='exam'?' · Exam In-Charge':''):'Not signed in'}</span>${this.user?'<button class="hso" data-signout type="button" title="Sign out">⎋ Sign out</button>':''}</div></div>`},
   printHead(sub){return `<div class="ph"><img src="${new URL('logo.png',location.href).href}" alt="" style="width:54px;height:54px;float:left"><h1>${esc(this.school.name)}</h1><div class="s">${esc(this.school.place)} · Session ${esc(this.school.session)}</div>${sub?`<h3 style="margin-top:4px">${esc(sub)}</h3>`:''}</div>`},
   async boot(title,onReady){
     document.body.insertAdjacentHTML('afterbegin','<div id="app"></div><a class="sjs-home" href="./">⌂ SJS Home</a>');
