@@ -217,3 +217,9 @@ Upload `marks.html` and `sw.js`.
 - Student details (Details box and the Excel template): the "Parent / Guardian" box is removed – Father's name and Mother's name are used. Old saved parent names stay as a back-up for the card only.
 - A red "⎋ Sign out" button is now at the top right, beside your name and role (Admin / Principal / Teacher), on Home, Result Software and the Homework / Exams / Calendar / Fees pages. It asks "Sign out of the SJS App?" first. The old Sign out button at the bottom of Home is removed.
 - This version also changes sjs-common.css – upload it too.
+
+## Version 71
+- Attendance now builds up from the exams: type (or fill from Student Attendance) the attendance of PT-I, Half Yearly, PT-II and Annual separately in Grades & Remarks → "Attendance for".
+  - Term-I = PT-I + Half Yearly and Term-II = PT-II + Annual, added automatically (days present and working days). Type a Term number only to change it by hand; an empty box stays automatic.
+  - Final = Term-I + Term-II automatically; "Final – whole year" can still be typed by hand.
+  - Every exam result sheet (PT-I, Half Yearly, PT-II, Annual) shows that exam's own attendance; Term and Final result sheets, report cards and the Final Review show the totals.

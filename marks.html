@@ -45,7 +45,7 @@ details.grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;ma
    c/<classId>/marks/<examId>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}
    c/<classId>/marks/x_<termId>__att | __rem | __c<Area>   attendance, remarks, co-scholastic grades for a term */
 const {$,esc,toast,sheet,closeSheet,pasteRows,classLabel,waPhone}=SJS;
-const VER='70';
+const VER='71';
 const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const CBSE_T=(n,pt,ex,exn)=>({id:'t'+n,name:'Term '+n,comps:[{id:'pt'+n,name:pt,max:10},{id:'nb'+n,name:'Note Book',max:5},{id:'se'+n,name:'SEA',max:5},{id:ex,name:exn,max:80}]});
 const DEF={
@@ -283,12 +283,12 @@ async function vCos(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.
   const S=schemeOf(M.cid),term=S.terms.find(t=>t.id===M.term)||S.terms[0],areas=cosAreas(S),scale=cosScale(S),tid=term.id;
   const can=(SJS.canClass(M.cid)||SJS.canView)&&(SJS.isAdmin||!locked('x_'+tid));const ak=a=>xid(tid,'c'+skey(a).slice(0,19));
   const sv=(id,roll)=>{const d=D.marks[id];const v=d&&d.m?d.m[roll]:undefined;return v==null?'':v};
-  const fst=cardOf(S)==='first';const A=M.cos||{att:{},rem:{},cos:{},ht:{},wk:{},spl:{},wd:undefined};A.spl=A.spl||{};A.mode=A.mode||{rem:modeOf(D,tid,'rem'),spl:modeOf(D,tid,'spl')};const MO=[['mix','Automatic + teacher can change (empty box = automatic)'],['auto','Automatic only'],['manual','Teacher writes only (empty = blank lines)']];const AO=[[tid,'Whole '+term.name],...(term.comps.length>1&&!term.solo?term.comps.filter(cp=>(!cp.kind||cp.kind==='T')&&!/note ?book|^sea$|enrichment|portfolio/i.test(cp.name)).map(cp=>[cp.id,cp.name.replace(/ Theory$/,'')+' (own attendance)']):[]),['fin','Final – whole year (instead of the automatic total)']];if(!AO.some(x=>x[0]===M.attFor))M.attFor=tid;const af0=M.attFor,isT=af0===tid,afName=AO.find(x=>x[0]===af0)[1].replace(' (own attendance)','').replace(' (instead of the automatic total)',''),aKey=xid(af0,'att');
-  const autoAtt=st=>{if(isT)return'';const D2=D;if(af0==='fin'){let p=0,w=0,h=false;mainT(S).forEach(t=>{const d=D2.marks[xid(t.id,'att')],v=d&&d.m?d.m[st.roll]:undefined;if(v!=null&&v!==''){p+=+v||0;w+=+d.max||0;h=true}});return h?p+' / '+w:''}const d=D2.marks[xid(tid,'att')],v=d&&d.m?d.m[st.roll]:undefined;return v!=null&&v!==''?v+(d.max?' / '+d.max:''):''};
+  const fst=cardOf(S)==='first';const A=M.cos||{att:{},rem:{},cos:{},ht:{},wk:{},spl:{},wd:undefined};A.spl=A.spl||{};A.mode=A.mode||{rem:modeOf(D,tid,'rem'),spl:modeOf(D,tid,'spl')};const MO=[['mix','Automatic + teacher can change (empty box = automatic)'],['auto','Automatic only'],['manual','Teacher writes only (empty = blank lines)']];const AO=[[tid,'Whole '+term.name],...attCps(term).map(cp=>[cp.id,cp.name.replace(/ Theory$/,'')+' (own attendance)']),['fin','Final – whole year (instead of the automatic total)']];if(!AO.some(x=>x[0]===M.attFor))M.attFor=tid;const af0=M.attFor,isT=af0===tid,afName=AO.find(x=>x[0]===af0)[1].replace(' (own attendance)','').replace(' (instead of the automatic total)',''),aKey=xid(af0,'att');
+  const tCps=attCps(term),autoAtt=st=>{let p=0,w=0,h=false;const add=x=>{if(x){p+=x.p;w+=x.w;h=true}};if(af0==='fin')mainT(S).forEach(t=>add(termAtt(D,t,st.roll)));else if(isT)tCps.forEach(cp=>add(attOwn(D,cp.id,st.roll)));return h?fmt(p)+(w?' / '+fmt(w):''):''};
   const ad=D.marks[aKey]||{};const aFrom=A.from!==undefined?A.from:(ad.from||''),aTo=A.to!==undefined?A.to:(ad.to||'');const wd=A.wd!==undefined?A.wd:(+(D.marks[aKey]||{}).max||'');
   const R=compute(M.cid,tid===mainT(S)[mainT(S).length-1].id?'final':tid);
-  m.innerHTML=`<div class="card"><div class="grid2">${classSel()}${sel('tSel','Term',S.terms.map(t=>[t.id,t.name]),tid)}${sel('aSel','Attendance for',AO,af0)}<label class="f">Working days – ${esc(afName)}<input class="inp" id="wd" type="number" min="0" value="${esc(wd)}" ${can?'':'disabled'} placeholder="${isT?'':'empty = automatic'}"></label></div>
-    ${isT?'':`<div class="banner" style="margin-top:8px">${af0==='fin'?'<b>Final attendance typed by hand.</b> Leave a box empty to use the automatic total of the terms (shown in grey).':'<b>'+esc(afName)+' – its own attendance.</b> Shown on the '+esc(afName)+' result sheet. Leave a box empty to use the '+esc(term.name)+' attendance (shown in grey).'}${can?' <button class="btn sm" id="aClr">Clear all – use automatic</button>':''}</div>`}
+  m.innerHTML=`<div class="card"><div class="grid2">${classSel()}${sel('tSel','Term',S.terms.map(t=>[t.id,t.name]),tid)}${sel('aSel','Attendance for',AO,af0)}<label class="f">Working days – ${esc(afName)}<input class="inp" id="wd" type="number" min="0" value="${esc(wd)}" ${can?'':'disabled'} placeholder="${isT&&!tCps.length?'':'empty = automatic'}"></label></div>
+    ${isT&&!tCps.length?'':`<div class="banner" style="margin-top:8px">${af0==='fin'?'<b>Final = '+mainT(S).map(t=>esc(t.name)).join(' + ')+', added automatically</b> (shown in grey). Type a number only to change it by hand.':isT?'<b>'+esc(term.name)+' = '+tCps.map(cp=>esc(cp.name.replace(/ Theory$/,''))).join(' + ')+', added automatically</b> (shown in grey). Type a number only to change it by hand – an empty box stays automatic.':'<b>'+esc(afName)+' – its own attendance.</b> Shown on the '+esc(afName)+' result sheet and added automatically into '+esc(term.name)+' and the Final. Type it, or use “Fill attendance from Student Attendance” with the dates of this exam period.'}${can?' <button class="btn sm" id="aClr">'+(isT||af0==='fin'?'Clear all – use automatic':'Clear all')+'</button>':''}</div>`}
     ${SJS.canClass(M.cid)&&D.students.length?`<div class="row" style="margin-top:10px"><button class="btn gold sm" id="bpB">📷 Bulk photo upload</button><span class="tmeta">${D.students.filter(x=>x.photo).length} of ${D.students.length} students have a photo</span></div>
     <div class="row" style="margin-top:8px"><b class="tmeta" style="font-weight:700">👤 Student details for the report card:</b><button class="btn sm green" id="sdD">⬇ Download Excel</button><button class="btn sm gold" id="sdU">⬆ Upload filled Excel</button><input type="file" id="sdF" accept=".xlsx" style="display:none"><span class="tmeta">${D.students.filter(x=>x.dob&&(x.father||x.parent)).length} of ${D.students.length} have date of birth and father's name</span></div>`:''}
     ${can?`<div class="grid2" style="margin-top:10px"><label class="f">${esc(afName)} – from<input class="inp" id="aF" type="date" value="${esc(aFrom)}"></label><label class="f">${esc(afName)} – to<input class="inp" id="aT" type="date" value="${esc(aTo)}"></label><label class="f">&nbsp;<button class="btn green" id="aFill">Fill attendance from Student Attendance</button></label></div>`:''}
@@ -424,8 +424,13 @@ function xlHead(title,sub,width){return{rows:[[{v:SJS.school.name,s:1}],[{v:cfg(
 
 /* attendance of a student for the term(s) of a result: days present / working days */
 const attOwn=(D,k,roll)=>{const d=D.marks[xid(k,'att')],v=d&&d.m?d.m[roll]:undefined;return v!=null&&v!==''?{p:+v||0,w:+d.max||0}:null};   /* attendance typed for one exam (k = exam id) or for the Final (k = 'fin') */
-function attOf(r,S,view){const D=C[r.cid];const own=String(view).startsWith('c:')?attOwn(D,String(view).slice(2),r.st.roll):view==='final'?attOwn(D,'fin',r.st.roll):null;if(own)return{p:own.p,w:own.w||'',pct:own.w?own.p/own.w*100:null,txt:fmt(own.p)+(own.w?' / '+fmt(own.w):'')};
-  let p=0,w=0,has=false;viewTerms(S,view).forEach(t=>{const d=D.marks[xid(t.id,'att')];if(!d||!d.m)return;const v=d.m[r.st.roll];if(v!=null&&v!==''){p+=+v||0;w+=+d.max||0;has=true}});
+/* exams whose attendance is added into the term automatically (e.g. Term-I = PT-I + Half Yearly) */
+const attCps=t=>t&&t.comps&&t.comps.length>1&&!t.solo?t.comps.filter(cp=>(!cp.kind||cp.kind==='T')&&!/note ?book|^sea$|enrichment|portfolio/i.test(cp.name)):[];
+/* attendance of a term: typed for the whole term, otherwise the total of its exams */
+const termAtt=(D,t,roll)=>{const o=attOwn(D,t.id,roll);if(o)return o;let p=0,w=0,h=false;attCps(t).forEach(cp=>{const x=attOwn(D,cp.id,roll);if(x){p+=x.p;w+=x.w;h=true}});return h?{p,w}:null};
+function attOf(r,S,view){const D=C[r.cid];const isC=String(view).startsWith('c:'),own=isC?attOwn(D,String(view).slice(2),r.st.roll):view==='final'?attOwn(D,'fin',r.st.roll):null;if(own)return{p:own.p,w:own.w||'',pct:own.w?own.p/own.w*100:null,txt:fmt(own.p)+(own.w?' / '+fmt(own.w):'')};
+  if(isC)return{p:'',w:'',pct:null,txt:''};
+  let p=0,w=0,has=false;viewTerms(S,view).forEach(t=>{const x=termAtt(D,t,r.st.roll);if(x){p+=x.p;w+=x.w;has=true}});
   return has?{p,w,pct:w?p/w*100:null,txt:fmt(p)+(w?' / '+fmt(w):'')}:{p:'',w:'',pct:null,txt:''}}
 /* count attendance from the Student Attendance register (same rules as the register: Sundays, Saturday rule, holidays, off days; A = absent, L = half) */
 async function attRegister(cid,from,to){let cf=null;try{cf=await SJS.db.get('cfg/main')}catch(e){}
@@ -608,7 +613,7 @@ function autoSpecial(r,S,D,tid){if(!r||!r.any)return'';const st=r.st,sv=k=>{cons
   const subs=Object.entries(r.sub).filter(([k,x])=>x.has&&x.mx>0).sort((a,b)=>b[1].p-a[1].p);const best=subs.length?(subjOf(r.cid).find(q=>q.key===subs[0][0])||{}).name:'';
   const sc=x=>(String(x).match(/★/g)||[]).length||({A:3,B:2,C:1}[x]||0);let bg=null,bv=-1;skillGroups(S).forEach(g=>{const v=g.items.reduce((a,it)=>a+sc(sv('c'+skey(it).slice(0,19))),0)/g.items.length;if(v>bv){bv=v;bg=g}});
   const gk=bg&&bg.name?Object.keys(GPH).find(k=>bg.name.toLowerCase().includes(k)):null,gp=bg&&bv>0?(gk?GPH[gk]:bg.name?'I shine in '+bg.name.toLowerCase():''):'';
-  const d=D.marks[xid(tid,'att')],ap=sv('att'),w=d&&d.max?+d.max:0,att=ap!==''&&w&&+ap/w>=0.9?'I come to school almost every day':'I always try my best with a big smile';
+  const ta=termAtt(D,S.terms.find(t=>t.id===tid)||{id:tid,comps:[]},st.roll),ap=ta?ta.p:'',w=ta?ta.w:0,att=ap!==''&&w&&+ap/w>=0.9?'I come to school almost every day':'I always try my best with a big smile';
   const parts=[best&&r.sub[subs[0][0]].p>=56?'I shine in '+noCode(best):'',gp,att].filter(Boolean);return parts.length>1?parts.slice(0,-1).join(', ')+' and '+parts[parts.length-1]+'.':parts[0]+'.'}
 const skillGroups=S=>String(S.cos||'').split(';').map(g=>{const i=g.indexOf(':');return{name:i<0?'':g.slice(0,i).trim(),items:(i<0?g:g.slice(i+1)).split(',').map(x=>x.trim()).filter(Boolean)}}).filter(g=>g.items.length);
 function firstCard(cid,R,r,o){const {S,SL}=R,D=C[cid],c=cls(cid),st=r.st,sc=cfg().school,fin=o.view==='final',shown=fin?mainT(S):S.terms.filter(t=>t.id===o.view),lastT=shown[shown.length-1]||S.terms[0];
@@ -617,7 +622,7 @@ function firstCard(cid,R,r,o){const {S,SL}=R,D=C[cid],c=cls(cid),st=r.st,sc=cfg(
   let subs=SL.filter(s=>r.sub[s.key].has);if(!subs.length)subs=SL;
   const ct=(SJS.teachers.find(t=>(c.teacherUids||[]).includes(t.uid))||{}).name||'',n=R.rows.filter(x=>x.any).length;
   const fullOf=s=>{const x=r.sub[s.key];if(x.has&&x.mx>0)return x.mx;return shown.reduce((a,t)=>a+t.comps.reduce((b,cp)=>b+cdef(cp,s).wt,0),0)/(fin&&S.final!=='last'?shown.length:1)};
-  let aP=0,aW=0,aHas=false;shown.forEach(t=>{const d=D.marks[xid(t.id,'att')],p=sv(xid(t.id,'att'));if(p!==''){aP+=+p||0;aHas=true}if(d&&d.max)aW+=+d.max});{const fo=fin?attOwn(D,'fin',st.roll):null;if(fo){aP=fo.p;aW=fo.w;aHas=true}}
+  let aP=0,aW=0,aHas=false;shown.forEach(t=>{const x=termAtt(D,t,st.roll),d=D.marks[xid(t.id,'att')];if(x){aP+=x.p;aW+=x.w;aHas=true}else if(d&&d.max)aW+=+d.max});{const fo=fin?attOwn(D,'fin',st.roll):null;if(fo){aP=fo.p;aW=fo.w;aHas=true}}
   const pc=v=>v==null?'–':(Math.round(v*100)/100)+'%';
   const scale=cosScale(S),smax=Math.max(0,...scale.map(q=>(q.match(/★/g)||[]).length));
   const stv=v=>{v=String(v||'');const k=(v.match(/★/g)||[]).length;return k?'★'.repeat(k)+'<s>'+'★'.repeat(Math.max(0,smax-k))+'</s>':esc(v)};
@@ -679,13 +684,13 @@ function cardHTML(cid,R,r,o){if(cardOf(R.S)==='first')return firstCard(cid,R,r,o
   const tmax=t=>t.comps.reduce((a,cp)=>a+(cp.wt==null?+cp.max:+cp.wt),0);
   const sv=(id)=>{const d=D.marks[id];const v=d&&d.m?d.m[st.roll]:undefined;return v==null?'':v};
   const lastT=shown[shown.length-1];const remark=o.remark||pickTxt(modeOf(D,lastT.id,'rem'),sv(xid(lastT.id,'rem')),autoRemark(r));
-  const att=shown.map(t=>{const d=D.marks[xid(t.id,'att')];const p=sv(xid(t.id,'att'));return{t,p,w:d&&d.max?+d.max:''}}).filter(x=>x.p!==''||x.w);
+  const att=shown.map(t=>{const d=D.marks[xid(t.id,'att')],x=termAtt(D,t,st.roll);return{t,p:x?x.p:'',w:x?(x.w||''):(d&&d.max?+d.max:'')}}).filter(x=>x.p!==''||x.w);
   const finA=fin?attOwn(D,'fin',st.roll):null;let attP=att.reduce((a,x)=>a+(+x.p||0),0),attW=att.reduce((a,x)=>a+(+x.w||0),0);
   const areas=cosAreas(S);const ak=(t,a)=>xid(t.id,'c'+skey(a).slice(0,19));
   const finLabel=S.final==='last'?'Final ('+esc(lastT.name)+')':'Final<br><small>('+shown.map(t=>esc(t.name)+' '+Math.round(100/shown.length)+'%').join(' + ')+')</small>';
   const idx=R.rows.indexOf(r);R._T=R._T||{};const TR=t=>{if(!fin)return R;return R._T[t.id]||(R._T[t.id]=compute(cid,t.id))};const tq=t=>TR(t).rows[idx]||r;
   const pc=v=>v==null?'–':(Math.round(v*100)/100)+'%';const rs=q=>q.status==='PASS'?(q.sc?'<span class="ok">'+esc(scShort().toUpperCase())+'</span>':q.sp?'<span class="ok">SIMPLE PASS</span>':'<span class="ok">PASSED</span>'):q.status==='COMP'?'<span style="color:#b45309">COMPARTMENT</span>':q.status==='FAIL'?'<span style="color:#b91c1c">'+(q.fin?'DETAINED':q.ab?'FAILED (ABSENT)':'NOT PASSED')+'</span>':'–';
-  const attT=t=>{const d=D.marks[xid(t.id,'att')],pv=sv(xid(t.id,'att')),w=d&&d.max?+d.max:0;return pv===''?'–':pv+(w?' / '+w+' ('+pc(+pv/w*100)+')':'')};
+  const attT=t=>{const x=termAtt(D,t,st.roll),d=D.marks[xid(t.id,'att')],pv=x?x.p:'',w=x?x.w:(d&&d.max?+d.max:0);return pv===''?'–':pv+(w?' / '+w+' ('+pc(+pv/w*100)+')':'')};
   const resTxt=r.status==='PASS'?(fin?(r.sc?esc(scT().toUpperCase())+(o.promo?' – Promoted to Class '+esc(o.promo):''):(r.sp?'SIMPLE PASS':'PASSED')+(o.promo?' – Promoted to Class '+esc(o.promo):'')):(r.sp?'SIMPLE PASS – must improve in '+r.failed.map(noCode).map(esc).join(', '):'PASS')):r.status==='COMP'?'COMPARTMENT in '+r.failed.map(noCode).map(esc).join(', '):r.status==='FAIL'?(fin?'DETAINED in Class '+esc(c.cls)+(r.ab?' (absent in '+r.absent.map(noCode).map(esc).join(', ')+')':''):r.ab?'FAILED – absent in '+r.absent.map(noCode).map(esc).join(', '):(shown[0].solo?'FAILED in ':'Needs improvement in ')+r.failed.map(noCode).map(esc).join(', ')):'–';
   const anyGrace=subs.some(s=>r.sub[s.key].grace);
   const chart=subs.filter(s=>r.sub[s.key].has&&r.sub[s.key].mx>0);
