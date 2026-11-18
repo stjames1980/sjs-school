@@ -223,3 +223,6 @@ Upload `marks.html` and `sw.js`.
   - Term-I = PT-I + Half Yearly and Term-II = PT-II + Annual, added automatically (days present and working days). Type a Term number only to change it by hand; an empty box stays automatic.
   - Final = Term-I + Term-II automatically; "Final – whole year" can still be typed by hand.
   - Every exam result sheet (PT-I, Half Yearly, PT-II, Annual) shows that exam's own attendance; Term and Final result sheets, report cards and the Final Review show the totals.
+
+## Version 72
+- Result sheets, review sheets, Final Review (screen, print and Excel) now show the total of the pass marks under the full total, e.g. Full marks 800 / Pass marks 264 (8 subjects × 33). It adds up each student's own subjects, so optional subjects in XI–XII are counted correctly; grade-only subjects (*) are left out.
