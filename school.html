@@ -21,6 +21,103 @@
    c/<classId>/fees/status {rows:{roll:{due,months,note}}, upto}   Admin; all staff view */
 const {$,esc,toast,sheet,closeSheet,printHTML,csvDownload,pasteRows,classLabel,fmtDate,todayISO,addDays,parse,iso,MONTHS,DOW,waPhone,normN}=SJS;
 const TABS=[['hw','📚 Homework'],['exam','✍️ Exams'],['cal','📆 Calendar'],['fees','💰 Fees']];
+/* ---- Excel writer / reader (same as Result Software) ---- */
+const XL=(()=>{const enc=new TextEncoder();let T=null;
+  const crc=b=>{if(!T){T=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;T[n]=c>>>0}}let c=-1;for(let i=0;i<b.length;i++)c=T[(c^b[i])&255]^(c>>>8);return(c^-1)>>>0};
+  const u16=n=>[n&255,n>>>8&255],u32=n=>[n&255,n>>>8&255,n>>>16&255,n>>>24&255];
+  function zip(files){const parts=[],cen=[];let off=0;
+    files.forEach(([name,str])=>{const nm=enc.encode(name),d=enc.encode(str),c=crc(d),meta=[...u16(20),...u16(0x0800),...u16(0),...u16(0),...u16(0x21),...u32(c),...u32(d.length),...u32(d.length),...u16(nm.length),...u16(0)];
+      const lh=new Uint8Array([0x50,0x4b,3,4,...meta]);parts.push(lh,nm,d);
+      cen.push(new Uint8Array([0x50,0x4b,1,2,...u16(20),...meta,...u16(0),...u16(0),...u16(0),...u32(0),...u32(off)]),nm);off+=lh.length+nm.length+d.length});
+    const cs=cen.reduce((a,x)=>a+x.length,0);
+    return new Blob([...parts,...cen,new Uint8Array([0x50,0x4b,5,6,0,0,0,0,...u16(files.length),...u16(files.length),...u32(cs),...u32(off),0,0])],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})}
+  const x=v=>String(v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const col=n=>{let s='';n++;while(n){s=String.fromCharCode(65+(n-1)%26)+s;n=Math.floor((n-1)/26)}return s};
+  const bd='<border><left style="thin"><color rgb="FF8A93A3"/></left><right style="thin"><color rgb="FF8A93A3"/></right><top style="thin"><color rgb="FF8A93A3"/></top><bottom style="thin"><color rgb="FF8A93A3"/></bottom><diagonal/></border>';
+  const al=(h,w)=>`<alignment horizontal="${h}" vertical="center"${w?' wrapText="1"':''}/>`;
+  const xf=(font,fill,border,a)=>`<xf numFmtId="0" fontId="${font}" fillId="${fill}" borderId="${border}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">${a}</xf>`;
+  /* styles: 0 plain · 1 title · 2 sub-title · 3 header · 4 text · 5 centre · 6 bold text · 7 bold centre · 8 red (below pass) · 9 total row · 10 green · 11 note */
+  const STY=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="8"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="16"/><color rgb="FF13294B"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFC00000"/><name val="Calibri"/></font><font><b/><sz val="12"/><color rgb="FF13294B"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FF0B6B3A"/><name val="Calibri"/></font><font><i/><sz val="8"/><color rgb="FF8A8A8A"/><name val="Calibri"/></font></fonts>
+<fills count="7"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF13294B"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF3E9C4"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFBE6E6"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE4F6E4"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFFFFBEA"/></patternFill></fill></fills>
+<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>${bd}</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="15"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>${xf(2,0,0,al('center'))}${xf(5,0,0,al('center'))}${xf(3,2,1,al('center',1))}${xf(0,0,1,al('left'))}${xf(0,0,1,al('center'))}${xf(1,0,1,al('left'))}${xf(1,0,1,al('center'))}${xf(4,4,1,al('center'))}${xf(1,3,1,al('center'))}${xf(6,5,1,al('center'))}${xf(1,0,0,al('left'))}${xf(7,0,1,al('center'))}${xf(0,6,1,al('center'))}${xf(1,0,0,al('left',1))}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+  function sheetXML(sh){const rows=sh.rows.map((r,i)=>`<row r="${i+1}"${sh.heights&&sh.heights[i]?` ht="${sh.heights[i]}" customHeight="1"`:''}>${r.map((cv,j)=>{if(cv==null)return'';const o=typeof cv==='object'?cv:{v:cv,s:0},v=o.v,ref=col(j)+(i+1),s=o.s?` s="${o.s}"`:'';
+      if(v==null||v==='')return o.s?`<c r="${ref}"${s}/>`:'';return typeof v==='number'&&isFinite(v)?`<c r="${ref}"${s}><v>${v}</v></c>`:`<c r="${ref}"${s} t="inlineStr"><is><t xml:space="preserve">${x(v)}</t></is></c>`}).join('')}</row>`).join('');
+    const fz=sh.freeze?`<pane${sh.freeze[0]?` xSplit="${sh.freeze[0]}"`:''}${sh.freeze[1]?` ySplit="${sh.freeze[1]}"`:''} topLeftCell="${col(sh.freeze[0])}${sh.freeze[1]+1}" activePane="${sh.freeze[0]&&sh.freeze[1]?'bottomRight':sh.freeze[1]?'bottomLeft':'topRight'}" state="frozen"/>`:'';
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView workbookViewId="0">${fz}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="16"/>
+<cols>${(sh.cols||[]).map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${rows}</sheetData>${sh.merges&&sh.merges.length?`<mergeCells count="${sh.merges.length}">${sh.merges.map(m=>`<mergeCell ref="${col(m[1])}${m[0]+1}:${col(m[3])}${m[2]+1}"/>`).join('')}</mergeCells>`:''}
+<printOptions horizontalCentered="1"/><pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="${sh.portrait?'portrait':'landscape'}" fitToWidth="1" fitToHeight="0"/></worksheet>`}
+  function save(name,sheets){const nm=sheets.map((s,i)=>(s.name||'Sheet'+(i+1)).replace(/[\[\]:*?\/\\]/g,' ').slice(0,31));
+    const files=[['[Content_Types].xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((s,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`],
+      ['_rels/.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+      ['xl/workbook.xml',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${nm.map((n,i)=>`<sheet name="${x(n)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')}</sheets></workbook>`],
+      ['xl/_rels/workbook.xml.rels',`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((s,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+      ['xl/styles.xml',STY],...sheets.map((s,i)=>['xl/worksheets/sheet'+(i+1)+'.xml',sheetXML(s)])];
+    const a=document.createElement('a');a.href=URL.createObjectURL(zip(files));a.download=name.replace(/[^\w.-]+/g,'_');document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},5000)}
+  return{save}})();
+const XLR={async read(file){const buf=new Uint8Array(await file.arrayBuffer()),dv=new DataView(buf.buffer),td=new TextDecoder();let e=buf.length-22;while(e>=0&&dv.getUint32(e,true)!==0x06054b50)e--;if(e<0)throw new Error('not xlsx');
+  const n=dv.getUint16(e+10,true);let p=dv.getUint32(e+16,true);const F={};
+  for(let i=0;i<n;i++){const nl=dv.getUint16(p+28,true),xl=dv.getUint16(p+30,true),cl=dv.getUint16(p+32,true);F[td.decode(buf.subarray(p+46,p+46+nl))]={meth:dv.getUint16(p+10,true),cs:dv.getUint32(p+20,true),off:dv.getUint32(p+42,true)};p+=46+nl+xl+cl}
+  const get=async name=>{const f=F[name];if(!f)return null;const st=f.off+30+dv.getUint16(f.off+26,true)+dv.getUint16(f.off+28,true),raw=buf.subarray(st,st+f.cs);
+    if(f.meth===0)return td.decode(raw);if(f.meth!==8)throw new Error('zip method');return td.decode(new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer()))};
+  const X=s=>new DOMParser().parseFromString(s,'application/xml'),wb=X(await get('xl/workbook.xml')),rel=X((await get('xl/_rels/workbook.xml.rels'))||'<r/>'),ssx=await get('xl/sharedStrings.xml');
+  const SS=ssx?[...X(ssx).getElementsByTagName('si')].map(si=>[...si.childNodes].map(z=>z.nodeName==='t'?z.textContent:z.nodeName==='r'?[...z.getElementsByTagName('t')].map(t=>t.textContent).join(''):'').join('')):[];
+  const R={};[...rel.getElementsByTagName('Relationship')].forEach(r=>R[r.getAttribute('Id')]=r.getAttribute('Target'));
+  const out=[];for(const sh of [...wb.getElementsByTagName('sheet')]){const rid=sh.getAttribute('r:id')||sh.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships','id');const tg=String(R[rid]||'').replace(/^\/?xl\//,'').replace(/^\//,'');const x=tg&&await get('xl/'+tg);if(!x)continue;
+    const rows=[];for(const c of [...X(x).getElementsByTagName('c')]){const m=(c.getAttribute('r')||'').match(/^([A-Z]+)(\d+)$/);if(!m)continue;let ci=0;for(const ch of m[1])ci=ci*26+ch.charCodeAt(0)-64;
+      const t=c.getAttribute('t'),ve=c.getElementsByTagName('v')[0];let v=ve?ve.textContent:'';if(t==='s')v=SS[+v]||'';else if(t==='inlineStr')v=[...c.getElementsByTagName('t')].map(z=>z.textContent).join('');else if(t!=='str'&&t!=='b'&&t!=='e'&&v!==''&&!isNaN(+v))v=+v;
+      (rows[+m[2]-1]=rows[+m[2]-1]||[])[ci-1]=v}
+    out.push({name:sh.getAttribute('name'),rows})}return out}};
+/* ---- Exam lists: Excel template, Excel upload, edit in the app ---- */
+const EXK={routine:{t:'Date sheet',cols:[['date','Date',15,1],['cls','Class',14],['subj','Subject',30],['time','Time',22]],need:['date','cls','subj']},
+  invig:{t:'Invigilation duty',cols:[['date','Date',15,1],['time','Time / Session',22],['room','Room',12],['t','Teacher',32]],need:['date','room','t']},
+  seats:{t:'Seat plan',cols:[['room','Room',12],['cls','Class',14],['from','Roll from',12],['to','Roll to',12]],need:['room','cls','from']}};
+const VKIND={sheet:'routine',duty:'invig',seat:'seats'};
+const dmyS=d=>{const m=String(d||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?m[3]+'-'+m[2]+'-'+m[1]:String(d||'')};
+const toISOv=v=>{const r=toISO(v);if(!r)return null;const d=new Date(r+'T00:00:00Z');return isNaN(d)||d.toISOString().slice(0,10)!==r?null:r};   /* a real date only (no 32-12-2026) */
+const toISOx=v=>{if(typeof v==='number'){if(v>20000&&v<80000)return new Date(Date.UTC(1899,11,30)+Math.round(v)*864e5).toISOString().slice(0,10);return null}return toISOv(v)};
+const exSort=(kind,L)=>kind==='seats'?L:L.sort((a,b)=>String(a.date).localeCompare(String(b.date))||(kind==='routine'?String(a.time||'').localeCompare(String(b.time||''))||String(a.cls).localeCompare(String(b.cls),undefined,{numeric:true}):String(a.room).localeCompare(String(b.room),undefined,{numeric:true})));
+function exTemplate(kind,list,exName){const K=EXK[kind],W=K.cols.length,sch=(SJS.school&&SJS.school.name)||'ST. JAMES H.S. SCHOOL';
+  const note={routine:'One row for each paper: Date (DD-MM-YYYY, e.g. 01-12-2026), Class (e.g. VI or VI-A), Subject and Time (e.g. 9:00 – 11:00 AM). Add or change rows, save, then upload in SJS App → Exams → Date sheet → Upload Excel. The upload replaces the whole date sheet of this exam.',
+    invig:'One row for each duty: Date (DD-MM-YYYY), Time / Session (e.g. 9:00 AM or 1st sitting), Room and Teacher (the name as in the SJS App). The upload replaces the whole invigilation list of this exam.',
+    seats:'One row for each block of seats: Room, Class (e.g. VI-A), Roll from and Roll to. The upload replaces the whole seat plan of this exam.'}[kind];
+  const rows=[[{v:sch,s:1}],[{v:K.t.toUpperCase()+' – '+exName+((SJS.school&&SJS.school.session)?' – '+SJS.school.session:''),s:2}],[{v:note,s:14}],K.cols.map(c=>({v:c[1],s:3})),
+    ...list.map(r=>K.cols.map(([k,,,d])=>{const v=d?dmyS(r[k]):(r[k]==null?'':r[k]);return{v:(k==='from'||k==='to')&&v!==''&&!isNaN(+v)?+v:String(v),s:13}})),
+    ...Array.from({length:Math.max(20,60-list.length)},()=>K.cols.map(()=>({v:'',s:13})))];
+  XL.save(K.t.replace(/ /g,'_')+'_'+exName+'.xlsx',[{name:K.t,rows,merges:[[0,0,0,W-1],[1,0,1,W-1],[2,0,2,W-1]],heights:{0:24,1:20,2:58,3:24},cols:K.cols.map(c=>c[2]),freeze:[0,4]}]);
+  toast(K.t+' Excel downloaded'+(list.length?' – '+list.length+' rows filled in':''))}
+async function exUpload(kind,file,m){const K=EXK[kind];let book;try{book=await XLR.read(file)}catch(e){toast('Could not read this file – it must be an Excel workbook (.xlsx)');return}
+  const lab=t=>String(t==null?'':t).trim().toLowerCase();let found=null;
+  for(const sh of book){const R=sh.rows||[];for(let i=0;i<Math.min(R.length,15);i++){const r=R[i]||[];const col={};r.forEach((v,j)=>{const t=lab(v);const c=K.cols.find(([,l])=>t===l.toLowerCase()||(t&&l.toLowerCase().startsWith(t))||(t.startsWith('roll')&&l.toLowerCase()===t));if(c&&col[c[0]]==null)col[c[0]]=j});
+    if(K.need.every(k=>col[k]!=null)){found={R,i,col,name:sh.name};break}}if(found)break}
+  if(!found){toast('Heading row not found – the columns must be '+K.cols.map(c=>c[1]).join(' | '));return}
+  const list=[],errs=[];
+  for(let i=found.i+1;i<found.R.length;i++){const r=found.R[i]||[];const o={};let any=false;
+    K.cols.forEach(([k,,,d])=>{let v=found.col[k]!=null?r[found.col[k]]:'';if(v==null)v='';if(String(v).trim()!=='')any=true;if(d){const iso=toISOx(v);o[k]=iso||'';if(String(v).trim()!==''&&!iso)errs.push('Row '+(i+1)+': date “'+v+'” – write it as DD-MM-YYYY')}else o[k]=String(v).trim()});
+    if(!any)continue;const miss=K.need.filter(k=>!o[k]);if(miss.length){if(!errs.some(e=>e.startsWith('Row '+(i+1)+':')))errs.push('Row '+(i+1)+': '+miss.map(k=>K.cols.find(c=>c[0]===k)[1]).join(', ')+' missing');continue}
+    if(kind==='seats'&&!o.to)o.to=o.from;list.push(o)}
+  exSort(kind,list);
+  sheet(`<h3>Upload ${esc(K.t.toLowerCase())}</h3><p class="sub">From “${esc(found.name)}”: <b>${list.length} row${list.length===1?'':'s'}</b> ready. Saving replaces the whole ${esc(K.t.toLowerCase())} of this exam.</p>
+    ${list.length?`<div class="scroll" style="max-height:38vh"><table class="tbl"><tr>${K.cols.map(c=>`<th>${esc(c[1])}</th>`).join('')}</tr>${list.slice(0,200).map(r=>`<tr>${K.cols.map(([k,,,d])=>`<td>${esc(d?fmtDate(r[k]):r[k])}</td>`).join('')}</tr>`).join('')}</table></div>`:''}
+    ${errs.length?`<div class="banner warn" style="margin-top:8px"><b>${errs.length} row${errs.length>1?'s':''} not used – correct them in Excel and upload again:</b><br>${errs.slice(0,12).map(esc).join('<br>')}${errs.length>12?'<br>… and '+(errs.length-12)+' more':''}</div>`:''}
+    <div class="row" style="margin-top:12px"><div class="grow"></div><button class="btn" onclick="SJS.closeSheet()">Cancel</button>${list.length?`<button class="btn pri" id="upOk">Save ${list.length} rows</button>`:''}</div>`);
+  const ok=$('#upOk');if(ok)ok.onclick=async()=>{ok.disabled=true;ok.textContent='Saving…';try{await SJS.db.set('ex_data/'+S.exId,{[kind]:list,at:SJS.db.now()},true);closeSheet();toast(list.length+' rows saved');vExam(m)}catch(e){ok.disabled=false;ok.textContent='Save';toast('Could not save – check the internet and try again')}}}
+function exEdit(kind,all,m){const K=EXK[kind];const fl=kind==='routine'&&S.exCls?S.exCls:'';const inF=r=>!fl||r.cls===fl||String(r.cls).split(/[ ,&+]+/).includes(fl);
+  let rows=all.filter(inF).map(r=>({...r}));const rest=all.filter(r=>!inF(r));
+  const cell=(r,i,[k,l,,d])=>`<td><input class="inp" data-i="${i}" data-k="${k}" ${d?'type="date"':''} value="${esc(r[k]==null?'':r[k])}" placeholder="${esc(l)}" style="min-width:${d?'140px':k==='subj'||k==='t'?'150px':'80px'};padding:6px 8px"></td>`;
+  const read=()=>document.querySelectorAll('#exEd [data-i]').forEach(e=>{const r=rows[+e.dataset.i];if(r)r[e.dataset.k]=e.value.trim()});
+  const draw=()=>{$('#exEd').innerHTML=`<table class="tbl"><tr>${K.cols.map(c=>`<th>${esc(c[1])}</th>`).join('')}<th></th></tr>${rows.map((r,i)=>`<tr>${K.cols.map(c=>cell(r,i,c)).join('')}<td><button class="btn sm" data-del="${i}" title="Delete this row" style="color:#b91c1c">✕</button></td></tr>`).join('')}</table>${rows.length?'':'<div class="empty">No rows – tap “+ Add row”.</div>'}`;
+    document.querySelectorAll('#exEd [data-del]').forEach(b=>b.onclick=()=>{read();rows.splice(+b.dataset.del,1);draw()})};
+  sheet(`<h3>Edit ${esc(K.t.toLowerCase())}${fl?' – Class '+esc(fl):''}</h3><p class="sub">Change any box, ✕ deletes a row, + Add row adds one. Tap Save when finished.${fl?' Only Class '+esc(fl)+' is shown; the other classes stay as they are.':''}</p>
+    <div class="scroll" id="exEd" style="max-height:55vh"></div>
+    <div class="row" style="margin-top:12px"><button class="btn sm" id="exAdd">+ Add row</button><div class="grow"></div><button class="btn" onclick="SJS.closeSheet()">Cancel</button><button class="btn pri" id="exSave">Save</button></div>`);
+  draw();
+  $('#exAdd').onclick=()=>{read();const last=rows[rows.length-1]||{};const n={};K.cols.forEach(([k])=>n[k]='');if(kind!=='seats')n.date=last.date||'';if(kind==='routine'){n.cls=fl||last.cls||'';n.time=last.time||''}if(kind==='invig')n.time=last.time||'';if(kind==='seats')n.room=last.room||'';rows.push(n);draw();const b=$('#exEd');b.scrollTop=b.scrollHeight;const ins=b.querySelectorAll('tr:last-child input');if(ins.length)ins[kind==='routine'?2:kind==='invig'?3:1].focus()};
+  $('#exSave').onclick=async()=>{read();const keep=rows.filter(r=>K.cols.some(([k])=>String(r[k]||'').trim()));const bad=keep.findIndex(r=>K.need.some(k=>!r[k]));
+    if(bad>=0){toast('Row '+(bad+1)+': fill in '+K.need.map(k=>K.cols.find(c=>c[0]===k)[1]).join(', '));return}
+    keep.forEach(r=>{if(kind==='seats'&&!r.to)r.to=r.from});const list=exSort(kind,[...rest,...keep]);const b=$('#exSave');b.disabled=true;b.textContent='Saving…';
+    try{await SJS.db.set('ex_data/'+S.exId,{[kind]:list,at:SJS.db.now()},true);closeSheet();toast('Saved – '+list.length+' rows');vExam(m)}catch(e){b.disabled=false;b.textContent='Save';toast('Could not save – check the internet and try again')}}}
+
 const S={tab:'hw',cid:null,hwDate:todayISO(),exId:null,exView:'sheet',exCls:'',month:todayISO().slice(0,7),calSel:null,mk:null,events:[]};
 const LSK='sjs-school-';const lg=k=>{try{return localStorage.getItem(LSK+k)}catch(e){return null}};const ls=(k,v)=>{try{localStorage.setItem(LSK+k,v)}catch(e){}};
 const EVT=['Holiday','Exam','CCA','PTM','Meeting','Other'];
@@ -74,9 +171,12 @@ async function vExam(m){const exs=examList();if(!S.exId||!exs.some(e=>e.id===S.e
     body=`<div class="card"><h3>Where does a student sit?</h3><div class="row"><input class="inp" id="fCls" placeholder="Class e.g. VI-A" style="flex:1"><input class="inp" id="fRoll" placeholder="Roll" inputmode="numeric" style="flex:.6"><button class="btn pri" id="fGo">Find</button></div><div id="fOut" style="margin-top:8px"></div></div>
      <div class="card"><div class="row"><h3 class="grow" style="margin:0">Rooms (${rooms.length})</h3>${rooms.length?'<button class="btn sm" id="pSeat">Print</button>':''}</div>${rooms.length?rooms.map(rm=>{const zz=Z.filter(z=>z.room===rm);const n=zz.reduce((a,z)=>a+Math.max(0,(+z.to||0)-(+z.from||0)+1),0);return`<div class="li"><span class="pill y" style="font-size:13px">Room ${esc(rm)}</span><span class="grow">${zz.map(z=>`<b>${esc(z.cls)}</b> ${esc(z.from)}–${esc(z.to)}`).join(' · ')}</span><span class="tmeta">${n||''}</span></div>`}).join(''):'<div class="empty">No seat plan yet.</div>'}</div>`}
   m.innerHTML=`<div class="card"><label class="f">Exam<select class="inp" id="exSel">${exs.map(e=>`<option value="${esc(e.id)}" ${e.id===S.exId?'selected':''}>${esc(e.name)}</option>`).join('')}</select></label></div>${seg}${body}
-   ${canExam()?`<div class="card"><h3>Update (${esc(exName)})</h3><p class="sub">Copy the rows from your Excel file and paste. This replaces the list for this exam.</p><div class="row"><button class="btn sm" data-paste="routine">Paste date sheet</button><button class="btn sm" data-paste="invig">Paste invigilation duty</button><button class="btn sm" data-paste="seats">Paste seat plan</button></div></div>`:''}`;
+   ${canExam()?(()=>{const kd=VKIND[S.exView]||'routine',K=EXK[kd];return`<div class="card"><h3>Update ${esc(K.t.toLowerCase())} (${esc(exName)})</h3><p class="sub">Edit it here in the app, or download the Excel template, fill it in and upload it. An upload replaces the whole ${esc(K.t.toLowerCase())} of this exam.</p>
+     <div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn sm pri" id="exEdB">✏️ Edit in app</button><button class="btn sm" id="exTplB">⬇ Excel template</button><button class="btn sm" id="exUpB">⬆ Upload Excel</button><button class="btn sm" data-paste="${kd}">📋 Paste rows</button><input type="file" id="exUpF" accept=".xlsx" hidden></div></div>`})():''}`;
   $('#exSel').onchange=e=>{S.exId=e.target.value;ls('ex',S.exId);vExam(m)};
   m.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{S.exView=b.dataset.v;vExam(m)});
+  {const kd=VKIND[S.exView]||'routine',L={routine:R,invig:I,seats:Z}[kd];const eb=$('#exEdB');if(eb)eb.onclick=()=>exEdit(kd,L,m);const tb=$('#exTplB');if(tb)tb.onclick=()=>exTemplate(kd,exSort(kd,[...L]),exName);
+   const ub=$('#exUpB'),uf=$('#exUpF');if(ub&&uf){ub.onclick=()=>uf.click();uf.onchange=()=>{const f=uf.files[0];uf.value='';if(f)exUpload(kd,f,m)}}}
   const ec=$('#exCls');if(ec)ec.onchange=e=>{S.exCls=e.target.value;vExam(m)};
   const T=exName+' – '+SJS.school.session;
   const ps=$('#pSheet');if(ps)ps.onclick=()=>{const rr=R.filter(r=>!S.exCls||r.cls===S.exCls).sort((a,b)=>a.date.localeCompare(b.date));printHTML('Date sheet',SJS.printHead('EXAMINATION DATE SHEET – '+T+(S.exCls?' – Class '+S.exCls:''))+`<table><tr><th>Date</th><th>Day</th><th>Class</th><th class="l">Subject</th><th>Time</th></tr>${rr.map(r=>`<tr><td>${fmtDate(r.date)}</td><td>${DOW[parse(r.date).getDay()]}</td><td>${esc(r.cls)}</td><td class="l">${esc(r.subj)}</td><td>${esc(r.time||'')}</td></tr>`).join('')}</table><div class="sig"><div>Examination In-Charge</div><div>Principal</div></div>`)};
@@ -90,7 +190,7 @@ function pasteExam(kind,d,m){const H={routine:['Date','Class','Subject','Time'],
    <textarea class="inp" id="pT" rows="10" placeholder="${H.join('\t')}"></textarea><div class="row" style="margin-top:10px"><div class="grow"></div><button class="btn" onclick="SJS.closeSheet()">Cancel</button><button class="btn pri" id="pOk">Save</button></div>`);
   $('#pOk').onclick=async()=>{const rows=pasteRows($('#pT').value).filter(r=>r.length>=3);let list;
     if(kind==='seats')list=rows.filter(r=>!/room/i.test(r[0])).map(r=>({room:r[0],cls:r[1],from:r[2],to:r[3]||r[2]}));
-    else{list=rows.map(r=>({r,dt:toISO(r[0])})).filter(x=>x.dt).map(({r,dt})=>kind==='routine'?{date:dt,cls:r[1],subj:r[2],time:r[3]||''}:{date:dt,time:r[1],room:r[2],t:r[3]||''})}
+    else{list=rows.map(r=>({r,dt:toISOv(r[0])})).filter(x=>x.dt).map(({r,dt})=>kind==='routine'?{date:dt,cls:r[1],subj:r[2],time:r[3]||''}:{date:dt,time:r[1],room:r[2],t:r[3]||''})}
     if(!list.length){toast('Nothing to save – check the columns and dates');return}
     try{await SJS.db.set('ex_data/'+S.exId,{[kind]:list,at:SJS.db.now()},true);closeSheet();toast(list.length+' rows saved');vExam(m)}catch(e){toast('Could not save – check the Firestore rules')}}}
 function toISO(s){s=String(s||'').trim();let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);if(m)return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');

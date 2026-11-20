@@ -249,3 +249,11 @@ Upload `marks.html` and `sw.js`.
 - **⬆ Upload filled Excel** shows what will change, sheet by sheet, and lists wrong entries (not a number, more than the working days, roll not in the class) – those are not used. Then **Save attendance**.
 - Empty box = keep what is saved; a dash ( - ) clears it; half days like 42.5 are fine. Locked exams and other teachers' classes are skipped. Do not change the Roll No column or the grey KEY row.
 - Includes versions 74 and 75.
+
+## Version 77 – Exams: edit the date sheet in the app, Excel template and upload
+- School Diary → Exams → choose the exam → Date sheet / Invigilation / Seat plan → **Update …** card:
+  - ✏️ **Edit in app** – change any box, ✕ deletes a row, + Add row, Save. With a class chosen in the date sheet, only that class is edited; the others stay.
+  - ⬇ **Excel template** – downloads the list (already filled in) with the right columns: Date | Class | Subject | Time (Invigilation: Date | Time / Session | Room | Teacher; Seat plan: Room | Class | Roll from | Roll to).
+  - ⬆ **Upload Excel** – shows a preview and any wrong rows (not a real date, class or subject missing); Save replaces the list of that exam.
+  - 📋 **Paste rows** – as before.
+- Includes versions 73–76 unchanged.
