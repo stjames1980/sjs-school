@@ -242,3 +242,10 @@ Upload `marks.html` and `sw.js`.
 ## Version 75 – Attendance % on every result sheet
 - Every exam's result sheet (PT-I, Half Yearly, PT-II, Annual, Term 1, Term 2, Final, Pre-Board) shows the attendance percentage beside days present / working days: on screen, in print (result sheet, merit list, review sheet) and in Excel (Attendance % column, and the All Marks sheet).
 - Below 75% is shown in red. The limit is the "minimum attendance" in Setup (75% unless changed). This version also contains version 74.
+
+## Version 76 – Attendance Excel (all exams at once)
+- Result Software → Grades & Remarks → **📅 Attendance of all exams – Excel**: **⬇ This class** (one sheet) or **⬇ All classes** (Admin: one workbook, one sheet per class, Nursery to XII).
+- Each sheet: Roll No, Student name, then one column per exam – PT-I, Half Yearly, PT-II, Annual (KG: P.Test-I …; Nursery: Final Examination; X and XII also Pre-Board). Type each student's days present. The **Working days** row is filled from Setup or the class's saved number; change it only if this class is different.
+- **⬆ Upload filled Excel** shows what will change, sheet by sheet, and lists wrong entries (not a number, more than the working days, roll not in the class) – those are not used. Then **Save attendance**.
+- Empty box = keep what is saved; a dash ( - ) clears it; half days like 42.5 are fine. Locked exams and other teachers' classes are skipped. Do not change the Roll No column or the grey KEY row.
+- Includes versions 74 and 75.

@@ -45,7 +45,7 @@ details.grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;ma
    c/<classId>/marks/<examId>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}
    c/<classId>/marks/x_<termId>__att | __rem | __c<Area>   attendance, remarks, co-scholastic grades for a term */
 const {$,esc,toast,sheet,closeSheet,pasteRows,classLabel,waPhone}=SJS;
-const VER='75';
+const VER='76';
 const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const CBSE_T=(n,pt,ex,exn)=>({id:'t'+n,name:'Term '+n,comps:[{id:'pt'+n,name:pt,max:10},{id:'nb'+n,name:'Note Book',max:5},{id:'se'+n,name:'SEA',max:5},{id:ex,name:exn,max:80}]});
 const DEF={
@@ -298,6 +298,7 @@ async function vCos(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.
   m.innerHTML=`<div class="card"><div class="grid2">${classSel()}${sel('tSel','Term',S.terms.map(t=>[t.id,t.name]),tid)}${sel('aSel','Attendance for',AO,af0)}<label class="f">Working days – ${esc(afName)}<input class="inp" id="wd" type="number" min="0" value="${esc(wd||'')}" ${can?'':'disabled'} placeholder="${sWD?'empty = '+sWD+' (whole school, Setup)':(isT&&tCps.length)||af0==='fin'?'empty = automatic':''}"></label></div>
     <div class="tmeta" id="wdUsed" style="margin-top:6px">${wiTxt}</div>
     ${isT&&!tCps.length?'':`<div class="banner" style="margin-top:8px">${af0==='fin'?'<b>Final = '+mainT(S).map(t=>esc(t.name)).join(' + ')+', added automatically</b> (shown in grey). Type a number only to change it by hand.':isT?'<b>'+esc(term.name)+' = '+tCps.map(cp=>esc(cp.name.replace(/ Theory$/,''))).join(' + ')+', added automatically</b> (shown in grey). Type a number only to change it by hand – an empty box stays automatic.':'<b>'+esc(afName)+' – its own attendance.</b> Shown on the '+esc(afName)+' result sheet and added automatically into '+esc(term.name)+' and the Final. Type it, or use “Fill attendance from Student Attendance” with the dates of this exam period.'}${can?' <button class="btn sm" id="aClr">'+(isT||af0==='fin'?'Clear all – use automatic':'Clear all')+'</button>':''}</div>`}
+    ${(SJS.canClass(M.cid)||SJS.canView)&&D.students.length?`<div class="row" style="margin-top:10px"><b class="tmeta" style="font-weight:700">📅 Attendance of all exams – Excel:</b><button class="btn sm green" id="atD">⬇ This class</button>${SJS.isAdmin||SJS.canView?'<button class="btn sm green" id="atDA">⬇ All classes</button>':''}<button class="btn sm gold" id="atU">⬆ Upload filled Excel</button><input type="file" id="atF" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none"></div>`:''}
     ${SJS.canClass(M.cid)&&D.students.length?`<div class="row" style="margin-top:10px"><button class="btn gold sm" id="bpB">📷 Bulk photo upload</button><span class="tmeta">${D.students.filter(x=>x.photo).length} of ${D.students.length} students have a photo</span></div>
     <div class="row" style="margin-top:8px"><b class="tmeta" style="font-weight:700">👤 Student details for the report card:</b><button class="btn sm green" id="sdD">⬇ Download Excel</button><button class="btn sm gold" id="sdU">⬆ Upload filled Excel</button><input type="file" id="sdF" accept=".xlsx" style="display:none"><span class="tmeta">${D.students.filter(x=>x.dob&&(x.father||x.parent)).length} of ${D.students.length} have date of birth and father's name</span></div>`:''}
     ${can?`<div class="grid2" style="margin-top:10px"><label class="f">${esc(afName)} – from<input class="inp" id="aF" type="date" value="${esc(aFrom)}"></label><label class="f">${esc(afName)} – to<input class="inp" id="aT" type="date" value="${esc(aTo)}"></label><label class="f">&nbsp;<button class="btn green" id="aFill">Fill attendance from Student Attendance</button></label></div>`:''}
@@ -313,7 +314,9 @@ async function vCos(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.
   $('#aSel').onchange=e=>{if(!guard(e,'attFor'))return;M.attFor=e.target.value;vCos(m)};
   const acl=$('#aClr');if(acl)acl.onclick=()=>{if(!confirm('Clear the attendance typed for '+afName+'? The automatic attendance will be used. (Tap Save to keep this.)'))return;D.students.forEach(st=>A.att[st.roll]='');A.wd=0;A.from='';A.to='';M.cos=A;touch();vCos(m)};
   const bp=$('#bpB');if(bp)bp.onclick=()=>{if(dirtyN()&&!confirm('Grades not saved. Continue anyway?'))return;clearDirty();bulkPhotos(m)};
-  const sdd=$('#sdD');if(sdd)sdd.onclick=()=>stuDownload(M.cid);const sdu=$('#sdU'),sdf=$('#sdF');if(sdu)sdu.onclick=()=>{if(dirtyN()&&!confirm('Grades not saved. Continue anyway?'))return;clearDirty();sdf.value='';sdf.click()};if(sdf)sdf.onchange=()=>{if(sdf.files[0])stuUpload(M.cid,sdf.files[0],m)};
+  const sdd=$('#sdD');if(sdd)sdd.onclick=()=>stuDownload(M.cid);
+  const atd=$('#atD');if(atd)atd.onclick=()=>attDownload([cls(M.cid)]);const ata=$('#atDA');if(ata)ata.onclick=()=>attDownload(SJS.classes);
+  const atu=$('#atU'),atf=$('#atF');if(atu)atu.onclick=()=>{if(dirtyN()&&!confirm('Grades not saved. Continue anyway?'))return;clearDirty();atf.value='';atf.click()};if(atf)atf.onchange=()=>{if(atf.files[0])attUpload(atf.files[0],m)};const sdu=$('#sdU'),sdf=$('#sdF');if(sdu)sdu.onclick=()=>{if(dirtyN()&&!confirm('Grades not saved. Continue anyway?'))return;clearDirty();sdf.value='';sdf.click()};if(sdf)sdf.onchange=()=>{if(sdf.files[0])stuUpload(M.cid,sdf.files[0],m)};
   const touch=()=>{M.cos=A;const b=$('#svC');if(b){b.disabled=false;b.textContent='Save'}};
   $('#wd').oninput=e=>{A.wd=+e.target.value||0;touch();const u=$('#wdUsed');if(u)u.innerHTML=A.wd>0?'<b>Working days used for '+esc(afName)+': '+A.wd+'</b> – typed for this class'+(sWD&&sWD!==A.wd?' (whole school in Setup: '+sWD+')':''):(sWD?'<b>Working days used for '+esc(afName)+': '+sWD+'</b> – whole school, from Setup':'Empty – '+(isT&&tCps.length||af0==='fin'?'added up automatically':'not set')+' (tap Save to keep)')};
   m.querySelectorAll('[data-att]').forEach(i=>i.oninput=()=>{A.att[i.dataset.att]=i.value.trim();touch()});
@@ -348,6 +351,47 @@ const dmy=v=>{const m=String(v||'').match(/^(\d{4})-(\d{2})-(\d{2})/);return m?m
 function parseDob(v){const ok=(y,mo,d)=>{y=+y;mo=+mo;d=+d;if(mo<1||mo>12||d<1||d>31||y<1950||y>2100)return null;return y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0')};
   if(typeof v==='number'){if(v>10000&&v<80000)return new Date(Date.UTC(1899,11,30)+Math.round(v)*864e5).toISOString().slice(0,10);return null}
   const s=String(v).trim();let m=s.match(/^(\d{1,2})[-\/. ](\d{1,2})[-\/. ](\d{4})$/);if(m)return ok(m[3],m[2],m[1]);m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return ok(m[1],m[2],m[3]);return null}
+/* ---------- Attendance Excel: days present of every exam (PT-I, Half Yearly, PT-II, Annual …) of a class in one sheet; one sheet per class ---------- */
+function attCols(cid){const S=schemeOf(cid),L=[];S.terms.forEach(t=>{const cs=attCps(t);(cs.length?cs.map(cp=>({id:cp.id,name:cp.name.replace(/ Theory$/,''),tid:t.id})):[{id:t.id,name:t.name,tid:t.id}]).forEach(u=>{if(!L.some(x=>x.id===u.id))L.push(u)})});return L}
+const canAtt=(cid,tid)=>(SJS.canClass(cid)||SJS.canView)&&(SJS.isAdmin||!locked('x_'+tid));
+function attSheet(cid,used){const D=C[cid],c=cls(cid),U=attCols(cid),W=2+U.length,h=xlHead('ATTENDANCE – ALL EXAMS','Class '+classLabel(c)+' – days present in each exam',W);
+  let nm=('Class '+classLabel(c)).replace(/[\[\]:*?\/\\]/g,' ').slice(0,28);while(used[nm])nm+='_';used[nm]=1;
+  const rows=[...h.rows,[{v:'Type each student’s DAYS PRESENT under each exam, and the WORKING DAYS of each exam in the Working days row (filled in from Setup or what is saved). A box left empty keeps what is saved; type a dash ( - ) to clear it. Half days like 42.5 are fine. Do not change the Roll No column or the grey KEY row. Save, then upload in SJS App → Result Software → Grades & Remarks → 📅 Attendance – Upload filled Excel.',s:14}],
+    [{v:'Roll No',s:3},{v:'Student name',s:3},...U.map(u=>({v:u.name+(locked('x_'+u.tid)?' (locked)':''),s:3}))],
+    [{v:'Working days',s:9},{v:'',s:9},...U.map(u=>({v:wdOf(D,u.id)||'',s:9}))],
+    [{v:'KEY',s:12},{v:cid,s:12},...U.map(u=>({v:u.id,s:12}))],
+    ...D.students.map(st=>[{v:isNaN(+st.roll)?String(st.roll):+st.roll,s:7},{v:st.name,s:6},...U.map(u=>{const d=D.marks[xid(u.id,'att')],v=d&&d.m?d.m[st.roll]:undefined;return{v:v==null?'':v,s:13}})])];
+  return{name:nm,rows,merges:[...h.merges,[4,0,4,W-1]],heights:{...h.heights,4:58,5:30},cols:[9,28,...U.map(()=>14)],freeze:[2,8],portrait:true}}
+async function attDownload(ks){ks=ks.filter(Boolean);if(ks.length>1)toast('Loading '+ks.length+' classes…');for(const k of ks)await load(k.id);const used={};
+  const sheets=ks.filter(k=>C[k.id]&&C[k.id].students.length&&attCols(k.id).length).map(k=>attSheet(k.id,used));if(!sheets.length){toast('No students in '+(ks.length>1?'any class':'this class'));return}
+  XL.save('Attendance_'+(ks.length>1?'All_classes':'Class_'+classLabel(cls(ks[0].id)))+'_'+String(SJS.school.session||'').replace(/[^\w-]/g,'')+'.xlsx',sheets);toast('Attendance template downloaded – '+sheets.length+' sheet'+(sheets.length>1?'s':''))}
+async function attUpload(file,m){let book;try{book=await XLR.read(file)}catch(e){console.error(e);toast('Could not read this file – it must be an Excel workbook (.xlsx)');return}
+  const plan=[],errs=[],rep=[];let n=0,nw=0,found=0;const blank=v=>v==null||String(v).trim()==='',dash=v=>/^[-–—]$/.test(String(v).trim());
+  for(const sh of book){const R=sh.rows,ki=R.findIndex(r=>r&&String(r[0]==null?'':r[0]).trim().toUpperCase()==='KEY');const cid=ki<0?'':String((R[ki]||[])[1]==null?'':R[ki][1]).trim(),c=cid&&cls(cid);
+    if(ki<0||!c){rep.push({nm:sh.name,why:ki<0?'not an attendance sheet – skipped':'not an attendance sheet of a class (a marks template is uploaded in Enter Marks) – skipped'});continue}
+    found++;await load(cid);const D=C[cid],U=attCols(cid),by={};U.forEach(u=>by[u.id]=u);const byRoll={};D.students.forEach(st=>byRoll[String(st.roll).trim()]=st);
+    const wi=R.findIndex(r=>r&&/^working days$/i.test(String(r[0]==null?'':r[0]).trim()));let sn=0,sw=0,se=0,lk=0;const e0=errs.length;
+    (R[ki]||[]).forEach((kv,j)=>{if(j<2)return;const u=by[String(kv==null?'':kv).trim()];if(!u)return;if(!canAtt(cid,u.tid)){lk++;return}
+      const aKey=xid(u.id,'att'),cur=D.marks[aKey]||{},curMax=+cur.max||0,P={cid,id:aKey,u,ch:{},max:undefined,lbl:'Class '+classLabel(c)+' · '+u.name};
+      const wv=wi>=0?(R[wi]||[])[j]:undefined;
+      if(!blank(wv)){if(dash(wv)){if(curMax)P.max=0}else{const x=+String(wv).trim();if(isNaN(x)||x<0||x>366)errs.push(sh.name+': '+u.name+' – working days “'+wv+'” is not a number of days');else{const y=Math.round(x*10)/10;if(curMax?y!==curMax:y!==schWD(u.id))P.max=y}}}
+      const effW=P.max!==undefined?(P.max||schWD(u.id)):wdOf(D,u.id);
+      for(let i=ki+1;i<R.length;i++){const r=R[i];if(!r)continue;const roll=String(r[0]==null?'':r[0]).trim();if(!roll)continue;const v=r[j];if(blank(v))continue;const st=byRoll[roll]||byRoll[String(+roll)];
+        if(!st){errs.push(sh.name+': Roll '+roll+' is not in Class '+classLabel(c));continue}
+        const old=cur.m?cur.m[st.roll]:undefined;
+        if(dash(v)){if(old!=null&&old!==''){P.ch[st.roll]=null;n++}continue}
+        const x=+String(v).trim();if(isNaN(x)||x<0){errs.push(sh.name+': Roll '+roll+', '+u.name+' – “'+v+'” is not a number of days');continue}
+        const y=Math.round(x*10)/10;if(effW>0&&y>effW){errs.push(sh.name+': Roll '+roll+', '+u.name+' – '+y+' is more than the working days ('+effW+')');continue}
+        if(old!=null&&old!==''&&+old===y)continue;P.ch[st.roll]=y;n++}
+      const k=Object.keys(P.ch).length;if(k||P.max!==undefined){plan.push(P);sn+=k;if(P.max!==undefined){sw++;nw++}}});
+    se=errs.length-e0;rep.push({nm:sh.name,sn,sw,se,lk})}
+  if(!found){toast('This is not an attendance template. Download it first (📅 Attendance – Excel), fill it, then upload it.');return}
+  sheet(`<h3>Upload attendance</h3><p class="sub"><b>${n}</b> new or changed days present${nw?' · <b>'+nw+'</b> working days changed':''}.</p>
+    <div class="tmeta" style="font-weight:700;margin:6px 0 2px">Sheet by sheet</div><div style="max-height:40vh;overflow:auto">${rep.map(x=>`<div class="li"><b style="flex:0 0 38%">${esc(x.nm)}</b><span class="tmeta">${x.why?esc(x.why):`${x.sn} changed${x.sw?' · working days: '+x.sw+' exam'+(x.sw>1?'s':''):''}${x.se?' · <b style="color:var(--crit)">'+x.se+' wrong (not used)</b>':''}${x.lk?' · 🔒 '+x.lk+' exam'+(x.lk>1?'s':'')+' locked / not your class – not uploaded':''}${!x.sn&&!x.sw&&!x.se&&!x.lk?'no change':''}`}</span></div>`).join('')}</div>
+    ${errs.length?`<div class="banner warn" style="margin-top:8px"><b>${errs.length} entr${errs.length>1?'ies':'y'} not used – please correct in Excel and upload again:</b><br>${errs.slice(0,15).map(esc).join('<br>')}${errs.length>15?'<br>… and '+(errs.length-15)+' more':''}</div>`:''}
+    <div class="row" style="margin-top:12px"><div class="grow"></div><button class="btn" onclick="SJS.closeSheet()">${plan.length?'Cancel':'Close'}</button>${plan.length?`<button class="btn pri" id="atOk">Save attendance</button>`:''}</div>`);
+  const ok=$('#atOk');if(ok)ok.onclick=async()=>{ok.disabled=true;ok.textContent='Saving…';await Promise.all(plan.map(P=>saveMk(P.cid,P.id,{exam:'x_'+P.u.id,subj:'att',...(P.max!==undefined?{max:P.max}:{})},P.ch)));closeSheet();
+    toast(navigator.onLine?'Attendance saved':'Attendance saved on this phone – it uploads when the internet returns');M.cos=null;vCos(m)}}
 function stuDownload(cid){const D=C[cid],c=cls(cid),W=STU_F.length,h=xlHead('STUDENT DETAILS',classLabel(c)+' – printed on the report card, also shown in Student Attendance',W);
   const rows=[...h.rows,[{v:'Fill in or correct the details, save, then upload in Result Software → Grades & Remarks → Upload student details. Do not change the grey Student ID and Roll No columns. Date of birth as DD-MM-YYYY (e.g. 05-08-2010). Gender M or F. A box left empty is not changed – type a dash ( - ) to clear a detail.',s:14}],
     STU_F.map(([,l])=>({v:l,s:3})),
