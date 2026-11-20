@@ -226,3 +226,10 @@ Upload `marks.html` and `sw.js`.
 
 ## Version 72
 - Result sheets, review sheets, Final Review (screen, print and Excel) now show the total of the pass marks under the full total, e.g. Full marks 800 / Pass marks 264 (8 subjects × 33). It adds up each student's own subjects, so optional subjects in XI–XII are counted correctly; grade-only subjects (*) are left out.
+
+## Version 73 – Working days of every exam
+- **Setup → 📅 Working days of each exam – whole school:** type the working days of PT-I, Half Yearly, PT-II and Annual (also Nursery Final Examination and Pre-Board) once for the session, with the From / To dates. **Count** works them out from the Student Attendance calendar (Sundays, Saturday rule, holidays; not days after today); change the number if needed, then **Save setup**.
+- Which number is used, first to last: (1) a number typed for one class in Grades & Remarks → Working days; (2) the whole-school number in Setup; (3) added up by itself – Term 1 = PT-I + Half Yearly, Term 2 = PT-II + Annual, Final = Term 1 + Term 2.
+- Grades & Remarks shows "Working days used for … " and where it comes from. The From / To dates of an exam start with the Setup dates. "Fill attendance from Student Attendance" still counts each student's days present; if a Setup number exists it is kept (a typed number comes before the automatic count) and the app says if the count is different.
+- Every exam result sheet (screen, print, Excel) shows the working days in the Full marks row under Attendance, and the Excel "Working days" column is filled for every student.
+- Report card: the Final attendance column now shows "–" for a student with no days present entered (before it could show 0 / 100).
