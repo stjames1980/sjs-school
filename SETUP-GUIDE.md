@@ -263,3 +263,6 @@ Upload `marks.html` and `sw.js`.
 - A card with many subjects that has to be shrunk to fit one A4 page now stays the full width and height of the page, so the margins are the same on all four sides (before, the bottom margin could be bigger).
 - Class X normal report card (not Pre-Board): the headings show only the full marks – PT-I (50) not counted, Half Yearly (80), Practical / IA (20), Total (100), the same for Term 2, and Final (Term 1 50% + Term 2 50%). The P.M. (pass mark) lines are removed; the pass is still decided on the subject total.
 - Includes version 77.
+
+## Version 79 – equal left and right margins on shrunk report cards
+- Fixed: on Windows computers a report card with many subjects (Class I–II) printed with a wider right margin. The print page measured the card with a scroll bar taking space; now the card always uses the full A4 width (198 mm inside 6 mm margins) and the print page has no scroll bar, so left and right margins are equal.
