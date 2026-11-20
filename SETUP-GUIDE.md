@@ -257,3 +257,9 @@ Upload `marks.html` and `sw.js`.
   - ⬆ **Upload Excel** – shows a preview and any wrong rows (not a real date, class or subject missing); Save replaces the list of that exam.
   - 📋 **Paste rows** – as before.
 - Includes versions 73–76 unchanged.
+
+## Version 78 – Report cards
+- Class I and II report cards: short headings **NB** (Note Book) and **Hly** (Half Yearly), explained in the NB line at the bottom, so the columns are narrower.
+- A card with many subjects that has to be shrunk to fit one A4 page now stays the full width and height of the page, so the margins are the same on all four sides (before, the bottom margin could be bigger).
+- Class X normal report card (not Pre-Board): the headings show only the full marks – PT-I (50) not counted, Half Yearly (80), Practical / IA (20), Total (100), the same for Term 2, and Final (Term 1 50% + Term 2 50%). The P.M. (pass mark) lines are removed; the pass is still decided on the subject total.
+- Includes version 77.
