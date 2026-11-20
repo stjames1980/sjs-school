@@ -233,3 +233,12 @@ Upload `marks.html` and `sw.js`.
 - Grades & Remarks shows "Working days used for … " and where it comes from. The From / To dates of an exam start with the Setup dates. "Fill attendance from Student Attendance" still counts each student's days present; if a Setup number exists it is kept (a typed number comes before the automatic count) and the app says if the count is different.
 - Every exam result sheet (screen, print, Excel) shows the working days in the Full marks row under Attendance, and the Excel "Working days" column is filled for every student.
 - Report card: the Final attendance column now shows "–" for a student with no days present entered (before it could show 0 / 100).
+
+## Version 74 – Enter Marks shows where the marks are
+- Enter Marks now lists every subject of the class with how many students have marks in the chosen term, e.g. "English: 0/28 · English-I: 28/28". Tap a subject to open it.
+- If the chosen subject has no marks but other subjects do, a yellow note says so and names the subjects that have marks. A subject that is not taught in a class can be removed in Setup → Subjects for each class (only if it has no marks).
+- Marks saved on another phone or computer now appear without reloading the page: the app re-reads a class when it is opened again after a minute (not while you have unsaved changes).
+
+## Version 75 – Attendance % on every result sheet
+- Every exam's result sheet (PT-I, Half Yearly, PT-II, Annual, Term 1, Term 2, Final, Pre-Board) shows the attendance percentage beside days present / working days: on screen, in print (result sheet, merit list, review sheet) and in Excel (Attendance % column, and the All Marks sheet).
+- Below 75% is shown in red. The limit is the "minimum attendance" in Setup (75% unless changed). This version also contains version 74.
