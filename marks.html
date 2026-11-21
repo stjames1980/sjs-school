@@ -45,7 +45,7 @@ details.grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;ma
    c/<classId>/marks/<examId>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}
    c/<classId>/marks/x_<termId>__att | __rem | __c<Area>   attendance, remarks, co-scholastic grades for a term */
 const {$,esc,toast,sheet,closeSheet,pasteRows,classLabel,waPhone}=SJS;
-const VER='79';
+const VER='80';
 const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const CBSE_T=(n,pt,ex,exn)=>({id:'t'+n,name:'Term '+n,comps:[{id:'pt'+n,name:pt,max:10},{id:'nb'+n,name:'Note Book',max:5},{id:'se'+n,name:'SEA',max:5},{id:ex,name:exn,max:80}]});
 const DEF={
@@ -78,7 +78,33 @@ const C={};                                  // class data cache: cid -> {studen
 const M={tab:'dash',order:'roll',cid:null,view:'t1',term:'t1',subj:null,comp:'all',dirty:{},maxd:{},scope:'sec',cos:null,school:null};
 const LSK='sjs-res-';const lg=k=>{try{return localStorage.getItem(LSK+k)}catch(e){return null}};const ls=(k,v)=>{try{localStorage.setItem(LSK+k,v)}catch(e){}};
 const cfg=()=>CFG||DEF;
-const locked=id=>!!((OLD&&OLD.locked)||{})[id];
+const hardLock=id=>!!((OLD&&OLD.locked)||{})[id];
+const untilOf=id=>+(((OLD&&OLD.until)||{})[id])||0;          /* last date for marks entry (end of that day, India time) */
+const pastDue=id=>{const u=untilOf(id);return u>0&&Date.now()>u};
+const locked=id=>hardLock(id)||pastDue(id);
+const dIST=ms=>{const d=new Date(ms+19800000);return d.toISOString().slice(0,10)};
+const dShow=ms=>{const[y,mo,d]=dIST(ms).split('-');return d+'-'+mo+'-'+y};
+/* ---------- who may do what ----------
+   Admin and Exam In-Charge: every class and subject, plus Control (subject teachers, lock, last date, change history).
+   Principal: sees results and report cards; enters only the subjects given to him/her.
+   Class teacher: enters every subject of his/her own class + Grades & Remarks. No results, no report cards.
+   Subject teacher: enters only the subjects given in Control. No results, no report cards. */
+const ALLOC={};                                              /* mk_alloc/<classId> = {s:{subjectKey:[uid]}, k:{documentKey:[uid]}} */
+const myUid=()=>SJS.user&&SJS.user.uid;
+const isCtrl=()=>SJS.isAdmin||SJS.role==='exam';
+const seeRes=()=>SJS.isAdmin||SJS.canView;
+const isCT=cid=>{const c=cls(cid);return!!(c&&(c.teacherUids||[]).includes(myUid()))};
+const allocS=cid=>((ALLOC[cid]||{}).s)||{};
+const mySubjKeys=cid=>Object.keys(allocS(cid)).filter(k=>(allocS(cid)[k]||[]).includes(myUid()));
+const canSubj=(cid,key)=>isCtrl()||isCT(cid)||mySubjKeys(cid).includes(key);
+const entrySubj=cid=>(seeRes()||isCT(cid))?subjOf(cid):subjOf(cid).filter(s=>canSubj(cid,s.key));
+const partial=cid=>!seeRes()&&!isCT(cid);                  /* only some subjects of this class can be read */
+const myMkClasses=()=>SJS.classes.filter(c=>isCT(c.id)||mySubjKeys(c.id).length);
+const visClasses=()=>seeRes()?SJS.classes:M.tab==='cos'?SJS.classes.filter(c=>isCT(c.id)):myMkClasses();
+function myDocIds(cid){const S=schemeOf(cid),ks=mySubjKeys(cid),ids=[];subjOf(cid).filter(s=>ks.includes(s.key)).forEach(s=>S.terms.forEach(t=>t.comps.forEach(c=>{if(s.asp)s.asp.forEach(a=>ids.push(c.id+'__'+a.key));else ids.push(c.id+'__'+s.key)})));return ids}
+/* the document keys each teacher may write – the database rules read this list */
+function allocKeys(cid,s){const k={},SL=subjOf(cid);Object.entries(s).forEach(([key,u])=>{if(!u||!u.length)return;k[key]=u.slice();const x=SL.find(q=>q.key===key);if(x&&x.asp)x.asp.forEach(a=>k[a.key]=[...new Set([...(k[a.key]||[]),...u])])});return k}
+async function loadAlloc(){try{(await LIST('mk_alloc')).forEach(d=>{ALLOC[d.id]=d})}catch(e){console.warn('alloc',e)}}
 const cls=cid=>SJS.classes.find(c=>c.id===cid);
 const skey=s=>String(s).replace(/[^A-Za-z0-9]/g,'').slice(0,20)||'S';
 const nc=s=>{let t=String(s||'').toUpperCase().replace(/CLASS|STD|[^A-Z0-9]/g,'');if(/^\d+$/.test(t)&&+t>=1&&+t<=12)t=ROM[+t];return t};
@@ -94,6 +120,8 @@ const FB=()=>!!(window.firebase&&firebase.apps&&firebase.apps.length);
 async function LIST(c){if(!FB())return SJS.db.list(c);const q=firebase.firestore().collection(c);let s;
   try{s=navigator.onLine?await q.get():await q.get({source:'cache'})}catch(e){s=await q.get({source:'cache'})}
   return s.docs.map(d=>({id:d.id,...d.data()}))}
+async function GETS(paths){if(!FB())return(await Promise.all(paths.map(async p=>{const d=await SJS.db.get(p);return d?{id:p.split('/').pop(),...d}:null}))).filter(Boolean);
+  const fs=firebase.firestore();return(await Promise.all(paths.map(async p=>{let s;try{s=navigator.onLine?await fs.doc(p).get():await fs.doc(p).get({source:'cache'})}catch(e){try{s=await fs.doc(p).get({source:'cache'})}catch(e2){return null}}return s.exists?{id:s.id,...s.data()}:null}))).filter(Boolean)}
 let PEND=0,RULEERR=false;
 const RULEMSG='<b>The database is refusing the Result Software.</b> The Firestore rules published on Firebase are older than this app, so setup and marks cannot be saved. Fix (Admin, once): open <b>console.firebase.google.com</b> → your project → <b>Firestore Database → Rules</b>, delete everything there, paste the whole of the file <b>firestore.rules</b> from GitHub, and tap <b>Publish</b>. Then reload this page.';
 const realSet=(path,data,merge)=>FB()?firebase.firestore().doc(path).set(data,merge?{merge:true}:{}):SJS.db.set(path,data,merge);
@@ -105,17 +133,24 @@ function WRITE(path,data,merge){if(M.arch){toast(ARCH_RO);return Promise.resolve
   return navigator.onLine?Promise.race([p.catch(()=>{}),new Promise(r=>setTimeout(r,4000))]):Promise.resolve()}
 window.addEventListener('online',sync);window.addEventListener('offline',sync);
 async function load(cid,force){if(M.arch)return C[cid]||(C[cid]={students:[],marks:{}});
-  if(C[cid]&&!force&&!(FB()&&navigator.onLine&&!dirtyN()&&Date.now()-(C[cid]._at||0)>60000))return C[cid];   /* re-read after a minute, so marks saved on another phone show here too */const [st,mk]=await Promise.all([LIST('c/'+cid+'/students'),LIST('c/'+cid+'/marks')]);
+  if(C[cid]&&!force&&!(FB()&&navigator.onLine&&!dirtyN()&&Date.now()-(C[cid]._at||0)>60000))return C[cid];   /* re-read after a minute, so marks saved on another phone show here too */const [st,mk]=await Promise.all([LIST('c/'+cid+'/students'),partial(cid)?GETS(myDocIds(cid).map(id=>'c/'+cid+'/marks/'+id)):LIST('c/'+cid+'/marks')]);
   const marks={};mk.forEach(d=>marks[d.id]=d);C[cid]={students:st.sort((a,b)=>(+a.roll||0)-(+b.roll||0)||String(a.roll).localeCompare(String(b.roll))),marks,_at:Date.now()};return C[cid]}
 /* save some marks of one document: only the changed rolls are sent, so two teachers do not overwrite each other */
 const ARCH_RO='Old session – read only. Tap “Back to current session” to make changes.';
 function saveMk(cid,id,head,ch){if(M.arch){toast(ARCH_RO);return Promise.resolve()}const D=C[cid],cur=D.marks[id]||{m:{}},m={...(cur.m||{})};
+  const chg=[];Object.entries(ch).forEach(([r,v])=>{const o=(cur.m||{})[r],n=v==null?'':v;if(o!==undefined&&o!==null&&o!==''&&String(o)!==String(n))chg.push({r:String(r),o,n})});
+  if(chg.length&&!/__opt$/.test(id))mkLog(cid,id,head,chg);
   Object.entries(ch).forEach(([r,v])=>{if(v==null||v==='')delete m[r];else m[r]=v});
   head={...head,by:SJS.user.uid,byName:SJS.me?SJS.me.name:(SJS.user.email||'')};
   const full={...cur,...head,m};delete full.id;D.marks[id]={id,...full};
   if(FB()){const pm={},F=firebase.firestore.FieldValue;Object.entries(ch).forEach(([r,v])=>pm[r]=(v==null||v==='')?F.delete():v);
     return WRITE('c/'+cid+'/marks/'+id,{...head,m:pm,at:F.serverTimestamp()},true)}
   return WRITE('c/'+cid+'/marks/'+id,{...full,at:Date.now()},false)}
+
+/* change history: a mark that already had a value and is changed – who, when, old and new */
+function mkLog(cid,id,head,chg){const d={doc:id,exam:String(head.exam||''),subj:String(head.subj||''),ch:chg.slice(0,500),by:SJS.user.uid,byName:SJS.me?SJS.me.name:(SJS.user.email||'')};
+  if(FB()){firebase.firestore().collection('c/'+cid+'/mk_log').doc().set({...d,at:firebase.firestore.FieldValue.serverTimestamp()}).catch(e=>console.warn('history',e))}
+  else SJS.db.set('c/'+cid+'/mk_log/'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),{...d,at:Date.now()},false)}
 
 /* ---------- class group (scheme), subjects, exam parts ---------- */
 function schemeOf(cid){const c=cls(cid),n=nc(c&&c.cls),S=cfg().schemes;let hit=S.find(s=>toks(s.classes).includes(n));
@@ -195,27 +230,32 @@ function autoRemark(r){r={...r,failed:(r.failed||[]).map(noCode),absent:(r.absen
   if(r.p>=90)return'Outstanding performance. Keep it up!';if(r.p>=75)return'Very good performance. Keep working hard.';if(r.p>=60)return'Good. Can do even better with regular study.';if(r.p>=45)return'Satisfactory. Needs more effort and practice.';return'Passed, but must improve with regular study.'}
 
 /* ---------- page frame ---------- */
-function tabs(){let T=[['dash','Dashboard'],['enter','Enter Marks'],['cos','Grades & Remarks'],['res','Results'],['cards','Report Cards']];if(SJS.canView||SJS.isAdmin)T.splice(4,0,['rev','Final Review']);if(SJS.isAdmin)T.push(['setup','Setup']);if(M.arch)T=T.filter(x=>!['enter','cos','setup'].includes(x[0]));
+function tabList(){let T;if(seeRes()){T=[['dash','Dashboard'],['enter','Enter Marks'],['cos','Grades & Remarks'],['res','Results'],['rev','Final Review'],['cards','Report Cards']];if(isCtrl())T.push(['ctrl','🔐 Control']);if(SJS.isAdmin)T.push(['setup','Setup'])}
+  else{T=[['enter','Enter Marks']];if(SJS.myClasses().length)T.push(['cos','Grades & Remarks'])}   /* teachers: marks entry only */
+  if(M.arch)T=T.filter(x=>!['enter','cos','setup','ctrl'].includes(x[0]));return T}
+function tabs(){const T=tabList();
   window.SJSNAV_SUB={items:T,act:M.tab,go:id=>{const b=document.querySelector('[data-t="'+id+'"]');if(b)b.click()}};setTimeout(()=>{if(window.SJSNav)SJSNav.refresh()},0);   /* side menu (sjs-nav.js) */
   return `<div class="nav"><div class="nav-in">${T.map(([k,l])=>`<button class="tab ${M.tab===k?'act':''}" data-t="${k}">${l}</button>`).join('')}</div></div>`}
-function render(){const a=$('#app');const h=a.querySelector('.hdr').outerHTML;a.innerHTML=h+tabs()+(RULEERR?'<div class="banner warn" style="margin:12px">'+RULEMSG+'</div>':'')+(M.arch?'<div class="banner warn" style="margin:12px">📁 Viewing old session <b>'+esc(M.arch)+'</b> – read only. <button class="btn sm pri" id="archX">Back to current session</button></div>':'')+'<main id="main"></main><div class="tmeta" style="text-align:center;margin:-100px 0 110px">Result Software · version '+VER+'</div>';
+function render(){const a=$('#app');{const T=tabList();if(T.length&&!T.some(x=>x[0]===M.tab))M.tab=T[0][0]}const h=a.querySelector('.hdr').outerHTML;a.innerHTML=h+tabs()+(RULEERR?'<div class="banner warn" style="margin:12px">'+RULEMSG+'</div>':'')+(M.arch?'<div class="banner warn" style="margin:12px">📁 Viewing old session <b>'+esc(M.arch)+'</b> – read only. <button class="btn sm pri" id="archX">Back to current session</button></div>':'')+'<main id="main"></main><div class="tmeta" style="text-align:center;margin:-100px 0 110px">Result Software · version '+VER+'</div>';
   const ax=a.querySelector('#archX');if(ax)ax.onclick=()=>location.reload();
   a.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{if(dirtyN()&&!confirm('Marks not saved. Leave anyway?'))return;clearDirty();M.tab=b.dataset.t;ls('tab',M.tab);render()});
-  sync();({dash:vDash,enter:vEnter,cos:vCos,res:vRes,rev:vRev,cards:vCards,setup:vSetup}[M.tab]||vDash)($('#main')).catch(e=>{console.error(e);$('#main').innerHTML='<div class="card empty">Could not open this class. If you are offline, open this class once with the internet on, then it will also work offline.</div>'})}
+  sync();({dash:vDash,enter:vEnter,cos:vCos,res:vRes,rev:vRev,cards:vCards,ctrl:vCtrl,setup:vSetup}[M.tab]||vEnter)($('#main')).catch(e=>{console.error(e);$('#main').innerHTML='<div class="card empty">Could not open this class. If you are offline, open this class once with the internet on, then it will also work offline.</div>'})}
 const clearDirty=()=>{M.dirty={};M.maxd={};M.cos=null};
 const sel=(id,label,opts,val)=>`<label class="f">${label}<select class="inp" id="${id}">${opts.map(([v,t])=>`<option value="${esc(v)}" ${String(v)===String(val)?'selected':''}>${esc(t)}</option>`).join('')}</select></label>`;
-function classSel(){const cs=SJS.classes;return sel('cSel','Class',cs.map(c=>[c.id,classLabel(c)+(SJS.canClass(c.id)&&!SJS.isAdmin?' ★':'')]),M.cid)}
+function classSel(){const cs=visClasses();return sel('cSel','Class',cs.map(c=>[c.id,classLabel(c)+(SJS.canClass(c.id)&&!SJS.isAdmin?' ★':'')]),M.cid)}
 function viewSel(S,id='vSel',label='Result for',noExam){return sel(id,label,[...S.terms.flatMap(t=>[...(noExam?[]:t.comps.map(c=>['c:'+c.id,c.name+' – exam result'])),[t.id,t.name+(noExam||t.solo?'':' – all exams together')]]),['final','Final Result (whole year)']],M.view)}
-function pick(){const cs=SJS.classes;if(!cs.length){M.cid=null;return false}
-  if(!M.cid||!cls(M.cid)){const mine=SJS.myClasses()[0],sv=lg('cid');M.cid=sv&&cls(sv)?sv:(mine||cs[0]).id}
+function pick(){const cs=visClasses();if(!cs.length){M.cid=null;return false}
+  if(!M.cid||!cs.some(c=>c.id===M.cid)){const mine=SJS.myClasses().find(c=>cs.includes(c)),sv=lg('cid');M.cid=sv&&cs.some(c=>c.id===sv)?sv:(mine||cs[0]).id}
   const S=schemeOf(M.cid);M.view=validView(S,M.view);if(!S.terms.some(t=>t.id===M.term))M.term=S.terms[0].id;return true}
-const noClass='<div class="banner warn">No classes yet. The Admin adds classes and students in SJS App → Student Attendance. The same students appear here.</div>';
+const noMine='<div class="banner warn"><b>No subjects are given to you for marks entry yet.</b> The Exam In-Charge or the Admin gives each teacher their classes and subjects in Result Software → 🔐 Control → Subject teachers. Then open this page again.</div>';
+const noClass0='<div class="banner warn">No classes yet. The Admin adds classes and students in SJS App → Student Attendance. The same students appear here.</div>';
+const noClass=()=>SJS.classes.length&&!seeRes()?noMine:noClass0;
 function guard(e,prop){if(dirtyN()&&!confirm('Marks not saved. Leave anyway?')){e.target.value=M[prop];return false}clearDirty();return true}
 function wire(m,again){const c=$('#cSel');if(c)c.onchange=e=>{if(!guard(e,'cid'))return;M.cid=e.target.value;ls('cid',M.cid);again(m)};
   const v=$('#vSel');if(v)v.onchange=e=>{M.view=e.target.value;ls('view',M.view);again(m)}}
 
 /* ---------- Dashboard ---------- */
-async function vDash(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading…</div>';const D=await load(M.cid);
+async function vDash(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass();return}m.innerHTML='<div class="empty">Loading…</div>';const D=await load(M.cid);
   const R=compute(M.cid,M.view),{S,SL}=R,st=stats(R.rows),c=cls(M.cid);
   const cvd=compOfView(S,M.view),cols=viewTerms(S,M.view).flatMap(t=>t.comps.filter(cp=>!cvd||cp.id===cvd.c.id).map(cp=>({t,cp})));
   const prog=SL.map(s=>({s,cells:cols.map(({cp})=>cdef(cp,s).na?null:filledN(D,cp,s))}));
@@ -237,15 +277,15 @@ async function vDash(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m
   if(SJS.canView||SJS.isAdmin){const oc=document.createElement('div');oc.className='card';oc.innerHTML='<h3 style="margin:0 0 6px">📁 Old sessions</h3><div id="oldS" class="tmeta">Loading…</div>';m.appendChild(oc);oldSessionsCard(m)}}
 
 /* ---------- Enter marks ---------- */
-async function vEnter(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading students…</div>';const D=await load(M.cid);
-  const S=schemeOf(M.cid),SL=subjOf(M.cid);if(!SL.length){m.innerHTML=`<div class="card">${classSel()}</div><div class="banner warn">No subjects for this class yet. The Admin adds them in Setup.</div>`;wire(m,vEnter);return}
+async function vEnter(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass();return}m.innerHTML='<div class="empty">Loading students…</div>';const D=await load(M.cid);
+  const S=schemeOf(M.cid),SL=entrySubj(M.cid);if(!SL.length){m.innerHTML=`<div class="card">${classSel()}</div><div class="banner warn">${subjOf(M.cid).length?'No subject of this class is given to you for marks entry.':'No subjects for this class yet. The Admin adds them in Setup.'}</div>`;wire(m,vEnter);return}
   const term=S.terms.find(t=>t.id===M.term)||S.terms[0];let s=SL.find(x=>x.key===M.subj);if(!s){s=SL.find(x=>x.key===lg('subj'))||SL[0];M.subj=s.key}
   const all=term.comps.filter(c=>!cdef(c,s).na),asp=!!s.asp;if(asp&&!all.some(c=>c.id===M.comp))M.comp=all[0].id;
   let comps=M.comp==='all'?all:all.filter(c=>c.id===M.comp);if(!comps.length){comps=all;M.comp='all'}
   /* one column for each exam – or, for a subject with aspects (Written, Oral …), one column for each aspect of the chosen exam */
   const cols=asp?s.asp.map(a=>({id:comps[0].id+'__'+a.key,c:comps[0],label:a.name,def:a.max,subj:s.name+' – '+a.name})):comps.map(c=>({id:c.id+'__'+s.key,c,label:c.name,def:cdef(c,s).max,subj:s.name}));
   const doc=k=>D.marks[k.id];const maxOf=k=>M.maxd[k.id]!==undefined?M.maxd[k.id]:(+(doc(k)||{}).max||k.def);
-  const can=k=>SJS.isAdmin||!locked(k.c.id);const val=(k,roll)=>{const q=k.id+'|'+roll;if(M.dirty[q]!==undefined)return M.dirty[q];const d=doc(k);const v=d&&d.m?d.m[roll]:undefined;return v==null?'':v};
+  const mine=canSubj(M.cid,s.key),can=k=>mine&&(SJS.isAdmin||!locked(k.c.id));const val=(k,roll)=>{const q=k.id+'|'+roll;if(M.dirty[q]!==undefined)return M.dirty[q];const d=doc(k);const v=d&&d.m?d.m[roll]:undefined;return v==null?'':v};
   const rowTot=roll=>{let g=0,mx=0,h=false;
     if(asp){cols.forEach(k=>{const v=val(k,roll);mx+=maxOf(k);if(v==='')return;h=true;if(v!=='AB'&&!isNaN(+v))g+=+v});return h?fmt(g)+'/'+fmt(mx):''}
     term.comps.forEach(c=>{const df=cdef(c,s);if(df.na)return;const k=cols.find(x=>x.c===c)||{id:c.id+'__'+s.key,c,def:df.max};const v=val(k,roll);if(v==='')return;h=true;mx+=df.wt;if(v!=='AB'&&!isNaN(+v)){const em=maxOf(k);g+=em?(+v)/em*df.wt:0}});return h&&mx?fmt(g)+'/'+fmt(mx):''};
@@ -254,13 +294,14 @@ async function vEnter(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}
   const sjN=x=>Math.max(0,...term.comps.filter(c=>!cdef(c,x).na).map(c=>filledN(D,c,x).n));const SJ=SL.map(x=>({x,n:sjN(x)})),curN=SJ.find(q=>q.x.key===s.key).n,others=SJ.filter(q=>q.n>0&&q.x.key!==s.key);
   m.innerHTML=`<div class="card"><div class="grid2">${classSel()}${sel('tSel','Term',S.terms.map(t=>[t.id,t.name]),term.id)}${sel('sSel','Subject',SL.map(x=>[x.key,x.name+(x.graded?' (grade only)':'')]),s.key)}${sel('pSel','Exam',[...(asp?[]:[['all','All of '+term.name]]),...all.map(c=>[c.id,c.name+(locked(c.id)?' 🔒':'')])],M.comp)}</div>
     <div class="row" style="margin-top:8px">${cols.map(k=>`<span class="pill ${filled(k)>=D.students.length&&D.students.length?'g':'y'}">${esc(k.label)}: ${filled(k)}/${D.students.length}</span>`).join('')}<span class="tmeta grow">${last?'Last saved by '+esc(last):''}</span></div>
+    ${(()=>{const q=[...new Set(cols.map(k=>k.c))].filter(c=>untilOf(c.id)&&!hardLock(c.id));return q.length?`<div class="row" style="margin-top:6px">${q.map(c=>`<span class="pill ${pastDue(c.id)?'r':'y'}">📅 ${esc(c.name)}: ${pastDue(c.id)?'last date '+dShow(untilOf(c.id))+' is over':'last date for marks entry '+dShow(untilOf(c.id))}</span>`).join('')}</div>`:''})()}
     ${SL.length>1?`<div class="row" style="margin-top:8px;gap:6px"><b class="tmeta" style="font-weight:700">Subjects in ${esc(term.name)} – students with marks:</b>${SJ.map(q=>`<button class="pill ${q.n>=D.students.length&&D.students.length?'g':q.n?'y':''}" data-sj="${esc(q.x.key)}" style="cursor:pointer;border:${q.x.key===s.key?'2px solid var(--pri,#1e3a8a)':'1px solid transparent'}">${esc(noCode(q.x.name))}: ${q.n}/${D.students.length}</button>`).join('')}</div>`:''}
     ${!curN&&others.length&&D.students.length?`<div class="banner warn" style="margin-top:8px"><b>No marks are saved for ${esc(noCode(s.name))} in ${esc(term.name)} yet.</b> This class has marks in ${others.map(q=>esc(noCode(q.x.name))).join(', ')} – tap a subject above to see them. If ${esc(noCode(s.name))} is not taught in ${esc(classLabel(cls(M.cid)))}, the Admin can remove it in Setup → Subjects for each class.</div>`:''}
     ${D.students.length?`<div class="row" style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line2,#c8cfdb)"><b class="tmeta" style="font-weight:700">Excel – quick entry of all exams:</b><button class="btn sm green" id="tplD">⬇ Download Excel template</button><button class="btn sm gold" id="tplU">⬆ Upload filled Excel</button><input type="file" id="tplF" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none"></div>`:''}</div>
   ${D.students.length?`<div class="card"><div class="tmeta" style="margin-bottom:6px">${asp?'<b>'+esc(s.name)+' – '+esc(comps[0].name)+'</b>: one column for each part of the subject. ':''}Type the mark, or <b>AB</b> for absent. Leave empty if the student does not take this subject. The number under each heading is its full marks.</div>
     <div class="scroll"><table class="tbl et"><tr><th>Roll</th><th class="nm">Student</th>${cols.map(k=>`<th>${esc(k.label)}${can(k)?'':' 🔒'}<br><input class="inp mx" type="number" min="1" data-mx="${esc(k.id)}" value="${maxOf(k)}" ${can(k)?'':'disabled'} aria-label="Full marks"></th>`).join('')}<th>${esc(asp?comps[0].name:term.name)}<br>total</th></tr>
     ${D.students.map(st=>`<tr><td>${esc(st.roll)}</td><td class="nm">${esc(st.name)}</td>${cols.map(k=>{const v=val(k,st.roll),n=+v;return`<td><input class="inp mk ${v!==''&&v!=='AB'&&(isNaN(n)||n>maxOf(k)||n<0)?'bad':''}" data-c="${esc(k.id)}" data-r="${esc(st.roll)}" inputmode="decimal" autocomplete="off" value="${esc(v)}" ${can(k)?'':'disabled'}></td>`}).join('')}<td class="tt" data-tot="${esc(st.roll)}">${rowTot(st.roll)}</td></tr>`).join('')}</table></div>
-    ${cols.some(can)?`<div class="row" style="margin-top:10px"><button class="btn" id="pasteB">Paste from Excel</button><div class="grow"></div><button class="btn pri" id="saveB" ${dirtyN()?'':'disabled'}>${dirtyN()?'Save marks':'Saved ✓'}</button></div>`:'<div class="banner warn" style="margin:10px 0 0">🔒 Locked by the Admin – results are final.</div>'}</div>`:'<div class="card empty">No students in this class yet.</div>'}`;
+    ${cols.some(can)?`<div class="row" style="margin-top:10px"><button class="btn" id="pasteB">Paste from Excel</button><div class="grow"></div><button class="btn pri" id="saveB" ${dirtyN()?'':'disabled'}>${dirtyN()?'Save marks':'Saved ✓'}</button></div>`:`<div class="banner warn" style="margin:10px 0 0">${!mine?'👁 View only – this subject is not given to you for marks entry.':cols.some(k=>hardLock(k.c.id))?'🔒 Locked – the result is final. Only the Admin can change these marks.':'📅 The last date for marks entry is over. Ask the Exam In-Charge to give more days.'}</div>`}</div>`:'<div class="card empty">No students in this class yet.</div>'}`;
   wire(m,vEnter);const on=(id,prop,store)=>{const e=$(id);if(e)e.onchange=ev=>{if(!guard(ev,prop))return;M[prop]=ev.target.value;if(store)ls(store,M[prop]);vEnter(m)}};
   on('#tSel','term');on('#sSel','subj','subj');on('#pSel','comp');
   m.querySelectorAll('[data-sj]').forEach(b=>b.onclick=()=>{const q=$('#sSel');if(!q||q.value===b.dataset.sj)return;q.value=b.dataset.sj;q.dispatchEvent(new Event('change'))});
@@ -285,7 +326,7 @@ async function vEnter(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}
     toast(navigator.onLine?'Marks saved':'Saved on this phone – it will upload when the internet returns');vEnter(m)}}
 
 /* ---------- Co-scholastic grades, attendance, remarks (class teacher) ---------- */
-async function vCos(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading…</div>';const D=await load(M.cid);
+async function vCos(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass();return}m.innerHTML='<div class="empty">Loading…</div>';const D=await load(M.cid);
   const S=schemeOf(M.cid),term=S.terms.find(t=>t.id===M.term)||S.terms[0],areas=cosAreas(S),scale=cosScale(S),tid=term.id;
   const can=(SJS.canClass(M.cid)||SJS.canView)&&(SJS.isAdmin||!locked('x_'+tid));const ak=a=>xid(tid,'c'+skey(a).slice(0,19));
   const sv=(id,roll)=>{const d=D.marks[id];const v=d&&d.m?d.m[roll]:undefined;return v==null?'':v};
@@ -517,7 +558,7 @@ async function attRegister(cid,from,to){const W=await attCal(),A={};(await LIST(
 const sx=(r,s)=>r.sub[s.key]||{has:false,T:{}};
 const secOf=r=>(cls(r.cid)||{}).section||'';
 const sortMerit=rows=>[...rows].sort((a,b)=>(a.rank||1e6)-(b.rank||1e6)||((b.p==null?-1:b.p)-(a.p==null?-1:a.p))||(+a.st.roll||0)-(+b.st.roll||0));
-async function vRes(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading…</div>';await load(M.cid);
+async function vRes(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass();return}m.innerHTML='<div class="empty">Loading…</div>';await load(M.cid);
   const c=cls(M.cid),S=schemeOf(M.cid),sibs=SJS.classes.filter(k=>nc(k.cls)===nc(c.cls));if(sibs.length<2)M.scope='sec';const all=M.scope==='all';
   const parts=[];for(const k of (all?sibs:[c])){await load(k.id);parts.push({k,R:compute(k.id,M.view)})}
   const rows0=parts.flatMap(p=>p.R.rows);if(all)rankRows(rows0);
@@ -839,7 +880,7 @@ const nextCls=c=>{const k=nc(c&&c.cls),i=ROM.indexOf(k);return k==='NURSERY'?'KG
 function waText(cid,R,r,view){const c=cls(cid),S=R.S,L=['*'+SJS.school.name+'*','Result – '+viewName(S,view)+' ('+SJS.school.session+')','','Name: *'+r.st.name+'*','Class: '+classLabel(c)+'   Roll: '+r.st.roll,''];
   R.SL.forEach(s=>{const x=r.sub[s.key];if(x.has&&x.mx>0)L.push(s.name+': '+fmt(x.got)+'/'+fmt(x.mx)+' ('+x.g+')')});
   L.push('','Total: *'+fmt(r.tot)+' / '+fmt(r.full)+'*','Percentage: *'+fmt(r.p)+'%*   Grade: '+r.g);if(r.rank)L.push('Rank: '+r.rank);L.push('Result: *'+stText(r,view==='final')+'*');return L.join('\n')}
-async function vCards(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading…</div>';const D=await load(M.cid);
+async function vCards(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass();return}m.innerHTML='<div class="empty">Loading…</div>';const D=await load(M.cid);
   const S=schemeOf(M.cid),c=cls(M.cid);{const q=compOfView(S,M.view);if(q)M.view=q.t.id}if((S.terms.find(t=>t.id===M.view)||{}).solo)for(const k of SJS.classes.filter(k=>nc(k.cls)===nc(c.cls)))await load(k.id);   // Pre-Board card also shows the rank in the whole class
   const R=compute(M.cid,M.view),fin=M.view==='final'||cardOf(S)==='first';const O=M.co=M.co||{date:SJS.todayISO(),rank:true,chart:true};
   m.innerHTML=`<div class="card"><div class="grid2">${classSel()}${viewSel(S,'vSel','Report card for',true)}<label class="f">Date on the card<input class="inp" id="oDate" type="date" value="${esc(O.date||'')}"></label>
@@ -853,7 +894,7 @@ async function vCards(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}
   m.querySelectorAll('[data-wa]').forEach(b=>b.onclick=()=>{const r=R.rows[+b.dataset.wa];window.open('https://wa.me/'+waPhone(r.st.phone)+'?text='+encodeURIComponent(waText(M.cid,R,r,M.view)),'_blank')})}
 
 /* ---------- Excel template: download, fill in Excel (offline is fine), upload ---------- */
-function examCols(cid){const S=schemeOf(cid),SL=subjOf(cid),D=C[cid],out=[];
+function examCols(cid){const S=schemeOf(cid),SL=subjOf(cid).filter(s=>canSubj(cid,s.key)),D=C[cid],out=[];
   S.terms.forEach(t=>t.comps.forEach(c=>{const cols=[];SL.forEach(s=>{const df=cdef(c,s);if(df.na)return;
       if(s.asp)s.asp.forEach(a=>cols.push({id:c.id+'__'+a.key,label:noCode(s.name)+' – '+a.name,subj:s.name+' – '+a.name,def:a.max}));
       else cols.push({id:c.id+'__'+s.key,label:noCode(s.name)+(s.graded?' *':''),subj:s.name,def:df.max})});
@@ -979,7 +1020,7 @@ function reviewDlg(r,cols,done){const D=C[r.cid],c=cls(r.cid),cnt=cols.filter(q=
     await Promise.all(jobs);closeSheet();toast('Decision saved');done()}}
 const minAtt=()=>+cfg().minAtt||75;
 const needRv=(r,S)=>{const a=attOf(r,S,'final');return r.any&&(r.status!=='PASS'||r.sp||r.sc||r.det||r.failed.length>0||(a.pct!=null&&a.pct<minAtt())||Object.values(r.sub).some(x=>x.grace))};
-async function vRev(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass;return}m.innerHTML='<div class="empty">Loading…</div>';await load(M.cid);
+async function vRev(m){m=$('#main')||m;if(!pick()){m.innerHTML=noClass();return}m.innerHTML='<div class="empty">Loading…</div>';await load(M.cid);
   const c=cls(M.cid),S=schemeOf(M.cid),sibs=SJS.classes.filter(k=>nc(k.cls)===nc(c.cls));if(sibs.length<2)M.rsc='sec';const all=M.rsc==='all',ks=all?sibs:[c];
   const parts=[];for(const k of ks){await load(k.id);parts.push(compute(k.id,'final'))}const rows0=parts.flatMap(p=>p.rows);if(all)rankRows(rows0);
   const SLa=[];parts.forEach(p=>p.SL.forEach(s=>{if(!SLa.some(q=>q.key===s.key))SLa.push(s)}));const cols=SLa.filter(s=>rows0.some(r=>sx(r,s).has));
@@ -1136,6 +1177,80 @@ function topTenExcel(){const sel=($('#ttSel')||{}).value||'all',vn=(M.school.vie
     let nm=('Top 10 '+u.title.replace(/^Class\s*/,'').replace(/[()]/g,'')).replace(/[\[\]:*?\/\\]/g,' ').slice(0,31);while(used[nm])nm=nm.slice(0,29)+'_'+Object.keys(used).length;used[nm]=1;
     return{name:nm,portrait:1,rows:[...h.rows,hd.map(H),...u.top.map(r=>[B(r.rank),{v:r.st.name,s:6},...(u.multi?[Cc(secOf(r))]:[]),Cc(isNaN(+r.st.roll)?r.st.roll:+r.st.roll),B(n1(r.tot)),Cc(n1(r.full)),B(n1(r.p)),Cc(r.g||'')]),[],[{v:'Ranks 1 to 10 in merit order; equal percentages share a rank.'+(cfg().rankPassOnly?' Only passed students are ranked.':''),s:0}]],merges:h.merges,heights:h.heights,cols:[8,30,...(u.multi?[9]:[]),9,9,9,11,8],freeze:[0,5]}});
   const opt=(topTenOpts().find(x=>x[0]===sel)||[])[1]||'';XL.save('Top_10_Rank_Holders_'+(sel==='all'?'All_Classes':sel==='allsec'?'All_Sections':opt.replace(/ – .*$/,'').replace(/\s+/g,'_'))+'.xlsx',sheets);toast('Excel downloaded – '+sheets.length+' sheet'+(sheets.length>1?'s':''))}
+/* ---------- 🔐 Control (Admin and Exam In-Charge): subject teachers, lock & last date, change history ---------- */
+function lockList(){const c=cfg(),L=[];c.schemes.forEach(s=>s.terms.forEach(t=>{t.comps.forEach(cp=>{const o=L.find(x=>x[0]===cp.id);if(!o)L.push([cp.id,(t.solo?'':t.name+' · ')+cp.name,[s.name]]);else if(!o[2].includes(s.name))o[2].push(s.name)});if(!L.some(x=>x[0]==='x_'+t.id))L.push(['x_'+t.id,t.name+' – grades, attendance & remarks',[]])}));L.push(['x_fin','Final result review (grace marks & decisions)',[]]);return L}
+const tName=uid=>{const t=SJS.teachers.find(x=>x.uid===uid);return t?t.name:'(teacher removed)'};
+function rebuildAlloc(){if(!isCtrl())return;Object.keys(ALLOC).forEach(cid=>{const a=ALLOC[cid];if(!a||!a.s||!cls(cid))return;const k=allocKeys(cid,a.s);if(JSON.stringify(k)!==JSON.stringify(a.k||{})){a.k=k;WRITE('mk_alloc/'+cid,{s:a.s,k,at:Date.now(),by:myUid()},false)}})}
+function examLabel(cid,ex){if(ex==='x_fin')return'Final review';if(/^x_/.test(ex)){const t=schemeOf(cid).terms.find(q=>'x_'+q.id===ex);return(t?t.name:ex.slice(2))+' – grades & remarks'}let n='';schemeOf(cid).terms.forEach(t=>t.comps.forEach(c=>{if(c.id===ex)n=(t.solo?'':t.name+' · ')+c.name}));return n||ex}
+const tsMs=v=>v&&typeof v.toMillis==='function'?v.toMillis():+v||0;
+const dtShow=ms=>{if(!ms)return'';const d=new Date(ms+19800000).toISOString();return d.slice(8,10)+'-'+d.slice(5,7)+'-'+d.slice(0,4)+' '+d.slice(11,16)};
+
+async function vCtrl(m){m=$('#main')||m;if(!isCtrl()){m.innerHTML='<div class="card empty">Only the Admin and the Exam In-Charge can open Control.</div>';return}
+  M.ctl=M.ctl||'alloc';const B=[['alloc','👩‍🏫 Subject teachers'],['lock','🔒 Lock & last date'],['log','🕘 Change history']];
+  m.innerHTML=`<div class="card"><div class="row">${B.map(([k,l])=>`<button class="btn ${M.ctl===k?'pri':''}" data-ctl="${k}">${l}</button>`).join('')}</div>
+    <p class="sub" style="margin:8px 0 0">Teachers and class teachers can only <b>enter marks</b>. They cannot see the Dashboard, Results, Final Review or Report Cards. The Admin, Principal and Exam In-Charge see everything.</p></div><div id="ctlB"></div>`;
+  m.querySelectorAll('[data-ctl]').forEach(b=>b.onclick=()=>{if(M.ctlDirty&&!confirm('Changes not saved. Leave anyway?'))return;M.ctlDirty=false;M.ctl=b.dataset.ctl;vCtrl(m)});
+  const box=$('#ctlB');({alloc:ctlAlloc,lock:ctlLock,log:ctlLog}[M.ctl])(box,m)}
+
+/* subject teachers: who may enter the marks of each subject of each class */
+function ctlAlloc(box,m){if(!pick()){box.innerHTML=noClass0;return}const cid=M.cid,c=cls(cid),SL=subjOf(cid);
+  const A=M.alc&&M.alc.cid===cid?M.alc:(M.alc={cid,s:JSON.parse(JSON.stringify(allocS(cid)))});
+  const T=SJS.teachers.filter(t=>t.uid),noU=SJS.teachers.filter(t=>!t.uid).length,ct=(c.teacherUids||[]).map(tName);
+  box.innerHTML=`<div class="card"><div class="grid2">${classSel()}</div>
+    <div class="banner" style="margin-top:8px">★ <b>Class teacher${ct.length>1?'s':''}: ${ct.length?ct.map(esc).join(', '):'not chosen yet'}</b> – can enter the marks of <b>every subject</b> of ${esc(classLabel(c))} without being chosen below. (The class teacher is chosen in Student Attendance.)</div>
+    ${noU?`<p class="tmeta" style="margin:6px 0 0">${noU} teacher${noU>1?'s have':' has'} not signed in to SJS App yet, so they are not in the list. They appear after they sign in and the Admin links them.</p>`:''}</div>
+   <div class="card"><h3>Subject teachers – ${esc(classLabel(c))}</h3>${SL.length?SL.map(s=>{const u=A.s[s.key]||[];return`<div class="li" style="flex-wrap:wrap;gap:6px"><b style="flex:0 0 32%;min-width:120px">${esc(noCode(s.name))}</b>
+      <span class="grow row" style="gap:6px">${u.map(x=>`<span class="pill g">${esc(tName(x))} <button class="btn sm" data-rm="${esc(s.key)}|${esc(x)}" title="Remove" style="padding:0 6px;margin-left:4px">✕</button></span>`).join('')||'<span class="tmeta">nobody yet</span>'}</span>
+      <select class="inp" data-add="${esc(s.key)}" style="max-width:190px"><option value="">＋ Add teacher</option>${T.filter(t=>!u.includes(t.uid)).map(t=>`<option value="${esc(t.uid)}">${esc(t.name)}</option>`).join('')}</select></div>`}).join(''):'<div class="empty">No subjects for this class. The Admin adds them in Setup.</div>'}
+    <div class="row" style="margin-top:10px"><button class="btn" id="alCp">Copy to other sections of Class ${esc(c.cls)}</button><div class="grow"></div><button class="btn pri" id="alSv" ${M.ctlDirty?'':'disabled'}>${M.ctlDirty?'Save':'Saved ✓'}</button></div></div>
+   <div class="card"><div class="row"><h3 class="grow" style="margin:0">All classes – who enters which subject</h3><button class="btn sm" id="alPr">🖨 Print</button></div><div id="alAll" style="margin-top:8px"></div></div>`;
+  const dirty=()=>{M.ctlDirty=true;ctlAlloc(box,m)};
+  $('#cSel').onchange=e=>{if(M.ctlDirty&&!confirm('Changes not saved. Leave anyway?')){e.target.value=cid;return}M.ctlDirty=false;M.alc=null;M.cid=e.target.value;ls('cid',M.cid);ctlAlloc(box,m)};
+  box.querySelectorAll('[data-add]').forEach(x=>x.onchange=()=>{if(!x.value)return;const k=x.dataset.add;A.s[k]=[...(A.s[k]||[]),x.value];dirty()});
+  box.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{const[k,u]=b.dataset.rm.split('|');A.s[k]=(A.s[k]||[]).filter(x=>x!==u);if(!A.s[k].length)delete A.s[k];dirty()});
+  const save=async(id,s)=>{const clean={};Object.entries(s).forEach(([k,u])=>{if(u&&u.length)clean[k]=u});const d={s:clean,k:allocKeys(id,clean),at:Date.now(),by:myUid()};ALLOC[id]={id,...d};await WRITE('mk_alloc/'+id,d,false)};
+  $('#alSv').onclick=async()=>{await save(cid,A.s);M.ctlDirty=false;M.alc=null;toast('Subject teachers saved');ctlAlloc(box,m)};
+  $('#alCp').onclick=async()=>{const o=SJS.classes.filter(k=>k.cls===c.cls&&k.id!==cid);if(!o.length){toast('Class '+c.cls+' has no other section');return}
+    if(!confirm('Give the same subject teachers to '+o.map(classLabel).join(', ')+'? Their present subject teachers will be replaced.'))return;
+    await save(cid,A.s);for(const k of o){const s={};Object.entries(A.s).forEach(([key,u])=>{if(subjOf(k.id).some(q=>q.key===key))s[key]=u.slice()});await save(k.id,s)}M.ctlDirty=false;M.alc=null;toast('Saved for '+(o.length+1)+' sections');ctlAlloc(box,m)};
+  /* all classes, and each teacher's list */
+  const rows=SJS.classes.map(k=>({k,sub:subjOf(k.id).map(s=>({s,u:allocS(k.id)[s.key]||[]}))}));
+  const byT={};rows.forEach(r=>r.sub.forEach(x=>x.u.forEach(u=>{(byT[u]=byT[u]||[]).push(classLabel(r.k)+' '+noCode(x.s.name))})));
+  const open=rows.reduce((a,r)=>a+r.sub.filter(x=>!x.u.length).length,0);
+  const allT=`<div class="scroll"><table class="tbl"><tr><th class="l">Class</th><th class="l">Class teacher</th><th class="l">Subject – teacher</th></tr>${rows.map(r=>`<tr><td class="l"><b>${esc(classLabel(r.k))}</b></td><td class="l">${(r.k.teacherUids||[]).map(tName).map(esc).join(', ')}</td><td class="l">${r.sub.map(x=>`${esc(noCode(x.s.name))}: ${x.u.length?x.u.map(tName).map(esc).join(', '):'<span style="color:var(--crit)">–</span>'}`).join(' · ')}</td></tr>`).join('')}</table></div>`;
+  const tT=`<table class="tbl"><tr><th class="l">Teacher</th><th class="l">Classes and subjects</th></tr>${Object.keys(byT).sort((a,b)=>tName(a).localeCompare(tName(b))).map(u=>`<tr><td class="l"><b>${esc(tName(u))}</b></td><td class="l">${byT[u].map(esc).join(', ')}</td></tr>`).join('')}</table>`;
+  $('#alAll').innerHTML=(open?`<p class="tmeta">${open} subject${open>1?'s have':' has'} no subject teacher yet (–). Only the class teacher, Admin and Exam In-Charge can enter those.</p>`:'')+allT+'<h3 style="margin:14px 0 6px">Teacher by teacher</h3>'+(Object.keys(byT).length?tT:'<p class="tmeta">No subjects given yet.</p>');
+  $('#alPr').onclick=()=>printDoc('Subject Teachers – Marks Entry','landscape',headHTML('SUBJECT TEACHERS – MARKS ENTRY','All classes')+allT+'<h3>Teacher by teacher</h3>'+tT+sigHTML(['Examination In-Charge','Principal']))}
+
+/* lock an exam, or give a last date for marks entry */
+function ctlLock(box,m){const L=lockList();const LK=M.lk||(M.lk={l:{...((OLD&&OLD.locked)||{})},u:{...((OLD&&OLD.until)||{})}});
+  const st=id=>LK.l[id]?['r','🔒 Locked']:+LK.u[id]>0?(Date.now()>+LK.u[id]?['r','Closed – last date over']:['y','Open till '+dShow(+LK.u[id])]):['g','Open'];
+  box.innerHTML=`<div class="card"><h3>Lock & last date for marks entry</h3><p class="sub"><b>Last date</b>: teachers can enter marks until the end of that day (India time); after it the exam closes by itself. Clear the date to open it again. <b>Lock</b>: closed for everybody except the Admin – use it when the result is final.</p>
+    <div class="scroll"><table class="tbl"><tr><th class="l">Exam</th><th>Status</th><th>Last date</th><th>Lock</th></tr>
+    ${L.map(([id,n,g])=>{const[c,t]=st(id);return`<tr><td class="l"><b>${esc(n)}</b>${g.length?`<div class="tmeta">${g.map(esc).join(', ')}</div>`:''}</td><td><span class="pill ${c}">${t}</span></td>
+      <td><input class="inp" type="date" data-ud="${esc(id)}" value="${+LK.u[id]>0?dIST(+LK.u[id]):''}" style="max-width:160px"></td><td><input type="checkbox" data-lk="${esc(id)}" ${LK.l[id]?'checked':''} style="width:22px;height:22px"></td></tr>`}).join('')}</table></div>
+    <div class="row" style="margin-top:10px"><div class="grow"></div><button class="btn pri" id="lkSv" ${M.ctlDirty?'':'disabled'}>${M.ctlDirty?'Save':'Saved ✓'}</button></div></div>`;
+  const dirty=()=>{M.ctlDirty=true;ctlLock(box,m)};
+  box.querySelectorAll('[data-lk]').forEach(x=>x.onchange=()=>{LK.l[x.dataset.lk]=x.checked;dirty()});
+  box.querySelectorAll('[data-ud]').forEach(x=>x.onchange=()=>{LK.u[x.dataset.ud]=x.value?Date.parse(x.value+'T23:59:59+05:30'):0;dirty()});
+  $('#lkSv').onclick=async()=>{const l={},u={};L.forEach(([id])=>{l[id]=!!LK.l[id];u[id]=+LK.u[id]||0});Object.keys(LK.l).forEach(k=>{if(!(k in l))l[k]=!!LK.l[k]});Object.keys(LK.u).forEach(k=>{if(!(k in u))u[k]=+LK.u[k]||0});
+    OLD={...(OLD||{}),locked:l,until:u};await WRITE('mk_cfg/main',{locked:l,until:u},true);M.ctlDirty=false;M.lk=null;toast('Saved');ctlLock(box,m)}}
+
+/* change history: every mark changed after it was first saved */
+async function ctlLog(box,m){if(!pick()){box.innerHTML=noClass0;return}const cid=M.cid,c=cls(cid);box.innerHTML=`<div class="card"><div class="grid2">${classSel()}</div></div><div class="card empty">Loading…</div>`;
+  let L=[];try{L=await LIST('c/'+cid+'/mk_log')}catch(e){box.innerHTML=`<div class="card"><div class="grid2">${classSel()}</div></div><div class="banner warn">Could not read the change history. The Admin must publish the new <b>firestore.rules</b> first.</div>`;$('#cSel').onchange=e=>{M.cid=e.target.value;ls('cid',M.cid);ctlLog(box,m)};return}
+  await load(cid);const D=C[cid],nm=r=>{const s=D.students.find(x=>String(x.roll)===String(r));return s?s.name:''};
+  L.sort((a,b)=>tsMs(b.at)-tsMs(a.at));const who=[...new Set(L.map(x=>x.byName||x.by))];if(M.lgW&&!who.includes(M.lgW))M.lgW='';const F=M.lgW?L.filter(x=>(x.byName||x.by)===M.lgW):L;
+  const rows=F.flatMap(x=>(x.ch||[]).map(q=>({at:tsMs(x.at),by:x.byName||'',ex:examLabel(cid,x.exam),sub:/^x_/.test(x.exam)?String(x.subj||'').replace(/^cos:/,''):noCode(String(x.subj||'')),r:q.r,o:q.o,n:q.n})));
+  const show=v=>v===''||v==null?'(cleared)':String(v);
+  const tb=rs=>`<table class="tbl"><tr><th>Date & time</th><th class="l">Changed by</th><th class="l">Exam</th><th class="l">Subject</th><th>Roll</th><th class="l">Student</th><th>Old</th><th>New</th></tr>${rs.map(x=>`<tr><td style="white-space:nowrap">${dtShow(x.at)}</td><td class="l">${esc(x.by)}</td><td class="l">${esc(x.ex)}</td><td class="l">${esc(x.sub)}</td><td>${esc(x.r)}</td><td class="l">${esc(nm(x.r))}</td><td><s>${esc(show(x.o))}</s></td><td><b>${esc(show(x.n))}</b></td></tr>`).join('')}</table>`;
+  box.innerHTML=`<div class="card"><div class="grid2">${classSel()}${sel('lgW','Changed by',[['','Everybody'],...who.map(w=>[w,w])],M.lgW||'')}</div>
+    <p class="sub" style="margin:8px 0 0">A mark is written here when it is <b>changed after it was saved</b> – the first entry is not listed. Nobody can edit or delete this list. Newest first.</p>
+    <div class="row" style="margin-top:8px"><span class="pill">${rows.length} change${rows.length===1?'':'s'}</span><div class="grow"></div><button class="btn sm" id="lgP" ${rows.length?'':'disabled'}>🖨 Print</button></div></div>
+   <div class="card">${rows.length?`<div class="scroll">${tb(rows.slice(0,500))}</div>${rows.length>500?'<p class="tmeta">Showing the newest 500. Print shows all.</p>':''}`:'<div class="empty">No marks have been changed in '+esc(classLabel(c))+'.</div>'}</div>`;
+  $('#cSel').onchange=e=>{M.cid=e.target.value;ls('cid',M.cid);ctlLog(box,m)};$('#lgW').onchange=e=>{M.lgW=e.target.value;ctlLog(box,m)};
+  $('#lgP').onclick=()=>printDoc('Marks Change History – '+classLabel(c),'landscape',headHTML('MARKS CHANGE HISTORY','Class '+classLabel(c)+(M.lgW?' · '+M.lgW:''))+tb(rows)+sigHTML(['Examination In-Charge','Principal']))}
+
 /* ---------- Setup (Admin) ---------- */
 const compStr=t=>t.comps.map(c=>c.name+'='+c.max+(c.wt!=null&&+c.wt!==+c.max?'>'+c.wt:'')+(c.kind?' '+c.kind:'')).join(', ');
 function parseComps(str,old,tix){const used={};const list=String(str||'').split(',').map(x=>x.trim()).filter(Boolean).map(x=>{const q=x.match(/^(.*?)=\s*(\d+(?:\.\d+)?)\s*(?:>\s*(\d+(?:\.\d+)?))?\s*([TPtp])?$/);if(!q)return null;
@@ -1168,7 +1283,7 @@ async function vSetup(m){m=$('#main')||m;const c=JSON.parse(JSON.stringify(cfg()
   <div class="card"><h2>Subjects for each class</h2><p class="sub">Comma separated, in report-card order. Leave empty to use the group's usual subjects. <b>Drawing*</b> = grade only (not counted in the total). <b>Physics [70+30]</b> = theory 70 + practical 30. <b>English {Written 30, Reading 10, Dictation 10}</b> = a subject with parts (aspects) and their full marks in each exam. In Class XI–XII list every subject offered – a student's subjects are the ones that have marks.</p>
     ${clsList.map(k=>{const key='cls:'+nc(k.cls);const leg=((OLD&&OLD.subj)||{})[k.id];return `<label class="f" style="margin-bottom:8px">Class ${esc(k.cls)} <span class="tmeta">${esc(schemeOf(k.id).name)}</span><input class="inp" data-cs="${esc(key)}" value="${esc((c.subj||{})[key]||(leg&&leg.length?leg.join(', '):''))}" placeholder="${esc(schemeOf(k.id).subjects)}"></label>`}).join('')||'<div class="empty">No classes yet.</div>'}</div>
   <div class="card"><h2>🗂 New session (end of the year)</h2><p class="sub">When all results of this session are final: saves a copy of every class (marks, attendance, remarks, decisions, students), checks it, then clears the marks so the new session starts empty. Setup, subjects, students and photos stay. Old sessions open read-only from the Dashboard.</p><button class="btn danger" id="nsB">🗂 Start a new session…</button></div>
-  <div class="card"><h2>🔒 Lock exams</h2><p class="sub">Lock an exam when its result is final. After that only the Admin can change those marks.</p><div class="row">${lockIds.map(([id,n])=>`<label class="pill" style="padding:6px 10px"><input type="checkbox" data-lk="${esc(id)}" ${locked(id)?'checked':''}> ${esc(n)}</label>`).join('')}</div></div>
+  <div class="card"><h2>🔒 Lock exams &amp; last dates</h2><p class="sub">Moved to <b>🔐 Control</b> – there the Admin and the Exam In-Charge lock exams, set the last date for marks entry, give subjects to teachers and see the change history.</p></div>
   <div class="row" style="position:sticky;bottom:0;z-index:6;background:var(--bg,#f4f6fb);padding:10px 0 64px;border-top:1px solid var(--line,#dde2ea)"><button class="btn danger sm" id="rst">Back to CBSE defaults</button><div class="grow"></div><span class="tmeta">Nothing is kept until you tap →</span><button class="btn pri" id="svSet">Save setup</button></div>`;
   m.querySelectorAll('[data-rs]').forEach(b=>b.onclick=()=>{const i=+b.dataset.rs,d=DEF.schemes.find(q=>q.id===c.schemes[i].id);if(!d||!confirm('RESET “'+c.schemes[i].name+'”?\n\nThis REMOVES the exams, subjects and grades you typed for this group and puts back the built-in ones.\n\nIf you only want to SAVE your changes, press Cancel and use the Save setup button.'))return;const x=JSON.parse(JSON.stringify(cfg()));x.schemes[i]=JSON.parse(JSON.stringify(d));CFG=x;WRITE('mk_cfg/cbse',x,false);toast('Group reset to the built-in default');vSetup(m)});
   $('#nsB').onclick=newSessionDlg;
@@ -1184,11 +1299,11 @@ async function vSetup(m){m=$('#main')||m;const c=JSON.parse(JSON.stringify(cfg()
     {const ses=SJS.school.session,w={};m.querySelectorAll('[data-ww]').forEach(i=>{const id=i.dataset.ww,f=m.querySelector(`[data-wf="${id}"]`).value,t=m.querySelector(`[data-wt="${id}"]`).value,n=+i.value;
       if(f||t||n>0)w[id]={from:f,to:t,w:n>0?Math.round(n*10)/10:0}});x.wd={...(x.wd||{})};if(Object.keys(w).length)x.wd[ses]=w;else delete x.wd[ses]}
     x.subj={};m.querySelectorAll('[data-cs]').forEach(i=>{const v=i.value.trim();if(v)x.subj[i.dataset.cs]=v});
-    const lk={};m.querySelectorAll('[data-lk]').forEach(k=>lk[k.dataset.lk]=k.checked);
+    const lk={...((OLD&&OLD.locked)||{})};
     const btn=$('#svSet');btn.disabled=true;btn.textContent='Saving…';
-    try{const job=Promise.all([realSet('mk_cfg/cbse',x,false),realSet('mk_cfg/main',{locked:lk},true)]);
+    try{const job=Promise.all([realSet('mk_cfg/cbse',x,false)]);
       if(navigator.onLine)await Promise.race([job,new Promise((_,no)=>setTimeout(()=>no({code:'slow'}),12000))]);else job.catch(()=>{});
-      CFG=x;OLD={...(OLD||{}),locked:lk};RULEERR=false;toast(navigator.onLine?'Setup saved':'Saved on this computer – it will upload when the internet returns');render()}
+      CFG=x;OLD={...(OLD||{}),locked:lk};RULEERR=false;rebuildAlloc();toast(navigator.onLine?'Setup saved':'Saved on this computer – it will upload when the internet returns');render()}
     catch(e){btn.disabled=false;btn.textContent='Save setup';
       if(e&&e.code==='permission-denied'){RULEERR=true;sheet('<h3>Setup was NOT saved</h3><p>'+RULEMSG+'</p><div class="row" style="margin-top:12px"><div class="grow"></div><button class="btn pri" onclick="SJS.closeSheet()">OK</button></div>')}
       else if(e&&e.code==='slow'){CFG=x;OLD={...(OLD||{}),locked:lk};toast('The internet is slow – the setup is kept on this computer and will upload by itself')}
@@ -1213,8 +1328,8 @@ window.SJS_DEMO_SEED=D=>{const names=['Lalremruata','Vanlalhriati','Zothanpuii',
     cosAreas(G('mid')).forEach((a,j)=>{const g={};names.forEach((n,i)=>g[i+1]=['A','A','B','A','C'][(i+j)%5]);D[`c/${cid}/marks/x_t1__c${skey(a).slice(0,19)}`]={exam:'x_t1',subj:'cos:'+a,m:g}})})};
 
 SJS.boot('Result Software',async()=>{if(FB()&&navigator.onLine)firebase.firestore().doc('mk_cfg/cbse').get({source:'server'}).catch(e=>{if(e&&e.code==='permission-denied'){RULEERR=true;if($('#main'))render()}});
-  M.tab=lg('tab')||'dash';if(M.tab==='setup'&&!SJS.isAdmin)M.tab='dash';if(M.tab==='rev'&&!(SJS.canView||SJS.isAdmin))M.tab='dash';M.view=lg('view')||'t1';M.order=lg('order')||'roll';
-  let n=0;const go=()=>{if(++n<2)return;if(n===2||!dirtyN())render()};
+  M.tab=lg('tab')||(seeRes()?'dash':'enter');M.view=lg('view')||'t1';M.order=lg('order')||'roll';
+  let n=0;const go=()=>{if(++n<3)return;if(n===3||!dirtyN())render()};loadAlloc().then(go);
   SJS.db.watch('mk_cfg/cbse',d=>{if(M.arch)return;if(d){const x=JSON.parse(JSON.stringify(DEF));Object.keys(d).forEach(k=>{if(k==='school')Object.assign(x.school,d.school||{});else x[k]=d[k]});x.schemes.forEach(q=>{if(q.grades==='A+=90, A=75, B=56, C=35, D=0')q.grades='A+=90, A=75, B=56, C=33, D=0'});x.schemes.forEach(q=>q.terms.forEach(t=>t.comps.forEach(c=>{if(c.name==='Sub. Enrichment')c.name='SEA'})));x.schemes.forEach(q=>{const d=DEF.schemes.find(z=>z.id===q.id),pb=d&&d.terms.find(t=>t.solo);if(pb&&!q.terms.some(t=>t.solo))q.terms.push(JSON.parse(JSON.stringify(pb)))});
       if(!x.schemes.some(q=>q.id==='nur')){x.schemes.forEach(q=>{q.classes=String(q.classes||'').split(',').map(t=>t.trim()).filter(t=>t&&nc(t)!=='NURSERY').join(', ');if(q.name==='Pre-Primary (Nursery – KG)')q.name='Pre-Primary (KG)'});x.schemes.unshift(JSON.parse(JSON.stringify(DEF.schemes[0])));x.subj={...(x.subj||{})};if(/\{/.test(x.subj['cls:NURSERY']||''))delete x.subj['cls:NURSERY']}   /* v42: Nursery gets its own group and the My First Report Card */
       if(!x.schemes.some(q=>q.id==='x10')){const isX=t=>nc(String(t).trim())==='X',src=x.schemes.find(q=>String(q.classes||'').split(',').some(isX)),d=JSON.parse(JSON.stringify(DEF.schemes.find(q=>q.id==='x10')));
