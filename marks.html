@@ -45,7 +45,7 @@ details.grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;ma
    c/<classId>/marks/<examId>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}
    c/<classId>/marks/x_<termId>__att | __rem | __c<Area>   attendance, remarks, co-scholastic grades for a term */
 const {$,esc,toast,sheet,closeSheet,pasteRows,classLabel,waPhone}=SJS;
-const VER='80';
+const VER='81';
 const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const CBSE_T=(n,pt,ex,exn)=>({id:'t'+n,name:'Term '+n,comps:[{id:'pt'+n,name:pt,max:10},{id:'nb'+n,name:'Note Book',max:5},{id:'se'+n,name:'SEA',max:5},{id:ex,name:exn,max:80}]});
 const DEF={
@@ -731,7 +731,7 @@ function firstCard(cid,R,r,o){const {S,SL}=R,D=C[cid],c=cls(cid),st=r.st,sc=cfg(
   const sv=id=>{const d=D.marks[id];const v=d&&d.m?d.m[st.roll]:undefined;return v==null?'':v};
   const lastV=k=>{for(let i=shown.length-1;i>=0;i--){const v=sv(xid(shown[i].id,k));if(v!=='')return v}return''};
   let subs=SL.filter(s=>r.sub[s.key].has);if(!subs.length)subs=SL;
-  const ct=(SJS.teachers.find(t=>(c.teacherUids||[]).includes(t.uid))||{}).name||'',n=R.rows.filter(x=>x.any).length;
+  const ct=(SJS.teachers.find(t=>(c.teacherUids||[]).includes(t.uid))||{}).name||c.teacher||'',n=R.rows.filter(x=>x.any).length;
   const fullOf=s=>{const x=r.sub[s.key];if(x.has&&x.mx>0)return x.mx;return shown.reduce((a,t)=>a+t.comps.reduce((b,cp)=>b+cdef(cp,s).wt,0),0)/(fin&&S.final!=='last'?shown.length:1)};
   let aP=0,aW=0,aHas=false;shown.forEach(t=>{const x=termAtt(D,t,st.roll),d=D.marks[xid(t.id,'att')];if(x){aP+=x.p;aW+=x.w;aHas=true}else{const w0=wdInfo(D,S,t.id).w;if(w0)aW+=w0}});{const fo=fin?attOwn(D,'fin',st.roll):null;if(fo){aP=fo.p;aW=fo.w;aHas=true}}
   const pc=v=>v==null?'–':(Math.round(v*100)/100)+'%';
@@ -787,7 +787,7 @@ function printDoc(title,orient,body){const f=document.createElement('iframe');f.
 const fmtD=s=>s?SJS.fmtDate(s):'';
 function cardHTML(cid,R,r,o){if(cardOf(R.S)==='first')return firstCard(cid,R,r,o);const {S,SL}=R,D=C[cid],c=cls(cid),fin=o.view==='final',shown=fin?mainT(S):S.terms.filter(t=>t.id===o.view),st=r.st,n=R.rows.filter(x=>x.any).length;
   let subs=SL.filter(s=>shown.some(t=>r.sub[s.key].T[t.id].has));if(!subs.length)subs=SL;
-  const ct=(SJS.teachers.find(t=>(c.teacherUids||[]).includes(t.uid))||{}).name||'';const multi=fin&&shown.length>1;
+  const ct=(SJS.teachers.find(t=>(c.teacherUids||[]).includes(t.uid))||{}).name||c.teacher||'';const multi=fin&&shown.length>1;
   const srC=!shown.some(t=>t.solo)&&shown.some(t=>t.comps.some(cp=>cp.kind));   /* Class XI–XII normal card: PT score only, Theory and Practical as marks / pass marks */
   const ctxt=x=>x.na?'–':x.v===undefined?'':x.v==='AB'?'AB':srC&&x.wt===0?fmt(x.v):srC&&x.kind?fmt(x.v):x.wt===0?fmt(x.v)+'<small>/'+x.em+'</small>':fmt(x.sc);
   const cmxA=cp=>{const a=[...new Set(subs.map(s=>{const df=cdef(cp,s);if(df.na)return null;const d=D.marks[cp.id+'__'+s.key];return +(d&&d.max)||df.max}).filter(v=>v>0))].sort((a,b)=>b-a);return a.length?a:[+cp.max]};
@@ -1071,7 +1071,7 @@ async function newSession(ses,log){const S=archId(ses),A='mk_cfg/arch__'+S,ks=SJ
   if(await rawGet(A))throw new Error('A saved copy of session '+ses+' already exists. Nothing was changed.');
   log('<b>Step 1 of 4 – saving a copy of every class</b>');
   for(const k of ks){const D=await load(k.id,true),ids=Object.keys(D.marks);
-    const ct=(SJS.teachers.find(t=>(k.teacherUids||[]).includes(t.uid))||{}).name||'';
+    const ct=(SJS.teachers.find(t=>(k.teacherUids||[]).includes(t.uid))||{}).name||k.teacher||'';
     const json=JSON.stringify({students:D.students.map(st=>JSON.parse(JSON.stringify(st))),marks:Object.fromEntries(ids.map(id=>[id,plainMk(D.marks[id])]))});
     const parts=[];for(let i=0;i<json.length;i+=ARCH_PART)parts.push(json.slice(i,i+ARCH_PART));if(!parts.length)parts.push('{"students":[],"marks":{}}');
     for(let i=0;i<parts.length;i++)await rawSet(A+'__'+k.id+'__'+i,{session:ses,cid:k.id,part:i,json:parts[i]});
@@ -1180,6 +1180,8 @@ function topTenExcel(){const sel=($('#ttSel')||{}).value||'all',vn=(M.school.vie
 /* ---------- 🔐 Control (Admin and Exam In-Charge): subject teachers, lock & last date, change history ---------- */
 function lockList(){const c=cfg(),L=[];c.schemes.forEach(s=>s.terms.forEach(t=>{t.comps.forEach(cp=>{const o=L.find(x=>x[0]===cp.id);if(!o)L.push([cp.id,(t.solo?'':t.name+' · ')+cp.name,[s.name]]);else if(!o[2].includes(s.name))o[2].push(s.name)});if(!L.some(x=>x[0]==='x_'+t.id))L.push(['x_'+t.id,t.name+' – grades, attendance & remarks',[]])}));L.push(['x_fin','Final result review (grace marks & decisions)',[]]);return L}
 const tName=uid=>{const t=SJS.teachers.find(x=>x.uid===uid);return t?t.name:'(teacher removed)'};
+/* class teacher: the app account chosen in Student Attendance; if none, only the typed name (that teacher cannot enter marks as class teacher yet) */
+const ctOf=k=>{const u=k.teacherUids||[];return{names:u.length?u.map(x=>{const t=SJS.teachers.find(y=>y.uid===x);return t?t.name:(k.teacher||'(account not found)')}):(k.teacher?[k.teacher]:[]),acct:u.length>0}};
 function rebuildAlloc(){if(!isCtrl())return;Object.keys(ALLOC).forEach(cid=>{const a=ALLOC[cid];if(!a||!a.s||!cls(cid))return;const k=allocKeys(cid,a.s);if(JSON.stringify(k)!==JSON.stringify(a.k||{})){a.k=k;WRITE('mk_alloc/'+cid,{s:a.s,k,at:Date.now(),by:myUid()},false)}})}
 function examLabel(cid,ex){if(ex==='x_fin')return'Final review';if(/^x_/.test(ex)){const t=schemeOf(cid).terms.find(q=>'x_'+q.id===ex);return(t?t.name:ex.slice(2))+' – grades & remarks'}let n='';schemeOf(cid).terms.forEach(t=>t.comps.forEach(c=>{if(c.id===ex)n=(t.solo?'':t.name+' · ')+c.name}));return n||ex}
 const tsMs=v=>v&&typeof v.toMillis==='function'?v.toMillis():+v||0;
@@ -1195,9 +1197,10 @@ async function vCtrl(m){m=$('#main')||m;if(!isCtrl()){m.innerHTML='<div class="c
 /* subject teachers: who may enter the marks of each subject of each class */
 function ctlAlloc(box,m){if(!pick()){box.innerHTML=noClass0;return}const cid=M.cid,c=cls(cid),SL=subjOf(cid);
   const A=M.alc&&M.alc.cid===cid?M.alc:(M.alc={cid,s:JSON.parse(JSON.stringify(allocS(cid)))});
-  const T=SJS.teachers.filter(t=>t.uid),noU=SJS.teachers.filter(t=>!t.uid).length,ct=(c.teacherUids||[]).map(tName);
+  const T=SJS.teachers.filter(t=>t.uid),noU=SJS.teachers.filter(t=>!t.uid).length,CT=ctOf(c),ct=CT.names;
   box.innerHTML=`<div class="card"><div class="grid2">${classSel()}</div>
-    <div class="banner" style="margin-top:8px">★ <b>Class teacher${ct.length>1?'s':''}: ${ct.length?ct.map(esc).join(', '):'not chosen yet'}</b> – can enter the marks of <b>every subject</b> of ${esc(classLabel(c))} without being chosen below. (The class teacher is chosen in Student Attendance.)</div>
+    ${CT.acct?`<div class="banner" style="margin-top:8px">★ <b>Class teacher${ct.length>1?'s':''}: ${ct.map(esc).join(', ')}</b> – can enter the marks of <b>every subject</b> of ${esc(classLabel(c))} without being chosen below. (The class teacher is chosen in Student Attendance.)</div>`
+      :`<div class="banner warn" style="margin-top:8px">⚠ <b>Class teacher: ${ct.length?esc(ct[0]):'not chosen'}</b> – but the <b>app account</b> is not chosen, so ${ct.length?'this teacher':'nobody'} cannot enter marks or attendance as class teacher of ${esc(classLabel(c))}. Fix: SJS App → Student Attendance → Classes → ${esc(classLabel(c))} → Edit → <b>Class teacher – app account</b> → choose the teacher → Save.</div>`}
     ${noU?`<p class="tmeta" style="margin:6px 0 0">${noU} teacher${noU>1?'s have':' has'} not signed in to SJS App yet, so they are not in the list. They appear after they sign in and the Admin links them.</p>`:''}</div>
    <div class="card"><h3>Subject teachers – ${esc(classLabel(c))}</h3>${SL.length?SL.map(s=>{const u=A.s[s.key]||[];return`<div class="li" style="flex-wrap:wrap;gap:6px"><b style="flex:0 0 32%;min-width:120px">${esc(noCode(s.name))}</b>
       <span class="grow row" style="gap:6px">${u.map(x=>`<span class="pill g">${esc(tName(x))} <button class="btn sm" data-rm="${esc(s.key)}|${esc(x)}" title="Remove" style="padding:0 6px;margin-left:4px">✕</button></span>`).join('')||'<span class="tmeta">nobody yet</span>'}</span>
@@ -1217,9 +1220,9 @@ function ctlAlloc(box,m){if(!pick()){box.innerHTML=noClass0;return}const cid=M.c
   const rows=SJS.classes.map(k=>({k,sub:subjOf(k.id).map(s=>({s,u:allocS(k.id)[s.key]||[]}))}));
   const byT={};rows.forEach(r=>r.sub.forEach(x=>x.u.forEach(u=>{(byT[u]=byT[u]||[]).push(classLabel(r.k)+' '+noCode(x.s.name))})));
   const open=rows.reduce((a,r)=>a+r.sub.filter(x=>!x.u.length).length,0);
-  const allT=`<div class="scroll"><table class="tbl"><tr><th class="l">Class</th><th class="l">Class teacher</th><th class="l">Subject – teacher</th></tr>${rows.map(r=>`<tr><td class="l"><b>${esc(classLabel(r.k))}</b></td><td class="l">${(r.k.teacherUids||[]).map(tName).map(esc).join(', ')}</td><td class="l">${r.sub.map(x=>`${esc(noCode(x.s.name))}: ${x.u.length?x.u.map(tName).map(esc).join(', '):'<span style="color:var(--crit)">–</span>'}`).join(' · ')}</td></tr>`).join('')}</table></div>`;
+  const allT=`<div class="scroll"><table class="tbl"><tr><th class="l">Class</th><th class="l">Class teacher</th><th class="l">Subject – teacher</th></tr>${rows.map(r=>`<tr><td class="l"><b>${esc(classLabel(r.k))}</b></td><td class="l">${(()=>{const q=ctOf(r.k);return q.names.map(esc).join(', ')+(q.acct?'':' <span style="color:var(--crit)">⚠ no app account</span>')})()}</td><td class="l">${r.sub.map(x=>`${esc(noCode(x.s.name))}: ${x.u.length?x.u.map(tName).map(esc).join(', '):'<span style="color:var(--crit)">–</span>'}`).join(' · ')}</td></tr>`).join('')}</table></div>`;
   const tT=`<table class="tbl"><tr><th class="l">Teacher</th><th class="l">Classes and subjects</th></tr>${Object.keys(byT).sort((a,b)=>tName(a).localeCompare(tName(b))).map(u=>`<tr><td class="l"><b>${esc(tName(u))}</b></td><td class="l">${byT[u].map(esc).join(', ')}</td></tr>`).join('')}</table>`;
-  $('#alAll').innerHTML=(open?`<p class="tmeta">${open} subject${open>1?'s have':' has'} no subject teacher yet (–). Only the class teacher, Admin and Exam In-Charge can enter those.</p>`:'')+allT+'<h3 style="margin:14px 0 6px">Teacher by teacher</h3>'+(Object.keys(byT).length?tT:'<p class="tmeta">No subjects given yet.</p>');
+  const noCT=rows.filter(r=>!ctOf(r.k).acct).map(r=>classLabel(r.k));$('#alAll').innerHTML=(noCT.length?`<div class="banner warn" style="margin-bottom:8px">⚠ <b>Class teacher's app account not chosen: ${noCT.map(esc).join(', ')}</b>. These class teachers cannot enter marks or attendance until the Admin chooses their account in SJS App → Student Attendance → Classes → Edit → “Class teacher – app account”.</div>`:'')+(open?`<p class="tmeta">${open} subject${open>1?'s have':' has'} no subject teacher yet (–). Only the class teacher, Admin and Exam In-Charge can enter those.</p>`:'')+allT+'<h3 style="margin:14px 0 6px">Teacher by teacher</h3>'+(Object.keys(byT).length?tT:'<p class="tmeta">No subjects given yet.</p>');
   $('#alPr').onclick=()=>printDoc('Subject Teachers – Marks Entry','landscape',headHTML('SUBJECT TEACHERS – MARKS ENTRY','All classes')+allT+'<h3>Teacher by teacher</h3>'+tT+sigHTML(['Examination In-Charge','Principal']))}
 
 /* lock an exam, or give a last date for marks entry */
