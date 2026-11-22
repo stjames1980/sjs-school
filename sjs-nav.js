@@ -45,6 +45,7 @@ function page(){var p=location.pathname.split('/').pop();return p&&p.indexOf('.h
 function items(){var r=get('sjs-nav-role')||{},staff=r.staff!==false,cv=!!r.canView,ad=!!r.isAdmin,L=[];
   L.push({h:'Main'},{u:'index.html#home',t:'Home',i:'🏠'},{u:'index.html#me',t:'Teacher Attendance',i:'✅'},{u:'index.html#notices',t:'Notices',i:'📢'});
   L.push({h:'Academics'});if(staff)L.push({u:'attendance.html',t:'Student Attendance',i:'🧑‍🎓'});L.push({u:'timetable.html',t:'Time Table',i:'🗓️'});if(staff)L.push({u:'marks.html',t:'Exams and Results',i:'📝',sub:1});
+  L.push({h:'Events'},{u:'https://stjames1980.github.io/sjs-sports/',t:'Sports Meet',i:'🏆'});
   if(staff)L.push({h:'School Diary'},{u:'school.html#hw',t:'Homework',i:'📚'},{u:'school.html#exam',t:'Exams',i:'✍️'},{u:'school.html#cal',t:'Calendar',i:'📆'},{u:'school.html#fees',t:'Fee Status',i:'💰'});
   if(cv||ad){L.push({h:ad?'Admin':'Management'},{u:'index.html#dash',t:'Dashboard',i:'📊'},{u:'index.html#classes',t:'All Classes',i:'🏫'},{u:'index.html#leave',t:'Leave',i:'🗒️'});if(ad)L.push({u:'index.html#teachers',t:'Teachers',i:'👥'});L.push({u:'index.html#register',t:'Register',i:'📅'},{u:'index.html#report',t:'Teacher Report',i:'👤'});if(ad)L.push({u:'index.html#settings',t:'Settings',i:'⚙️'})}
   return L}
