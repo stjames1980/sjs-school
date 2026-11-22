@@ -55,6 +55,10 @@ service cloud.firestore {
       allow update: if isAdmin() || (isStaff() && !examLocked(request.resource.data.exam) && !examLocked(resource.data.exam));
       allow delete: if isAdmin();
     }
+    // Subject teachers (who may enter the marks of each subject): staff read, the Admin / Exam In-Charge set them.
+    match /mk_alloc/{cid}         { allow read: if isStaff(); allow write: if isAdmin() || myRole() == 'exam'; }
+    // Change history of marks: staff add entries; nobody can edit or delete them.
+    match /c/{cid}/mk_log/{doc}   { allow read: if isStaff(); allow create: if isStaff(); allow update, delete: if false; }
 
     // ===== Homework: any confirmed teacher posts; the writer (or the Admin) can delete =====
     match /c/{cid}/hw/{doc} {

@@ -45,7 +45,7 @@ details.grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;ma
    c/<classId>/marks/<examId>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}
    c/<classId>/marks/x_<termId>__att | __rem | __c<Area>   attendance, remarks, co-scholastic grades for a term */
 const {$,esc,toast,sheet,closeSheet,pasteRows,classLabel,waPhone}=SJS;
-const VER='82';
+const VER='83';
 const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const CBSE_T=(n,pt,ex,exn)=>({id:'t'+n,name:'Term '+n,comps:[{id:'pt'+n,name:pt,max:10},{id:'nb'+n,name:'Note Book',max:5},{id:'se'+n,name:'SEA',max:5},{id:ex,name:exn,max:80}]});
 const DEF={
@@ -1188,11 +1188,101 @@ const tsMs=v=>v&&typeof v.toMillis==='function'?v.toMillis():+v||0;
 const dtShow=ms=>{if(!ms)return'';const d=new Date(ms+19800000).toISOString();return d.slice(8,10)+'-'+d.slice(5,7)+'-'+d.slice(0,4)+' '+d.slice(11,16)};
 
 async function vCtrl(m){m=$('#main')||m;if(!isCtrl()){m.innerHTML='<div class="card empty">Only the Admin and the Exam In-Charge can open Control.</div>';return}
-  M.ctl=M.ctl||'alloc';const B=[['alloc','👩‍🏫 Subject teachers'],['lock','🔒 Lock & last date'],['log','🕘 Change history']];
+  M.ctl=M.ctl||'alloc';const B=[['alloc','👩‍🏫 Subject teachers'],['lock','🔒 Lock & last date'],['log','🕘 Change history'],['bak','💾 Backup & Restore']];
   m.innerHTML=`<div class="card"><div class="row">${B.map(([k,l])=>`<button class="btn ${M.ctl===k?'pri':''}" data-ctl="${k}">${l}</button>`).join('')}</div>
     <p class="sub" style="margin:8px 0 0">Teachers and class teachers can only <b>enter marks</b>. They cannot see the Dashboard, Results, Final Review or Report Cards. The Admin, Principal and Exam In-Charge see everything.</p></div><div id="ctlB"></div>`;
   m.querySelectorAll('[data-ctl]').forEach(b=>b.onclick=()=>{if(M.ctlDirty&&!confirm('Changes not saved. Leave anyway?'))return;M.ctlDirty=false;M.ctl=b.dataset.ctl;vCtrl(m)});
-  const box=$('#ctlB');({alloc:ctlAlloc,lock:ctlLock,log:ctlLog}[M.ctl])(box,m)}
+  const box=$('#ctlB');({alloc:ctlAlloc,lock:ctlLock,log:ctlLog,bak:ctlBak}[M.ctl])(box,m)}
+
+/* ---------- Backup & Restore: one file with the whole Exams and Results section (download: Admin / Exam In-Charge · restore: Admin only) ----------
+   The file holds: mk_cfg/* (setup, locks & last dates, saved old sessions), mk_alloc/* (subject teachers),
+   and for every class c/<id>/marks/* (marks, attendance, grades, remarks, review decisions), c/<id>/students/* (details, photos), c/<id>/mk_log/* (change history).
+   Restore writes the records of the file back. Records made after the backup are kept – nothing is deleted. */
+const BAK_APP='sjs-exams-results';
+const encV=v=>{if(v==null||typeof v!=='object')return v;if(typeof v.toMillis==='function')return{__ts:v.toMillis()};if(Array.isArray(v))return v.map(encV);const o={};Object.keys(v).forEach(k=>o[k]=encV(v[k]));return o};
+const decV=v=>{if(v==null||typeof v!=='object')return v;if(Array.isArray(v))return v.map(decV);const ks=Object.keys(v);if(ks.length===1&&ks[0]==='__ts'&&typeof v.__ts==='number')return FB()?firebase.firestore.Timestamp.fromMillis(v.__ts):v.__ts;const o={};ks.forEach(k=>o[k]=decV(v[k]));return o};
+async function bakList(c){if(FB()){const s=await firebase.firestore().collection(c).get({source:'server'});return s.docs.map(d=>[d.id,d.data()])}
+  return(await SJS.db.list(c)).map(d=>{const x={...d};delete x.id;return[d.id,x]})}
+const bakKind=p=>/^mk_(cfg|alloc)\//.test(p)?'setup':/^c\/[^/]+\/marks\//.test(p)?'marks':/^c\/[^/]+\/students\//.test(p)?'students':/^c\/[^/]+\/mk_log\//.test(p)?'log':'other';
+const bakCid=p=>{const m=p.match(/^c\/([^/]+)\//)||p.match(/^mk_alloc\/([^/]+)$/);return m?m[1]:''};
+const bakStamp=()=>{const d=new Date(Date.now()+19800000).toISOString();return d.slice(0,10)+'_'+d.slice(11,13)+d.slice(14,16)};
+async function bakCollect(opt,log){const docs={},n={setup:0,marks:0,students:0,photos:0,log:0};
+  const add=(p,d)=>{docs[p]=encV(d);n[bakKind(p)]++};
+  log('Reading setup, locks and subject teachers…');
+  for(const c of['mk_cfg','mk_alloc'])(await bakList(c)).forEach(([id,d])=>add(c+'/'+id,d));
+  const ks=SJS.classes.slice();
+  for(let i=0;i<ks.length;i++){const k=ks[i];log('Reading class '+esc(classLabel(k))+' ('+(i+1)+' of '+ks.length+')…',true);
+    (await bakList('c/'+k.id+'/marks')).forEach(([id,d])=>add('c/'+k.id+'/marks/'+id,d));
+    (await bakList('c/'+k.id+'/students')).forEach(([id,d])=>{if(d.photo){if(opt.photos)n.photos++;else{d={...d};delete d.photo}}add('c/'+k.id+'/students/'+id,d)});
+    if(opt.log)(await bakList('c/'+k.id+'/mk_log')).forEach(([id,d])=>add('c/'+k.id+'/mk_log/'+id,d))}
+  return{app:BAK_APP,version:1,appVersion:VER,exported:new Date().toISOString(),by:(SJS.user&&SJS.user.email)||'',school:SJS.school.name||'',session:SJS.school.session||'',
+    photos:!!opt.photos,log:!!opt.log,classes:ks.map(k=>({id:k.id,label:classLabel(k)})),counts:n,docs}}
+function bakSave(b,pre){const name='SJS_Exams_Results_'+(pre||'backup')+'_'+bakStamp()+'.json';
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(b)],{type:'application/json'}));a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);ls('lastBak',String(Date.now()));return name}
+/* writes [path,data,merge] in groups (a database batch holds at most 500 records and about 10 MB) */
+async function bakWrite(list,prog){if(FB()){const fs=firebase.firestore();let b=fs.batch(),ops=0,size=0,done=0;
+    const flush=async()=>{if(!ops)return;await b.commit();done+=ops;prog(done);b=fs.batch();ops=0;size=0};
+    for(const[p,d,mg]of list){const s=JSON.stringify(d).length;if(ops&&(ops>=300||size+s>3000000))await flush();b.set(fs.doc(p),decV(d),mg?{merge:true}:{});ops++;size+=s}
+    await flush()}
+  else{for(let i=0;i<list.length;i++){const[p,d,mg]=list[i];await SJS.db.set(p,decV(d),mg);if(i%25===24)prog(i+1)}prog(list.length)}}
+const bakSize=b=>{const n=JSON.stringify(b.docs).length;return n>1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB'};
+
+function ctlBak(box,m){if(M.arch){box.innerHTML='<div class="card empty">'+ARCH_RO+'</div>';return}
+  const last=+lg('lastBak')||0,B=M.bak||{};
+  const pl=(id,t,on,dis)=>`<label class="pill" style="padding:6px 10px"><input type="checkbox" id="${id}" ${on?'checked':''} ${dis?'disabled':''}> ${t}</label>`;
+  let rs='';
+  if(!SJS.isAdmin)rs='<p class="sub">Only the Admin can restore a backup.</p>';
+  else if(!B.f)rs=`<p class="sub">Use this only if marks or setup were lost or wrongly changed. Choose a backup file downloaded here before. You will see what is in it before anything is changed.</p>
+     <div class="row" style="margin-top:8px"><button class="btn" id="bkPick">⬆ Choose backup file…</button></div>`;
+  else{const f=B.f,c=f.counts||{},dt=f.exported?dtShow(Date.parse(f.exported)):'?',ses=f.session&&SJS.school.session&&f.session!==SJS.school.session;
+    const cl=B.cl||'',inCl=p=>!cl||bakCid(p)===cl,cnt=k=>Object.keys(f.docs).filter(p=>bakKind(p)===k&&inCl(p)&&(k!=='setup'||!cl||/^mk_alloc\//.test(p))).length;
+    rs=`<table class="tbl" style="margin:4px 0 10px"><tr><td class="l">Backup taken on</td><td class="l"><b>${esc(dt)}</b></td></tr><tr><td class="l">Taken by</td><td class="l">${esc(f.by||'–')}</td></tr>
+      <tr><td class="l">Session</td><td class="l">${esc(f.session||'–')}${ses?' <b style="color:var(--crit)">(not the current session '+esc(SJS.school.session)+')</b>':''}</td></tr>
+      <tr><td class="l">Classes</td><td class="l">${(f.classes||[]).length}</td></tr><tr><td class="l">App version</td><td class="l">${esc(f.appVersion||'–')} · file ${esc(bakSize(f))}</td></tr></table>
+     <div class="grid2">${sel('bkCl','Restore which class',[['','All classes (whole school)'],...(f.classes||[]).map(x=>[x.id,x.label])],cl)}</div>
+     <p class="tmeta" style="margin:10px 0 4px;font-weight:700">What to restore</p>
+     <div class="row">${pl('bkS',(cl?'Subject teachers of this class':'Setup, locks & subject teachers')+' ('+cnt('setup')+')',B.s!==false&&cnt('setup'),!cnt('setup'))}${pl('bkM','Marks, attendance, grades, remarks & review decisions ('+cnt('marks')+')',B.m!==false&&cnt('marks'),!cnt('marks'))}
+       ${pl('bkT','Student details'+(f.photos?' & photos':'')+' ('+cnt('students')+')',B.t!==false&&cnt('students'),!cnt('students'))}${pl('bkL','Change history ('+cnt('log')+')',B.l!==false&&cnt('log'),!cnt('log'))}</div>
+     <div class="banner warn" style="margin:10px 0">The records in the backup <b>replace the same records</b> in the app (for example PT-II marks of Class VI-A English go back to what they were on ${esc(dt.slice(0,10))}). Records made after the backup are <b>kept</b> – nothing is deleted. Student details also appear in Student Attendance.${f.photos?'':' This backup has no photos – the photos now in the app are kept.'} Do this when nobody is entering marks.</div>
+     <div class="row">${pl('bkSafe','First download a safety backup of the data as it is now (to undo this restore)',B.safe!==false,false)}</div>
+     <div class="grid2" style="margin-top:8px"><label class="f">Type RESTORE to confirm<input class="inp" id="bkTy" autocomplete="off" placeholder="RESTORE"></label></div>
+     <div class="row" style="margin-top:10px"><button class="btn" id="bkX">Choose another file</button><div class="grow"></div><button class="btn pri" id="bkGo" disabled>⬆ Restore now</button></div>`}
+  box.innerHTML=`<div class="card"><h3>💾 Download backup</h3><p class="sub">Saves the whole Exams and Results section in one file: setup, locks, subject teachers, all marks of every exam, attendance, grades, remarks, review decisions, student details${' '}and photos, change history and saved old sessions.</p>
+     <div class="row" style="margin-top:8px">${pl('bkPh','Include student photos (bigger file)',B.ph!==false,false)}${pl('bkLg','Include change history',B.lg!==false,false)}</div>
+     <div class="row" style="margin-top:10px"><button class="btn pri" id="bkDl">⬇ Download backup</button><span class="tmeta">${last?'Last backup from this device: '+dtShow(last):'No backup downloaded from this device yet.'}</span></div>
+     <p class="tmeta" style="margin-top:8px">When: once a week during marks entry, and after an exam is locked. Keep each file in <b>two places</b> – Google Drive of the Admin account and a pen drive or laptop. Do not share the file: it has every student's marks and details.</p></div>
+   <div class="card"><h3>♻️ Restore backup</h3>${rs}</div><div id="bkLog"></div>`;
+  const L=$('#bkLog'),log=(h,rep)=>{if(rep&&L.lastElementChild&&L.lastElementChild.dataset.r)L.lastElementChild.innerHTML=h;else L.insertAdjacentHTML('beforeend',`<div class="card" style="padding:8px 12px" ${rep?'data-r="1"':''}>${h}</div>`)};
+  const online=()=>{if(FB()&&!navigator.onLine){toast('Connect to the internet first – a backup must read everything from the database');return false}return true};
+  const keep=()=>{const g=id=>{const e=$('#'+id);return e?e.checked:undefined};M.bak={...B,ph:g('bkPh'),lg:g('bkLg'),s:g('bkS'),m:g('bkM'),t:g('bkT'),l:g('bkL'),safe:g('bkSafe')}};
+  ['bkPh','bkLg','bkS','bkM','bkT','bkL','bkSafe'].forEach(id=>{const e=$('#'+id);if(e)e.onchange=keep});
+  $('#bkDl').onclick=async e=>{if(!online())return;keep();const btn=e.target;btn.disabled=true;btn.textContent='Preparing…';L.innerHTML='';M.busy=true;
+    try{const b=await bakCollect({photos:$('#bkPh').checked,log:$('#bkLg').checked},log);const c=b.counts;const nm=bakSave(b);
+      log(`✓ <b>Backup downloaded:</b> ${esc(nm)} (${bakSize(b)})<br>${c.marks} marks records · ${c.students} students${b.photos?' ('+c.photos+' photos)':''} · ${c.setup} setup records${b.log?' · '+c.log+' history records':''}. Find it in your Downloads folder.`,true);toast('Backup downloaded')}
+    catch(x){console.error(x);log('<b style="color:var(--crit)">The backup could not be made:</b> '+esc(x&&x.code==='permission-denied'?'the database refused (the Admin must publish the new firestore.rules)':(x&&x.message)||x),true)}
+    M.busy=false;btn.disabled=false;btn.textContent='⬇ Download backup'};
+  const pk=$('#bkPick');if(pk)pk.onclick=()=>{const i=document.createElement('input');i.type='file';i.accept='.json,application/json';
+    i.onchange=async()=>{const fl=i.files[0];if(!fl)return;let d;try{d=JSON.parse(await fl.text())}catch(x){toast('That file is not a backup');return}
+      if(!d||d.app!==BAK_APP||!d.docs||typeof d.docs!=='object'){toast(d&&d.app==='sjs-attendance'?'That is a Student Attendance backup – restore it in Student Attendance':'That file is not an Exams and Results backup');return}
+      const bad=Object.keys(d.docs).filter(p=>bakKind(p)==='other');if(bad.length){toast('That backup file has unknown records – it was not made by this app');return}
+      M.bak={f:d,name:fl.name};ctlBak(box,m)};i.click()};
+  if(!B.f)return;
+  const f=B.f;$('#bkX').onclick=()=>{M.bak=null;ctlBak(box,m)};$('#bkCl').onchange=e=>{keep();M.bak.cl=e.target.value;ctlBak(box,m)};
+  const ty=$('#bkTy'),go=$('#bkGo');ty.oninput=()=>{go.disabled=ty.value.trim().toUpperCase()!=='RESTORE'};
+  go.onclick=async()=>{if(!online())return;keep();const o=M.bak,cl=o.cl||'';
+    const want=p=>{const k=bakKind(p);if(cl&&bakCid(p)!==cl)return false;if(k==='setup')return o.s&&(!cl||/^mk_alloc\//.test(p));return k==='marks'?o.m:k==='students'?o.t:k==='log'?o.l:false};
+    const paths=Object.keys(f.docs).filter(want);if(!paths.length){toast('Nothing is chosen to restore');return}
+    go.disabled=true;ty.disabled=true;$('#bkX').disabled=true;L.innerHTML='';M.busy=true;
+    try{if(o.safe){log('<b>Step 1 – safety backup of the data as it is now</b>');const sb=await bakCollect({photos:true,log:true},log);log('✓ Safety backup downloaded: '+esc(bakSave(sb,'before-restore'))+' – keep it until you have checked the restore.',true)}
+      log('<b>'+(o.safe?'Step 2 – ':'')+'restoring '+paths.length+' records</b>');
+      let have=new Set();if(paths.some(p=>bakKind(p)==='log')){const cids=[...new Set(paths.filter(p=>bakKind(p)==='log').map(bakCid))];
+        for(const cid of cids)(await bakList('c/'+cid+'/mk_log')).forEach(([id])=>have.add('c/'+cid+'/mk_log/'+id))}
+      const list=paths.filter(p=>!(bakKind(p)==='log'&&have.has(p))).map(p=>[p,f.docs[p],bakKind(p)==='students']);   /* history: only missing entries are added (it cannot be edited); students: merged, so details added later stay */
+      await bakWrite(list,d=>log('Restored '+d+' of '+list.length+'…',true));
+      log(`✓ <b>Restore finished.</b> ${list.length} records written from the backup of ${esc(dtShow(Date.parse(f.exported)))}${paths.length>list.length?' ('+(paths.length-list.length)+' history entries were already there)':''}${cl?' for Class '+esc(((f.classes||[]).find(x=>x.id===cl)||{}).label||cl):''}. Other phones show it when they open the app again.<div class="row" style="margin-top:8px"><button class="btn pri" onclick="location.reload()">Reload the page</button></div>`,true);
+      M.bak=null;Object.keys(C).forEach(k=>delete C[k]);toast('Backup restored')}
+    catch(x){console.error(x);log('<b style="color:var(--crit)">The restore stopped:</b> '+esc(x&&x.code==='permission-denied'?'the database refused (only the Admin can restore, and the Admin must publish the new firestore.rules)':(x&&x.message)||x)+'. Records written before the stop stay. Fix the problem and restore again – it is safe to repeat.',true);go.disabled=false;ty.disabled=false;$('#bkX').disabled=false;M.busy=false}}}
 
 /* subject teachers: who may enter the marks of each subject of each class */
 function ctlAlloc(box,m){if(!pick()){box.innerHTML=noClass0;return}const cid=M.cid,c=cls(cid),SL=subjOf(cid);
@@ -1332,7 +1422,7 @@ window.SJS_DEMO_SEED=D=>{const names=['Lalremruata','Vanlalhriati','Zothanpuii',
 
 SJS.boot('Exams and Results',async()=>{if(FB()&&navigator.onLine)firebase.firestore().doc('mk_cfg/cbse').get({source:'server'}).catch(e=>{if(e&&e.code==='permission-denied'){RULEERR=true;if($('#main'))render()}});
   M.tab=lg('tab')||(seeRes()?'dash':'enter');M.view=lg('view')||'t1';M.order=lg('order')||'roll';
-  let n=0;const go=()=>{if(++n<3)return;if(n===3||!dirtyN())render()};loadAlloc().then(go);
+  let n=0;const go=()=>{if(++n<3)return;if(M.busy&&n>3)return;if(n===3||!dirtyN())render()};   /* M.busy: a backup or restore is running – do not redraw the page under it */loadAlloc().then(go);
   SJS.db.watch('mk_cfg/cbse',d=>{if(M.arch)return;if(d){const x=JSON.parse(JSON.stringify(DEF));Object.keys(d).forEach(k=>{if(k==='school')Object.assign(x.school,d.school||{});else x[k]=d[k]});x.schemes.forEach(q=>{if(q.grades==='A+=90, A=75, B=56, C=35, D=0')q.grades='A+=90, A=75, B=56, C=33, D=0'});x.schemes.forEach(q=>q.terms.forEach(t=>t.comps.forEach(c=>{if(c.name==='Sub. Enrichment')c.name='SEA'})));x.schemes.forEach(q=>{const d=DEF.schemes.find(z=>z.id===q.id),pb=d&&d.terms.find(t=>t.solo);if(pb&&!q.terms.some(t=>t.solo))q.terms.push(JSON.parse(JSON.stringify(pb)))});
       if(!x.schemes.some(q=>q.id==='nur')){x.schemes.forEach(q=>{q.classes=String(q.classes||'').split(',').map(t=>t.trim()).filter(t=>t&&nc(t)!=='NURSERY').join(', ');if(q.name==='Pre-Primary (Nursery – KG)')q.name='Pre-Primary (KG)'});x.schemes.unshift(JSON.parse(JSON.stringify(DEF.schemes[0])));x.subj={...(x.subj||{})};if(/\{/.test(x.subj['cls:NURSERY']||''))delete x.subj['cls:NURSERY']}   /* v42: Nursery gets its own group and the My First Report Card */
       if(!x.schemes.some(q=>q.id==='x10')){const isX=t=>nc(String(t).trim())==='X',src=x.schemes.find(q=>String(q.classes||'').split(',').some(isX)),d=JSON.parse(JSON.stringify(DEF.schemes.find(q=>q.id==='x10')));

@@ -271,3 +271,15 @@ Upload `marks.html` and `sw.js`.
 - The section is now called **Exams and Results** on the Home tile, in the side menu, in the page title and heading, at the bottom of the page ("Exams and Results · version 82") and in the help lines of the Excel templates.
 - Only the names on screen changed. The page is still `marks.html` and the database names are the same, so all marks, setup, attendance, photos and review decisions already saved stay exactly as they are. Excel templates downloaded before this version can still be uploaded.
 - Upload these 6 changed files: `marks.html`, `index.html`, `sjs-nav.js`, `school.html`, `sw.js`, `SETUP-GUIDE.md`. No change to the Firestore rules is needed.
+
+## Version 83 – Backup & Restore in Exams and Results
+**Where:** Exams and Results → 🔐 Control → **💾 Backup & Restore**. Download: Admin and Exam In-Charge. Restore: Admin only. Internet must be on.
+
+- **⬇ Download backup** – one file, e.g. `SJS_Exams_Results_backup_2026-11-22_0830.json`, with the whole section: setup, locks and last dates, subject teachers, every mark of every exam, attendance, grades, remarks, review decisions, student details and photos, change history and saved old sessions. Tick off photos or history for a smaller file.
+- **When:** once a week during marks entry, and after each exam is locked. **Keep each file in two places** (Google Drive of the Admin account + pen drive or laptop). Do not share it – it has every student's marks and details.
+- **♻️ Restore backup** – choose the file; the app shows when it was taken, by whom, the session and how many records it holds. Choose **All classes** or one class, and what to restore (setup · marks · student details & photos · change history). Type RESTORE and tap **Restore now**.
+  - The records in the backup replace the same records now in the app. Records made after the backup are kept – nothing is deleted. Student details are merged (details added later stay). Change history only gets back missing entries.
+  - By default the app first downloads a **safety backup** (`…before-restore….json`) of the data as it is now, so a restore can be undone.
+  - Do it when nobody is entering marks; then tap **Reload the page**. Other phones show the restored marks when they open the app again.
+- **Firestore rules:** this version adds the rules for **subject teachers** (`mk_alloc`) and the **change history** (`mk_log`), which were missing from `firestore.rules`. **Publish the new `firestore.rules` once** (Firebase console → Firestore Database → Rules → delete everything → paste the whole file → Publish).
+- Upload these files: `marks.html`, `sw.js`, `firestore.rules`, `SETUP-GUIDE.md` (and, if version 82 was not uploaded yet, also `index.html`, `sjs-nav.js`, `school.html`).
