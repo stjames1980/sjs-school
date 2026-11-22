@@ -266,3 +266,8 @@ Upload `marks.html` and `sw.js`.
 
 ## Version 79 – equal left and right margins on shrunk report cards
 - Fixed: on Windows computers a report card with many subjects (Class I–II) printed with a wider right margin. The print page measured the card with a scroll bar taking space; now the card always uses the full A4 width (198 mm inside 6 mm margins) and the print page has no scroll bar, so left and right margins are equal.
+
+## Version 82 – "Result Software" renamed to "Exams and Results"
+- The section is now called **Exams and Results** on the Home tile, in the side menu, in the page title and heading, at the bottom of the page ("Exams and Results · version 82") and in the help lines of the Excel templates.
+- Only the names on screen changed. The page is still `marks.html` and the database names are the same, so all marks, setup, attendance, photos and review decisions already saved stay exactly as they are. Excel templates downloaded before this version can still be uploaded.
+- Upload these 6 changed files: `marks.html`, `index.html`, `sjs-nav.js`, `school.html`, `sw.js`, `SETUP-GUIDE.md`. No change to the Firestore rules is needed.

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Result Software – SJS App</title>
+<title>Exams and Results – SJS App</title>
 <meta name="theme-color" content="#13294b">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="favicon.png">
@@ -38,14 +38,14 @@ details.grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;ma
 <script src="config.js"></script>
 <script src="sjs-common.js"></script>
 <script>
-/* ===== SJS Result Software (CBSE pattern, Nursery – XII) =====
+/* ===== SJS Exams and Results (CBSE pattern, Nursery – XII) =====
    Works online and offline: marks are saved on the phone first and upload by themselves when the internet returns.
    mk_cfg/cbse   class groups (terms, exams, weights), subjects, grades, school details          (Admin)
    mk_cfg/main   locked:{examId:true}  – a locked exam can be changed only by the Admin              (Admin)
    c/<classId>/marks/<examId>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}
    c/<classId>/marks/x_<termId>__att | __rem | __c<Area>   attendance, remarks, co-scholastic grades for a term */
 const {$,esc,toast,sheet,closeSheet,pasteRows,classLabel,waPhone}=SJS;
-const VER='81';
+const VER='82';
 const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const CBSE_T=(n,pt,ex,exn)=>({id:'t'+n,name:'Term '+n,comps:[{id:'pt'+n,name:pt,max:10},{id:'nb'+n,name:'Note Book',max:5},{id:'se'+n,name:'SEA',max:5},{id:ex,name:exn,max:80}]});
 const DEF={
@@ -123,7 +123,7 @@ async function LIST(c){if(!FB())return SJS.db.list(c);const q=firebase.firestore
 async function GETS(paths){if(!FB())return(await Promise.all(paths.map(async p=>{const d=await SJS.db.get(p);return d?{id:p.split('/').pop(),...d}:null}))).filter(Boolean);
   const fs=firebase.firestore();return(await Promise.all(paths.map(async p=>{let s;try{s=navigator.onLine?await fs.doc(p).get():await fs.doc(p).get({source:'cache'})}catch(e){try{s=await fs.doc(p).get({source:'cache'})}catch(e2){return null}}return s.exists?{id:s.id,...s.data()}:null}))).filter(Boolean)}
 let PEND=0,RULEERR=false;
-const RULEMSG='<b>The database is refusing the Result Software.</b> The Firestore rules published on Firebase are older than this app, so setup and marks cannot be saved. Fix (Admin, once): open <b>console.firebase.google.com</b> → your project → <b>Firestore Database → Rules</b>, delete everything there, paste the whole of the file <b>firestore.rules</b> from GitHub, and tap <b>Publish</b>. Then reload this page.';
+const RULEMSG='<b>The database is refusing the Exams and Results section.</b> The Firestore rules published on Firebase are older than this app, so setup and marks cannot be saved. Fix (Admin, once): open <b>console.firebase.google.com</b> → your project → <b>Firestore Database → Rules</b>, delete everything there, paste the whole of the file <b>firestore.rules</b> from GitHub, and tap <b>Publish</b>. Then reload this page.';
 const realSet=(path,data,merge)=>FB()?firebase.firestore().doc(path).set(data,merge?{merge:true}:{}):SJS.db.set(path,data,merge);
 function sync(){let el=$('#sync');if(!el){el=document.createElement('div');el.id='sync';document.body.appendChild(el)}const on=navigator.onLine;
   el.className=PEND?'p':on?'':'off';el.textContent=PEND?(on?'⟳ Saving…':'● Offline · '+PEND+' saved on this phone'):(on?'● Online · all saved':'● Offline · you can keep working')}
@@ -236,7 +236,7 @@ function tabList(){let T;if(seeRes()){T=[['dash','Dashboard'],['enter','Enter Ma
 function tabs(){const T=tabList();
   window.SJSNAV_SUB={items:T,act:M.tab,go:id=>{const b=document.querySelector('[data-t="'+id+'"]');if(b)b.click()}};setTimeout(()=>{if(window.SJSNav)SJSNav.refresh()},0);   /* side menu (sjs-nav.js) */
   return `<div class="nav"><div class="nav-in">${T.map(([k,l])=>`<button class="tab ${M.tab===k?'act':''}" data-t="${k}">${l}</button>`).join('')}</div></div>`}
-function render(){const a=$('#app');{const T=tabList();if(T.length&&!T.some(x=>x[0]===M.tab))M.tab=T[0][0]}const h=a.querySelector('.hdr').outerHTML;a.innerHTML=h+tabs()+(RULEERR?'<div class="banner warn" style="margin:12px">'+RULEMSG+'</div>':'')+(M.arch?'<div class="banner warn" style="margin:12px">📁 Viewing old session <b>'+esc(M.arch)+'</b> – read only. <button class="btn sm pri" id="archX">Back to current session</button></div>':'')+'<main id="main"></main><div class="tmeta" style="text-align:center;margin:-100px 0 110px">Result Software · version '+VER+'</div>';
+function render(){const a=$('#app');{const T=tabList();if(T.length&&!T.some(x=>x[0]===M.tab))M.tab=T[0][0]}const h=a.querySelector('.hdr').outerHTML;a.innerHTML=h+tabs()+(RULEERR?'<div class="banner warn" style="margin:12px">'+RULEMSG+'</div>':'')+(M.arch?'<div class="banner warn" style="margin:12px">📁 Viewing old session <b>'+esc(M.arch)+'</b> – read only. <button class="btn sm pri" id="archX">Back to current session</button></div>':'')+'<main id="main"></main><div class="tmeta" style="text-align:center;margin:-100px 0 110px">Exams and Results · version '+VER+'</div>';
   const ax=a.querySelector('#archX');if(ax)ax.onclick=()=>location.reload();
   a.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{if(dirtyN()&&!confirm('Marks not saved. Leave anyway?'))return;clearDirty();M.tab=b.dataset.t;ls('tab',M.tab);render()});
   sync();({dash:vDash,enter:vEnter,cos:vCos,res:vRes,rev:vRev,cards:vCards,ctrl:vCtrl,setup:vSetup}[M.tab]||vEnter)($('#main')).catch(e=>{console.error(e);$('#main').innerHTML='<div class="card empty">Could not open this class. If you are offline, open this class once with the internet on, then it will also work offline.</div>'})}
@@ -247,7 +247,7 @@ function viewSel(S,id='vSel',label='Result for',noExam){return sel(id,label,[...
 function pick(){const cs=visClasses();if(!cs.length){M.cid=null;return false}
   if(!M.cid||!cs.some(c=>c.id===M.cid)){const mine=SJS.myClasses().find(c=>cs.includes(c)),sv=lg('cid');M.cid=sv&&cs.some(c=>c.id===sv)?sv:(mine||cs[0]).id}
   const S=schemeOf(M.cid);M.view=validView(S,M.view);if(!S.terms.some(t=>t.id===M.term))M.term=S.terms[0].id;return true}
-const noMine='<div class="banner warn"><b>No subjects are given to you for marks entry yet.</b> The Exam In-Charge or the Admin gives each teacher their classes and subjects in Result Software → 🔐 Control → Subject teachers. Then open this page again.</div>';
+const noMine='<div class="banner warn"><b>No subjects are given to you for marks entry yet.</b> The Exam In-Charge or the Admin gives each teacher their classes and subjects in Exams and Results → 🔐 Control → Subject teachers. Then open this page again.</div>';
 const noClass0='<div class="banner warn">No classes yet. The Admin adds classes and students in SJS App → Student Attendance. The same students appear here.</div>';
 const noClass=()=>SJS.classes.length&&!seeRes()?noMine:noClass0;
 function guard(e,prop){if(dirtyN()&&!confirm('Marks not saved. Leave anyway?')){e.target.value=M[prop];return false}clearDirty();return true}
@@ -397,7 +397,7 @@ function attCols(cid){const S=schemeOf(cid),L=[];S.terms.forEach(t=>{const cs=at
 const canAtt=(cid,tid)=>(SJS.canClass(cid)||SJS.canView)&&(SJS.isAdmin||!locked('x_'+tid));
 function attSheet(cid,used){const D=C[cid],c=cls(cid),U=attCols(cid),W=2+U.length,h=xlHead('ATTENDANCE – ALL EXAMS','Class '+classLabel(c)+' – days present in each exam',W);
   let nm=('Class '+classLabel(c)).replace(/[\[\]:*?\/\\]/g,' ').slice(0,28);while(used[nm])nm+='_';used[nm]=1;
-  const rows=[...h.rows,[{v:'Type each student’s DAYS PRESENT under each exam, and the WORKING DAYS of each exam in the Working days row (filled in from Setup or what is saved). A box left empty keeps what is saved; type a dash ( - ) to clear it. Half days like 42.5 are fine. Do not change the Roll No column or the grey KEY row. Save, then upload in SJS App → Result Software → Grades & Remarks → 📅 Attendance – Upload filled Excel.',s:14}],
+  const rows=[...h.rows,[{v:'Type each student’s DAYS PRESENT under each exam, and the WORKING DAYS of each exam in the Working days row (filled in from Setup or what is saved). A box left empty keeps what is saved; type a dash ( - ) to clear it. Half days like 42.5 are fine. Do not change the Roll No column or the grey KEY row. Save, then upload in SJS App → Exams and Results → Grades & Remarks → 📅 Attendance – Upload filled Excel.',s:14}],
     [{v:'Roll No',s:3},{v:'Student name',s:3},...U.map(u=>({v:u.name+(locked('x_'+u.tid)?' (locked)':''),s:3}))],
     [{v:'Working days',s:9},{v:'',s:9},...U.map(u=>({v:wdOf(D,u.id)||'',s:9}))],
     [{v:'KEY',s:12},{v:cid,s:12},...U.map(u=>({v:u.id,s:12}))],
@@ -434,7 +434,7 @@ async function attUpload(file,m){let book;try{book=await XLR.read(file)}catch(e)
   const ok=$('#atOk');if(ok)ok.onclick=async()=>{ok.disabled=true;ok.textContent='Saving…';await Promise.all(plan.map(P=>saveMk(P.cid,P.id,{exam:'x_'+P.u.id,subj:'att',...(P.max!==undefined?{max:P.max}:{})},P.ch)));closeSheet();
     toast(navigator.onLine?'Attendance saved':'Attendance saved on this phone – it uploads when the internet returns');M.cos=null;vCos(m)}}
 function stuDownload(cid){const D=C[cid],c=cls(cid),W=STU_F.length,h=xlHead('STUDENT DETAILS',classLabel(c)+' – printed on the report card, also shown in Student Attendance',W);
-  const rows=[...h.rows,[{v:'Fill in or correct the details, save, then upload in Result Software → Grades & Remarks → Upload student details. Do not change the grey Student ID and Roll No columns. Date of birth as DD-MM-YYYY (e.g. 05-08-2010). Gender M or F. A box left empty is not changed – type a dash ( - ) to clear a detail.',s:14}],
+  const rows=[...h.rows,[{v:'Fill in or correct the details, save, then upload in Exams and Results → Grades & Remarks → Upload student details. Do not change the grey Student ID and Roll No columns. Date of birth as DD-MM-YYYY (e.g. 05-08-2010). Gender M or F. A box left empty is not changed – type a dash ( - ) to clear a detail.',s:14}],
     STU_F.map(([,l])=>({v:l,s:3})),
     ...D.students.map(st=>STU_F.map(([k])=>k==='id'?{v:st.id,s:12}:k==='roll'?{v:isNaN(+st.roll)?String(st.roll):+st.roll,s:7}:{v:k==='dob'?dmy(st.dob):(st[k]==null?'':String(st[k])),s:k==='name'?6:13}))];
   XL.save('Student_Details_'+classLabel(c)+'.xlsx',[{name:'Student details',rows,merges:[...h.merges,[4,0,4,W-1]],heights:{...h.heights,4:44,5:34},cols:[13,8,26,11,9,14,22,22,20,13,30,9,14,16],freeze:[3,6]}]);toast('Student details downloaded – '+D.students.length+' students')}
@@ -903,7 +903,7 @@ function examCols(cid){const S=schemeOf(cid),SL=subjOf(cid).filter(s=>canSubj(ci
 function tplDownload(cid,pk){const D=C[cid],c=cls(cid),ex=examCols(cid).filter(e=>e.cols.length&&(pk==='all'||e.t.id===pk||e.c.id===pk));if(!ex.length){toast('No exams to put in the file');return}
   const used={};const sheets=ex.map(e=>{let nm=e.sheet.replace(/[\[\]:*?\/\\]/g,' ').slice(0,28);while(used[nm])nm+='_';used[nm]=1;const W=2+e.cols.length,lk=locked(e.c.id)&&!SJS.isAdmin;
     const h=xlHead('MARKS ENTRY',classLabel(c)+' – '+e.title,W);
-    const rows=[...h.rows,[{v:'Type the marks, or AB for absent. Leave a box empty if the student does not take the subject. Do not change the Roll No column or the grey KEY row. Save, then upload in SJS App → Result Software → Enter Marks.'+(lk?'   🔒 This exam is LOCKED – it will not be uploaded.':''),s:14}],
+    const rows=[...h.rows,[{v:'Type the marks, or AB for absent. Leave a box empty if the student does not take the subject. Do not change the Roll No column or the grey KEY row. Save, then upload in SJS App → Exams and Results → Enter Marks.'+(lk?'   🔒 This exam is LOCKED – it will not be uploaded.':''),s:14}],
       [{v:'Roll No',s:3},{v:'Student name',s:3},...e.cols.map(k=>({v:k.label,s:3}))],
       [{v:'Full marks',s:9},{v:'',s:9},...e.cols.map(k=>({v:k.max,s:9}))],
       [{v:'KEY',s:12},{v:'(do not change this row)',s:12},...e.cols.map(k=>({v:k.id,s:12}))],
@@ -937,7 +937,7 @@ async function tplUpload(cid,file,m){const D=C[cid],c=cls(cid);let book;try{book
         if(v!=='AB'){v=Math.round(v*100)/100;if(v<0||v>mx){errs.push(sh.name+': Roll '+roll+', '+k.label+' – '+v+(v<0?' is below 0':' is more than the full marks '+mx));return}}
         const d=D.marks[k.id],cur=d&&d.m?d.m[st.roll]:undefined;if(cur===v||(cur!=null&&cur!=='AB'&&v!=='AB'&&+cur===v)){same++;return}(ch[k.id]=ch[k.id]||{})[st.roll]=v;n++})}
     rep.push({nm:sh.name,n:n-n0,same:same-s0,err:errs.length-e0,typed,nk,lk:keys.filter(Boolean).length<nk})});
-  if(!found){toast('This is not a marks template from the Result Software. Download the template first, fill it, then upload it.');return}
+  if(!found){toast('This is not a marks template from Exams and Results. Download the template first, fill it, then upload it.');return}
   const ids=[...new Set([...Object.keys(ch),...Object.keys(maxCh)])];
   const byEx={};ids.forEach(id=>{const k=map[id];(byEx[k.e.title]=byEx[k.e.title]||[]).push(k.label+' ('+Object.keys(ch[id]||{}).length+')')});
   sheet(`<h3>Upload marks – ${esc(classLabel(c))}</h3><p class="sub"><b>${n}</b> new or changed marks${same?' · '+same+' already saved (no change)':''}.</p>
@@ -1330,7 +1330,7 @@ window.SJS_DEMO_SEED=D=>{const names=['Lalremruata','Vanlalhriati','Zothanpuii',
   ['vi-a','x-a'].forEach(cid=>{const m={},r={};names.forEach((n,i)=>{m[i+1]=96+((i*5)%14)});D[`c/${cid}/marks/x_t1__att`]={exam:'x_t1',subj:'att',max:110,m};
     cosAreas(G('mid')).forEach((a,j)=>{const g={};names.forEach((n,i)=>g[i+1]=['A','A','B','A','C'][(i+j)%5]);D[`c/${cid}/marks/x_t1__c${skey(a).slice(0,19)}`]={exam:'x_t1',subj:'cos:'+a,m:g}})})};
 
-SJS.boot('Result Software',async()=>{if(FB()&&navigator.onLine)firebase.firestore().doc('mk_cfg/cbse').get({source:'server'}).catch(e=>{if(e&&e.code==='permission-denied'){RULEERR=true;if($('#main'))render()}});
+SJS.boot('Exams and Results',async()=>{if(FB()&&navigator.onLine)firebase.firestore().doc('mk_cfg/cbse').get({source:'server'}).catch(e=>{if(e&&e.code==='permission-denied'){RULEERR=true;if($('#main'))render()}});
   M.tab=lg('tab')||(seeRes()?'dash':'enter');M.view=lg('view')||'t1';M.order=lg('order')||'roll';
   let n=0;const go=()=>{if(++n<3)return;if(n===3||!dirtyN())render()};loadAlloc().then(go);
   SJS.db.watch('mk_cfg/cbse',d=>{if(M.arch)return;if(d){const x=JSON.parse(JSON.stringify(DEF));Object.keys(d).forEach(k=>{if(k==='school')Object.assign(x.school,d.school||{});else x[k]=d[k]});x.schemes.forEach(q=>{if(q.grades==='A+=90, A=75, B=56, C=35, D=0')q.grades='A+=90, A=75, B=56, C=33, D=0'});x.schemes.forEach(q=>q.terms.forEach(t=>t.comps.forEach(c=>{if(c.name==='Sub. Enrichment')c.name='SEA'})));x.schemes.forEach(q=>{const d=DEF.schemes.find(z=>z.id===q.id),pb=d&&d.terms.find(t=>t.solo);if(pb&&!q.terms.some(t=>t.solo))q.terms.push(JSON.parse(JSON.stringify(pb)))});
