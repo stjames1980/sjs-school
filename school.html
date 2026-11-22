@@ -20,7 +20,7 @@
    cal_events/<id>         {date, to, title, type, note}   Admin / Principal
    c/<classId>/fees/status {rows:{roll:{due,months,note}}, upto}   Admin; all staff view */
 const {$,esc,toast,sheet,closeSheet,printHTML,csvDownload,pasteRows,classLabel,fmtDate,todayISO,addDays,parse,iso,MONTHS,DOW,waPhone,normN}=SJS;
-const TABS=[['hw','📚 Homework'],['exam','✍️ Exams'],['cal','📆 Calendar'],['fees','💰 Fees']];
+const TABS=[['hw','Homework'],['exam','Exams'],['cal','Calendar'],['fees','Fee Status']];
 /* ---- Excel writer / reader (same as Exams and Results) ---- */
 const XL=(()=>{const enc=new TextEncoder();let T=null;
   const crc=b=>{if(!T){T=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;T[n]=c>>>0}}let c=-1;for(let i=0;i<b.length;i++)c=T[(c^b[i])&255]^(c>>>8);return(c^-1)>>>0};

@@ -45,7 +45,7 @@ details.grp{border:1px solid var(--line);border-radius:12px;padding:10px 12px;ma
    c/<classId>/marks/<examId>__<subject>   {exam, subj, max, m:{roll: mark or "AB"}, by, byName, at}
    c/<classId>/marks/x_<termId>__att | __rem | __c<Area>   attendance, remarks, co-scholastic grades for a term */
 const {$,esc,toast,sheet,closeSheet,pasteRows,classLabel,waPhone}=SJS;
-const VER='83';
+const VER='84';
 const ROM=['','I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII'];
 const CBSE_T=(n,pt,ex,exn)=>({id:'t'+n,name:'Term '+n,comps:[{id:'pt'+n,name:pt,max:10},{id:'nb'+n,name:'Note Book',max:5},{id:'se'+n,name:'SEA',max:5},{id:ex,name:exn,max:80}]});
 const DEF={
@@ -230,7 +230,7 @@ function autoRemark(r){r={...r,failed:(r.failed||[]).map(noCode),absent:(r.absen
   if(r.p>=90)return'Outstanding performance. Keep it up!';if(r.p>=75)return'Very good performance. Keep working hard.';if(r.p>=60)return'Good. Can do even better with regular study.';if(r.p>=45)return'Satisfactory. Needs more effort and practice.';return'Passed, but must improve with regular study.'}
 
 /* ---------- page frame ---------- */
-function tabList(){let T;if(seeRes()){T=[['dash','Dashboard'],['enter','Enter Marks'],['cos','Grades & Remarks'],['res','Results'],['rev','Final Review'],['cards','Report Cards']];if(isCtrl())T.push(['ctrl','🔐 Control']);if(SJS.isAdmin)T.push(['setup','Setup'])}
+function tabList(){let T;if(seeRes()){T=[['dash','Dashboard'],['enter','Enter Marks'],['cos','Grades & Remarks'],['res','Results'],['rev','Final Review'],['cards','Report Cards']];if(isCtrl())T.push(['ctrl','Control']);if(SJS.isAdmin)T.push(['setup','Setup'])}
   else{T=[['enter','Enter Marks']];if(SJS.myClasses().length)T.push(['cos','Grades & Remarks'])}   /* teachers: marks entry only */
   if(M.arch)T=T.filter(x=>!['enter','cos','setup','ctrl'].includes(x[0]));return T}
 function tabs(){const T=tabList();
@@ -247,7 +247,7 @@ function viewSel(S,id='vSel',label='Result for',noExam){return sel(id,label,[...
 function pick(){const cs=visClasses();if(!cs.length){M.cid=null;return false}
   if(!M.cid||!cs.some(c=>c.id===M.cid)){const mine=SJS.myClasses().find(c=>cs.includes(c)),sv=lg('cid');M.cid=sv&&cs.some(c=>c.id===sv)?sv:(mine||cs[0]).id}
   const S=schemeOf(M.cid);M.view=validView(S,M.view);if(!S.terms.some(t=>t.id===M.term))M.term=S.terms[0].id;return true}
-const noMine='<div class="banner warn"><b>No subjects are given to you for marks entry yet.</b> The Exam In-Charge or the Admin gives each teacher their classes and subjects in Exams and Results → 🔐 Control → Subject teachers. Then open this page again.</div>';
+const noMine='<div class="banner warn"><b>No subjects are given to you for marks entry yet.</b> The Exam In-Charge or the Admin gives each teacher their classes and subjects in Exams and Results → Control → Subject teachers. Then open this page again.</div>';
 const noClass0='<div class="banner warn">No classes yet. The Admin adds classes and students in SJS App → Student Attendance. The same students appear here.</div>';
 const noClass=()=>SJS.classes.length&&!seeRes()?noMine:noClass0;
 function guard(e,prop){if(dirtyN()&&!confirm('Marks not saved. Leave anyway?')){e.target.value=M[prop];return false}clearDirty();return true}
@@ -1177,7 +1177,7 @@ function topTenExcel(){const sel=($('#ttSel')||{}).value||'all',vn=(M.school.vie
     let nm=('Top 10 '+u.title.replace(/^Class\s*/,'').replace(/[()]/g,'')).replace(/[\[\]:*?\/\\]/g,' ').slice(0,31);while(used[nm])nm=nm.slice(0,29)+'_'+Object.keys(used).length;used[nm]=1;
     return{name:nm,portrait:1,rows:[...h.rows,hd.map(H),...u.top.map(r=>[B(r.rank),{v:r.st.name,s:6},...(u.multi?[Cc(secOf(r))]:[]),Cc(isNaN(+r.st.roll)?r.st.roll:+r.st.roll),B(n1(r.tot)),Cc(n1(r.full)),B(n1(r.p)),Cc(r.g||'')]),[],[{v:'Ranks 1 to 10 in merit order; equal percentages share a rank.'+(cfg().rankPassOnly?' Only passed students are ranked.':''),s:0}]],merges:h.merges,heights:h.heights,cols:[8,30,...(u.multi?[9]:[]),9,9,9,11,8],freeze:[0,5]}});
   const opt=(topTenOpts().find(x=>x[0]===sel)||[])[1]||'';XL.save('Top_10_Rank_Holders_'+(sel==='all'?'All_Classes':sel==='allsec'?'All_Sections':opt.replace(/ – .*$/,'').replace(/\s+/g,'_'))+'.xlsx',sheets);toast('Excel downloaded – '+sheets.length+' sheet'+(sheets.length>1?'s':''))}
-/* ---------- 🔐 Control (Admin and Exam In-Charge): subject teachers, lock & last date, change history ---------- */
+/* ---------- Control (Admin and Exam In-Charge): subject teachers, lock & last date, change history ---------- */
 function lockList(){const c=cfg(),L=[];c.schemes.forEach(s=>s.terms.forEach(t=>{t.comps.forEach(cp=>{const o=L.find(x=>x[0]===cp.id);if(!o)L.push([cp.id,(t.solo?'':t.name+' · ')+cp.name,[s.name]]);else if(!o[2].includes(s.name))o[2].push(s.name)});if(!L.some(x=>x[0]==='x_'+t.id))L.push(['x_'+t.id,t.name+' – grades, attendance & remarks',[]])}));L.push(['x_fin','Final result review (grace marks & decisions)',[]]);return L}
 const tName=uid=>{const t=SJS.teachers.find(x=>x.uid===uid);return t?t.name:'(teacher removed)'};
 /* class teacher: the app account chosen in Student Attendance; if none, only the typed name (that teacher cannot enter marks as class teacher yet) */
@@ -1376,7 +1376,7 @@ async function vSetup(m){m=$('#main')||m;const c=JSON.parse(JSON.stringify(cfg()
   <div class="card"><h2>Subjects for each class</h2><p class="sub">Comma separated, in report-card order. Leave empty to use the group's usual subjects. <b>Drawing*</b> = grade only (not counted in the total). <b>Physics [70+30]</b> = theory 70 + practical 30. <b>English {Written 30, Reading 10, Dictation 10}</b> = a subject with parts (aspects) and their full marks in each exam. In Class XI–XII list every subject offered – a student's subjects are the ones that have marks.</p>
     ${clsList.map(k=>{const key='cls:'+nc(k.cls);const leg=((OLD&&OLD.subj)||{})[k.id];return `<label class="f" style="margin-bottom:8px">Class ${esc(k.cls)} <span class="tmeta">${esc(schemeOf(k.id).name)}</span><input class="inp" data-cs="${esc(key)}" value="${esc((c.subj||{})[key]||(leg&&leg.length?leg.join(', '):''))}" placeholder="${esc(schemeOf(k.id).subjects)}"></label>`}).join('')||'<div class="empty">No classes yet.</div>'}</div>
   <div class="card"><h2>🗂 New session (end of the year)</h2><p class="sub">When all results of this session are final: saves a copy of every class (marks, attendance, remarks, decisions, students), checks it, then clears the marks so the new session starts empty. Setup, subjects, students and photos stay. Old sessions open read-only from the Dashboard.</p><button class="btn danger" id="nsB">🗂 Start a new session…</button></div>
-  <div class="card"><h2>🔒 Lock exams &amp; last dates</h2><p class="sub">Moved to <b>🔐 Control</b> – there the Admin and the Exam In-Charge lock exams, set the last date for marks entry, give subjects to teachers and see the change history.</p></div>
+  <div class="card"><h2>🔒 Lock exams &amp; last dates</h2><p class="sub">Moved to <b>Control</b> – there the Admin and the Exam In-Charge lock exams, set the last date for marks entry, give subjects to teachers and see the change history.</p></div>
   <div class="row" style="position:sticky;bottom:0;z-index:6;background:var(--bg,#f4f6fb);padding:10px 0 64px;border-top:1px solid var(--line,#dde2ea)"><button class="btn danger sm" id="rst">Back to CBSE defaults</button><div class="grow"></div><span class="tmeta">Nothing is kept until you tap →</span><button class="btn pri" id="svSet">Save setup</button></div>`;
   m.querySelectorAll('[data-rs]').forEach(b=>b.onclick=()=>{const i=+b.dataset.rs,d=DEF.schemes.find(q=>q.id===c.schemes[i].id);if(!d||!confirm('RESET “'+c.schemes[i].name+'”?\n\nThis REMOVES the exams, subjects and grades you typed for this group and puts back the built-in ones.\n\nIf you only want to SAVE your changes, press Cancel and use the Save setup button.'))return;const x=JSON.parse(JSON.stringify(cfg()));x.schemes[i]=JSON.parse(JSON.stringify(d));CFG=x;WRITE('mk_cfg/cbse',x,false);toast('Group reset to the built-in default');vSetup(m)});
   $('#nsB').onclick=newSessionDlg;

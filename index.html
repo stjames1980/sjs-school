@@ -465,7 +465,7 @@ function render(){
   if(S.err){ $('#main').innerHTML=`<div class="banner err"><div>${esc(S.err)}</div></div>`; return; }
   if(!auth){ return; }
   const vs=views(); if(!vs.some(v=>v[0]===S.view)) S.view='home';
-  try{localStorage.setItem('sjs-nav-role',JSON.stringify(S.user?{staff:isStaff(),canView:!!S.canView,isAdmin:!!S.isAdmin,school:c.school,session:c.session,user:staffIdOf(S.user.email)||S.user.email}:{staff:false,school:c.school,session:c.session}))}catch(e){} if(window.SJSNav)SJSNav.refresh();
+  try{localStorage.setItem('sjs-nav-role',JSON.stringify(S.user?{staff:isStaff(),canView:!!S.canView,isAdmin:!!S.isAdmin,role:S.role,name:((S.myLink&&S.teachers.find(t=>t.id===S.myLink.teacherId))||S.teachers.find(t=>t.uid===S.user.uid)||{}).name||'',school:c.school,session:c.session,user:staffIdOf(S.user.email)||S.user.email}:{staff:false,school:c.school,session:c.session}))}catch(e){} if(window.SJSNav)SJSNav.refresh();
   $('.nav').classList.toggle('hidden',!S.user||vs.length<2);
   $('#nav').innerHTML=vs.map(([k,l])=>`<button class="tab ${S.view===k?'act':''}" data-go="${k}">${l}</button>`).join('');
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));

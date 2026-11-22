@@ -94,7 +94,8 @@ const SJS={$,esc,MONTHS,DOW,pad,iso,parse,todayISO,fmtDate,addDays,toast,sheet,c
     try{const tq=await this.db.list('att_teachers');this.teachers=tq.filter(t=>t.active!==false).sort((a,b)=>(a.order??999)-(b.order??999));this.me=tq.find(t=>t.uid===this.user.uid)||null}catch(e){}
     try{const cq=await this.db.list('classes');this.classes=cq.sort(window.SJSclsSort)}catch(e){}
     try{const m=await this.db.get('sjs_tt/main');if(m&&m.school)Object.assign(this.school,{name:m.school.name||this.school.name,place:m.school.place||this.school.place,session:m.school.session||this.school.session})}catch(e){}
-    $('#app').querySelector('.hdr').outerHTML=this.header(document.title.split('–')[0].trim())}
+    $('#app').querySelector('.hdr').outerHTML=this.header(document.title.split('–')[0].trim());
+    try{if(window.SJSNav&&SJSNav.setRole)SJSNav.setRole({name:this.me&&this.me.name,role:this.role,isAdmin:this.isAdmin,canView:this.canView,staff:this.isStaff,session:this.school.session})}catch(e){}}
 };
 window.SJS=SJS;
 })();
