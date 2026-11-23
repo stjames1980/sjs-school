@@ -201,6 +201,9 @@ service cloud.firestore {
       return spRole() == 'scorer'
         || (isStaff() && get(/databases/$(database)/documents/sports/main).data.get('app', {}).get('teachersScore', false) == true);
     }
+    function spSubOk(sid) {
+      return get(/databases/$(database)/documents/sports/main/s/$(sid)).data.get('subOk', false) == true;
+    }
     function spOpen(sid) {
       return get(/databases/$(database)/documents/sports/main/s/$(sid)).data.get('locked', false) != true;
     }
@@ -218,7 +221,7 @@ service cloud.firestore {
     match /sports/main/s/{sid} { allow read: if signedIn(); allow write: if spManager(); }
     match /sports/main/s/{sid}/{coll}/{doc} {
       allow read: if signedIn();
-      allow write: if spManager() || (coll == 'r' && spRecorder() && spOpen(sid));
+      allow write: if spManager() || (coll == 'r' && spRecorder() && spOpen(sid)) || (coll == 'e' && spRecorder() && spOpen(sid) && spSubOk(sid));
     }
   }
 }
