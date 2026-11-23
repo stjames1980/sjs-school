@@ -204,14 +204,16 @@ service cloud.firestore {
     function spOpen(sid) {
       return get(/databases/$(database)/documents/sports/main/s/$(sid)).data.get('locked', false) != true;
     }
+    function spGiveRole() {
+      return (isAdmin() && (request.resource.data.role == 'incharge' || request.resource.data.role == 'scorer')) || (spRole() == 'incharge' && request.resource.data.role == 'scorer' && (resource == null || resource.data.role == 'scorer'));
+    }
     match /sports_roles/{email} {
       allow get: if signedIn() && (spManager() || spEmail() == email);
       allow list: if spManager();
-      allow create, update: if (isAdmin() && request.resource.data.role in ['incharge', 'scorer'])
-        || (spRole() == 'incharge' && request.resource.data.role == 'scorer'
-            && (resource == null || resource.data.role == 'scorer'));
+      allow create, update: if spGiveRole();
       allow delete: if isAdmin() || (spRole() == 'incharge' && resource.data.role == 'scorer');
     }
+    match /sports_public/{doc} { allow read: if true; allow write: if spManager() || spRecorder(); }
     match /sports/main { allow read: if signedIn(); allow write: if spManager(); }
     match /sports/main/s/{sid} { allow read: if signedIn(); allow write: if spManager(); }
     match /sports/main/s/{sid}/{coll}/{doc} {
