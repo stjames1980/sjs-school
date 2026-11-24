@@ -223,5 +223,16 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if spManager() || (coll == 'r' && spRecorder() && spOpen(sid)) || (coll == 'e' && spRecorder() && spOpen(sid) && spSubOk(sid));
     }
+  
+    // ===== SJS Entrance Test (admission entrance test results) =====
+    // Admin + Exam In-Charge : everything (setup, candidates, marks, results).
+    // Other confirmed staff  : view; enter marks only when "Teachers can enter marks" is on.
+    function enManager() { return isAdmin() || myRole() == 'exam'; }
+    function enTeachersMarks() {
+      return exists(/databases/$(database)/documents/entrance/main)
+        && get(/databases/$(database)/documents/entrance/main).data.get('teachersMarks', false) == true;
+    }
+    match /entrance/main         { allow read: if isStaff(); allow write: if enManager(); }
+    match /entrance/main/c/{cls} { allow read: if isStaff(); allow write: if enManager() || (isStaff() && enTeachersMarks()); }
   }
 }

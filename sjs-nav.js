@@ -17,6 +17,7 @@ var IC={
  students:'<circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6.5 7-6.5s7 2.5 7 6.5"/><path d="M16 3.6a4 4 0 0 1 0 8.8"/><path d="M22 21c0-3-1.8-5.2-4.5-6"/>',
  tt:'<rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/><path d="M12 12.5v3.2l2.2 1.4"/>',
  marks:'<rect x="5" y="3.5" width="14" height="18" rx="2"/><path d="M9 3.5h6v3H9z"/><path d="m9 13.5 2 2 4-4"/>',
+ cap:'<path d="M2 9.5 12 5l10 4.5-10 4.5z"/><path d="M6 11.3V16c0 1.5 2.7 3 6 3s6-1.5 6-3v-4.7"/><path d="M22 9.5V15"/>',
  trophy:'<path d="M8 21h8M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4"/>',
  book:'<path d="M2 5h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2z"/><path d="M22 5h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z"/>',
  pen:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
@@ -171,6 +172,7 @@ function items(){var r=role(),staff=r.staff!==false,cv=!!r.canView,ad=!!r.isAdmi
   L.push({h:'Academics'});if(staff)L.push({u:'attendance.html',t:'Student Attendance',i:'students'});L.push({u:'timetable.html',t:'Time Table',i:'tt'});if(staff)L.push({u:'marks.html',t:'Exams and Results',i:'marks',sub:1});
   if(staff)L.push({h:'School Diary'},{u:'school.html#hw',t:'Homework',i:'book'},{u:'school.html#exam',t:'Exams',i:'pen'},{u:'school.html#cal',t:'Calendar',i:'cal'},{u:'school.html#fees',t:'Fee Status',i:'fee'});
   L.push({h:'Events'},{u:'https://stjames1980.github.io/sjs-sports/',t:'Sports Meet',i:'trophy',ext:1});
+  if(staff)L.push({u:'https://stjames1980.github.io/sjs-entrance/',t:'Entrance Test',i:'cap',ext:1});
   if(cv||ad){L.push({h:ad?'Admin':'Management'},{u:'index.html#dash',t:'Dashboard',i:'dash'},{u:'index.html#classes',t:'All Classes',i:'school'},{u:'index.html#leave',t:'Leave',i:'leave'});if(ad)L.push({u:'index.html#teachers',t:'Teachers',i:'staff'});L.push({u:'index.html#register',t:'Register',i:'reg'},{u:'index.html#report',t:'Teacher Report',i:'report'});if(ad)L.push({u:'index.html#settings',t:'Settings',i:'gear'})}
   return L}
 function tabsFor(){var r=role(),staff=r.staff!==false;

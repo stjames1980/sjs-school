@@ -15,6 +15,7 @@ St. James H.S. School, Gongrai · one app for all staff
 | ✍️ Exams | confirmed staff | Date sheet, **my invigilation duty**, seat plan and "where does this student sit?". |
 | 📆 Calendar | confirmed staff | Holidays, exams, CCA days, PTMs. The next 14 days show on Home. |
 | 💰 Fee Status | confirmed staff | Dues for each class, pasted from the Fee Collection workbook, with WhatsApp reminders. |
+| 🎓 Entrance Test | Admin + Exam In-Charge (teachers view, or enter marks when allowed) | Admission entrance test Nursery – XI: candidates, admit cards, marks, merit list, waiting list, A4 PDF/Excel results. Separate app at stjames1980.github.io/sjs-entrance, same logins. |
 | Admin tiles | Admin email only | Teacher dashboard, leave approvals, confirm teachers, register (Excel), reports, settings. |
 
 The app uses your Firebase project **`sjs-timetable`**. The settings are already in `config.js`.
