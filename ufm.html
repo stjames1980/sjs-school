@@ -777,23 +777,30 @@ function gate(kind,extra){
  const M={
   nosdk:`${head}<p>Could not load. Check the internet connection and open again.</p><button class="btn pri" id="grl">Reload</button>`,
   nocfg:`${head}<p>The SJS App's Firebase settings could not be found from this page.</p><p class="note">Keep <b>ufm.html</b> in the same GitHub repository as the SJS App (next to marks.html), then reload.</p><button class="btn pri" id="grl">Reload</button>`,
-  signin:`${head}<p>Please sign in on the SJS App Home screen first.</p><a class="btn pri" href="./">Go to SJS Home</a>`,
+  signin:`${head}<p>Please sign in on the SJS App Home screen first.</p><a class="btn pri" href="./">Go to SJS Home</a><p class="note" style="margin-top:16px;font-size:12px">Firebase project: ${esc(S.cfg?.projectId||'?')} · signed-in keys on this browser: ${esc((S.diag?.signed||[]).join(', ')||'none')} · found: ${esc((S.diag?.found||[]).join(', ')||'none')}</p>`,
   wait:`${head}<p>Checking your access…</p>`,
   denied:`${head}<p>UFM Record is confidential. It opens only for the <b>Admin</b>, <b>Principal</b> and <b>Exam In-Charge</b>.</p><a class="btn" href="./">← Back to SJS Home</a>`,
   error:`${head}<p>Something went wrong: ${esc(extra||'')}</p><button class="btn pri" id="grl">Reload</button>`};
  g.innerHTML=`<div class="gbox">${M[kind]}</div>`;const rl=$('#grl');if(rl)rl.onclick=()=>location.reload();
 }
+function idbAuthKeys(){return new Promise(res=>{try{const rq=indexedDB.open('firebaseLocalStorageDb');rq.onerror=()=>res([]);rq.onupgradeneeded=()=>{};rq.onsuccess=()=>{const db=rq.result;try{if(!db.objectStoreNames.contains('firebaseLocalStorage')){db.close();res([]);return}const g=db.transaction('firebaseLocalStorage','readonly').objectStore('firebaseLocalStorage').getAll();g.onsuccess=()=>{db.close();res((g.result||[]).filter(r=>/^firebase:authUser:/.test(r.fbase_key||'')).map(r=>{const p=r.fbase_key.split(':');return{apiKey:p[2],app:p.slice(3).join(':'),value:r.value||{}}}))};g.onerror=()=>{db.close();res([])}}catch(e){db.close();res([])}}}catch(e){res([])}})}
 async function findConfig(){
- if(UFM_FIREBASE_OVERRIDE&&UFM_FIREBASE_OVERRIDE.apiKey)return UFM_FIREBASE_OVERRIDE;
- if(window.SJS_FIREBASE&&window.SJS_FIREBASE.apiKey)return window.SJS_FIREBASE;
- const K='sjs-ufm-fbcfg',keys=['apiKey','authDomain','projectId','storageBucket','messagingSenderId','appId','measurementId'];
- const grab=t=>{const o={};keys.forEach(k=>{const m=t.match(new RegExp('["\']?'+k+'["\']?\\s*:\\s*["\']([^"\']+)["\']'));if(m)o[k]=m[1]});return o.apiKey&&o.projectId?o:null};
- const queue=['marks.html','school.html','attendance.html','index.html','timetable.html'],seen=new Set();
+ if(UFM_FIREBASE_OVERRIDE&&UFM_FIREBASE_OVERRIDE.apiKey)return{cfg:UFM_FIREBASE_OVERRIDE,app:'[DEFAULT]'};
+ const signed=await idbAuthKeys();
+ const keys=['apiKey','authDomain','projectId','storageBucket','messagingSenderId','appId','measurementId'];
+ const cands=[];const addC=c=>{if(c&&c.apiKey&&c.projectId&&!cands.some(x=>x.apiKey===c.apiKey&&x.projectId===c.projectId))cands.push(c)};
+ if(window.SJS_FIREBASE)addC(window.SJS_FIREBASE);
+ const grabAll=t=>{const re=/["']?apiKey["']?\s*:\s*["']([^"']+)["']/g;let m;while((m=re.exec(t))){const st=t.lastIndexOf('{',m.index),en=t.indexOf('}',m.index);if(st<0||en<0)continue;const blk=t.slice(st,en+1),o={};keys.forEach(k=>{const r=blk.match(new RegExp('["\']?'+k+'["\']?\\s*:\\s*["\']([^"\']+)["\']'));if(r)o[k]=r[1]});addC(o)}};
+ const queue=['index.html','marks.html','school.html','attendance.html','timetable.html'],seen=new Set();
  while(queue.length&&seen.size<16){const u=queue.shift();if(seen.has(u))continue;seen.add(u);let t='';
-  try{const r=await fetch(u,{cache:'no-cache'});if(!r.ok)continue;t=await r.text()}catch(e){continue}
-  const c=grab(t);if(c){lsSet(K,c);return c}
+  try{const r=await fetch(u,{cache:'no-store'});if(!r.ok)continue;t=await r.text()}catch(e){continue}
+  grabAll(t);
   if(/\.html$/.test(u))[...t.matchAll(/<script[^>]+src=["']([^"':?#]+\.js)/gi)].forEach(m=>{const f=m[1].replace(/^\.\//,'');if(!/sjs-nav|sjs-common|(^|\/)sw\.js/.test(f)&&!seen.has(f))queue.push(f)})}
- return lsGet(K);
+ S.diag={signed:signed.map(x=>x.apiKey.slice(0,10)+'…'+(x.app!=='[DEFAULT]'?' ('+x.app+')':'')),found:cands.map(c=>c.projectId)};
+ for(const sg of signed){const c=cands.find(x=>x.apiKey===sg.apiKey);if(c){lsSet('sjs-ufm-fbcfg',c);return{cfg:c,app:sg.app}}}
+ if(signed.length){const sg=signed[0],ad=sg.value.authDomain||'';const pid=ad.replace(/\.(firebaseapp\.com|web\.app)$/,'');if(pid)return{cfg:{apiKey:sg.apiKey,authDomain:ad,projectId:pid},app:sg.app}}
+ if(cands.length){lsSet('sjs-ufm-fbcfg',cands[0]);return{cfg:cands[0],app:'[DEFAULT]'}}
+ const old=lsGet('sjs-ufm-fbcfg');return old?{cfg:old,app:'[DEFAULT]'}:null;
 }
 async function checkRole(u){
  const RK='sjs-role-'+u.uid,saved=lsGet(RK);let isAdmin=false,role='teacher';
@@ -817,10 +824,10 @@ async function boot(){
  buildNav();derive();fillSess();go();setSync('Connecting…');
  if(typeof firebase==='undefined'){gate('nosdk');return}
  gate('wait');
- const cfg=await findConfig();if(!cfg){gate('nocfg');return}
- try{if(!firebase.apps.length)firebase.initializeApp(cfg)}catch(e){gate('error',e.message);return}
- S.fs=firebase.firestore();try{await S.fs.enablePersistence({synchronizeTabs:true})}catch(e){}
- firebase.auth().onAuthStateChanged(async u=>{
+ const fc=await findConfig();if(!fc){gate('nocfg');return}
+ let app;try{app=fc.app&&fc.app!=='[DEFAULT]'?firebase.initializeApp(fc.cfg,fc.app):(firebase.apps.length?firebase.app():firebase.initializeApp(fc.cfg))}catch(e){gate('error',e.message);return}
+ S.cfg=fc.cfg;S.fs=app.firestore();try{await S.fs.enablePersistence({synchronizeTabs:true})}catch(e){}
+ app.auth().onAuthStateChanged(async u=>{
   stopSubs();
   if(!u){S.user=null;gate('signin');setSync('Not signed in');refresh();return}
   S.user=u;gate('wait');
