@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UFM Record · SJS App</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+/* VOICE: the Exam In-charge's office register — formal, exact, calm, never alarming
+   IDEA: a bound UFM register of numbered case slips, each stamped with an offence seal
+   PICTURE: the live register and its seals (1st gold, 2nd orange, 3rd crimson) are the picture
+   COLOUR and TYPE: crest navy field, crimson cross accent, gold rule; Plus Jakarta Sans UI, Source Serif 4 letters
+   LAYOUT: crest bar on top, side rail on desktop, bottom bar on phone, one working panel */
+:root{color-scheme:light dark;
+--bg:light-dark(#f3f5fa,#0b1222);--card:light-dark(#ffffff,#131c31);--ink:light-dark(#14213d,#e6ebf5);
+--mut:light-dark(#5b6782,#9aa6c0);--line:light-dark(#dfe4ee,#26324d);--soft:light-dark(#eef1f8,#1a2540);
+--navy:#1b2f5b;--navy2:#13234a;--red:#b3202a;--gold:#c9a227;
+--l1:light-dark(#a87b00,#e7c25a);--l1b:light-dark(#fff6d9,#3a3110);
+--l2:light-dark(#c2410c,#fb923c);--l2b:light-dark(#ffeadb,#3d2312);
+--l3:light-dark(#b3202a,#f87171);--l3b:light-dark(#fde2e4,#401a1e);
+--ok:light-dark(#0f7a4a,#4ade80);--okb:light-dark(#dcf5e9,#123425)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Plus Jakarta Sans",system-ui,sans-serif;overflow-x:clip}
+button,input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3{margin:0;line-height:1.15;text-wrap:balance}
+.top{position:sticky;top:0;z-index:20;background:var(--navy);color:#fff;display:flex;align-items:center;gap:12px;padding:8px max(2vw,12px);border-bottom:3px solid var(--gold)}
+.top img{width:42px;height:42px;border-radius:50%;background:#fff;flex:none}
+.brand{flex:1;line-height:1.2}.brand b{display:block;font-size:17px;font-weight:800}.brand span{font-size:12px;opacity:.8}
+.top select{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:10px;padding:8px 10px;min-height:40px}
+.top select option{color:#14213d}
+.sync{font-size:11px;padding:4px 9px;border-radius:99px;background:rgba(255,255,255,.14);white-space:nowrap}
+.sync.on{background:#1f7a4f}
+.back{color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.3);white-space:nowrap}
+.uchip{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:99px;width:40px;height:40px;font-weight:800;cursor:pointer;flex:none}
+.gate{position:fixed;inset:61px 0 0 0;z-index:40;background:var(--bg);display:grid;place-items:center;padding:20px}
+.gate[hidden]{display:none}
+.gbox{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:28px;max-width:460px;width:100%;text-align:center}
+.gbox img{width:96px;height:96px}.gbox h2{font-size:24px;margin:12px 0 6px}.gbox p{color:var(--mut);margin:0 0 16px}
+.gbox ol{text-align:left;color:var(--mut);font-size:14px;padding-left:20px}
+.gbtn{display:inline-flex;align-items:center;gap:10px;min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--line);background:#fff;color:#1f1f1f;font-weight:700;cursor:pointer}
+.shell{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:calc(100vh - 61px)}
+.rail{background:var(--card);border-right:1px solid var(--line);padding:14px 10px;position:sticky;top:61px;height:calc(100vh - 61px);overflow:auto}
+.rail a,.more a{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;color:var(--ink);text-decoration:none;font-weight:600;min-height:44px}
+.rail a:hover,.more a:hover{background:var(--soft)}
+.rail a.on{background:var(--navy);color:#fff}
+.rail svg,.bnav svg,.more svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.rail .cap{font-size:12px;color:var(--mut);padding:14px 12px 4px}
+main{padding:clamp(14px,2.4vw,28px);max-width:1280px;width:100%}
+.bnav{display:none}
+.view{display:none}.view.on{display:block;animation:in .25s ease}
+@keyframes in{from{opacity:0;transform:translateY(6px)}}
+@media (prefers-reduced-motion:reduce){.view.on{animation:none}}
+.head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:16px}
+.head h1{font-size:clamp(24px,3vw,34px);font-weight:800}
+.head p{margin:4px 0 0;color:var(--mut)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px}
+.card h3{font-size:15px;margin-bottom:12px}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.kpi b{display:block;font-size:clamp(26px,3vw,34px);font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums}
+.kpi span{font-size:13px;color:var(--mut)}
+.kpi.hero{background:var(--navy);color:#fff;border-color:var(--navy)}.kpi.hero span{color:#cdd6ea}
+.kpi.k3 b{color:var(--l3)}.kpi.k2 b{color:var(--l2)}
+.bar{display:grid;grid-template-columns:minmax(70px,120px) minmax(0,1fr) 34px;gap:10px;align-items:center;padding:5px 0;font-size:14px}
+.bar .bl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt{height:12px;background:var(--soft);border-radius:99px;overflow:hidden}
+.bt i{display:block;height:100%;background:var(--navy);border-radius:99px;transition:width .5s}
+:root:not([data-theme=light]) .bt i{background:light-dark(var(--navy),#6f8fd6)}
+:root .bt i.c1{background:var(--l1)}:root .bt i.c2{background:var(--l2)}:root .bt i.c3{background:var(--l3)}
+.bar b{text-align:right;font-variant-numeric:tabular-nums}
+.seal{display:inline-grid;place-items:center;min-width:44px;padding:3px 8px;border-radius:99px;font-size:12px;font-weight:800;border:1.5px solid}
+.s1{color:var(--l1);background:var(--l1b)}.s2{color:var(--l2);background:var(--l2b)}.s3{color:var(--l3);background:var(--l3b)}
+.tag{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:700;background:var(--soft);color:var(--mut);white-space:nowrap}
+.tag.ok{background:var(--okb);color:var(--ok)}.tag.pend{background:var(--l2b);color:var(--l2)}.tag.left{background:var(--l3b);color:var(--l3)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border-radius:11px;border:1px solid var(--line);background:var(--card);font-weight:700;cursor:pointer;white-space:nowrap;text-decoration:none;color:var(--ink)}
+.btn:hover{border-color:var(--navy)}
+.btn.pri{background:var(--navy);border-color:var(--navy);color:#fff}
+.btn.red{background:var(--red);border-color:var(--red);color:#fff}
+.btn.ghost{background:transparent}
+.btn.sm{min-height:36px;padding:0 12px;font-size:13px}
+.btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.filters{display:grid;grid-template-columns:minmax(0,2fr) repeat(5,minmax(0,1fr));gap:10px;margin-bottom:12px}
+label.f{display:block;font-size:13px;font-weight:600;color:var(--mut)}
+label.f>span{display:block;margin-bottom:5px}
+.in,select.in,textarea.in{width:100%;min-height:44px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);font-size:16px;color:var(--ink)}
+textarea.in{min-height:90px;resize:vertical;line-height:1.45}
+.in:focus{border-color:var(--navy);outline:none;box-shadow:0 0 0 3px light-dark(#dbe3f5,#24345c)}
+.form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+.form .w2{grid-column:span 2}.form .w4{grid-column:1/-1}
+.seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{flex:1;min-height:44px;border:0;background:var(--card);font-weight:700;cursor:pointer}
+.seg button.on{background:var(--navy);color:#fff}
+.newwrap{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;align-items:start}
+.preview{position:sticky;top:80px}
+.offence{border-radius:14px;padding:16px;border:2px solid var(--line);background:var(--soft)}
+.offence.o1{border-color:var(--l1);background:var(--l1b)}.offence.o2{border-color:var(--l2);background:var(--l2b)}.offence.o3{border-color:var(--l3);background:var(--l3b)}
+.offence .big{font-size:30px;font-weight:800;line-height:1.1}
+.offence small{display:block;color:var(--mut);font-size:13px}
+.hist{list-style:none;margin:10px 0 0;padding:0;font-size:13px}
+.hist li{padding:8px 0;border-top:1px dashed var(--line)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{font-size:12px;text-align:left;color:var(--mut);font-weight:700;padding:10px 8px;border-bottom:2px solid var(--line);white-space:nowrap;background:var(--card);position:sticky;top:0}
+td{padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+td small{display:block;color:var(--mut);font-size:12px}
+tbody tr{cursor:pointer}tbody tr:hover td{background:var(--soft)}
+td.ref{font-weight:700;color:var(--navy);white-space:nowrap;font-variant-numeric:tabular-nums}
+:root:not([data-theme=light]) td.ref{color:light-dark(var(--navy),#9db4ec)}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+td.act{font-size:12px;font-weight:700;max-width:160px}
+.tw{overflow:auto;max-height:70vh;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+.empty{padding:40px 20px;text-align:center;color:var(--mut)}
+.empty b{display:block;color:var(--ink);font-size:17px;margin-bottom:6px}
+.list{display:grid;gap:8px}
+.mini{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:12px;cursor:pointer;background:var(--card)}
+.mini:hover{border-color:var(--navy)}
+.mini b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mini span{font-size:12px;color:var(--mut)}
+.stu{border:1px solid var(--line);border-radius:16px;background:var(--card);overflow:hidden}
+.stu header{display:flex;gap:14px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line)}
+.stu .av{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#fff;background:var(--navy);flex:none}
+.stu h3{font-size:16px}.stu header p{margin:2px 0 0;font-size:13px;color:var(--mut)}
+.tl{list-style:none;margin:0;padding:6px 16px 12px}
+.tl li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;padding:10px 0;border-bottom:1px dashed var(--line);align-items:start;cursor:pointer}
+.tl li:last-child{border:0}
+.paperwrap{background:light-dark(#d9deea,#0a0f1c);border-radius:16px;padding:clamp(8px,2vw,24px);overflow:auto}
+.lettergrid{display:grid;grid-template-columns:320px minmax(0,1fr);gap:16px;align-items:start}
+.gtbl td{vertical-align:middle}.gtbl tbody tr{cursor:default}
+.gtbl .in{min-height:38px;font-size:14px;padding:6px 8px}
+.rules h2{font-size:18px;margin:22px 0 8px;color:var(--navy)}
+:root:not([data-theme=light]) .rules h2{color:light-dark(var(--navy),#9db4ec)}
+.rules p,.rules li{max-width:75ch}
+.lvl{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.lvl div{border-radius:14px;padding:16px;border:2px solid}
+.lvl b{display:block;font-size:22px;font-weight:800}
+.lvl .s1{border-color:var(--l1)}.lvl .s2{border-color:var(--l2)}.lvl .s3{border-color:var(--l3)}
+.banner{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:12px;background:var(--l1b);border:1px solid var(--l1);margin-bottom:14px;font-size:14px}
+dialog{border:0;border-radius:18px;padding:0;background:var(--card);color:var(--ink);width:min(640px,94vw);max-height:90vh;box-shadow:0 30px 80px rgba(0,0,0,.35)}
+dialog::backdrop{background:rgba(10,18,40,.55)}
+.dh{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);z-index:1}
+.dh h3{font-size:17px}
+.db{padding:16px 18px}
+.df{display:flex;flex-wrap:wrap;gap:8px;padding:14px 18px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--card)}
+.dl{display:grid;grid-template-columns:150px minmax(0,1fr);gap:6px 14px;font-size:14px;margin:0}
+.dl dt{color:var(--mut)}.dl dd{margin:0;font-weight:600}
+.x{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--card);cursor:pointer;font-size:20px;line-height:1}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%) translateY(20px);background:#14213d;color:#fff;padding:12px 18px;border-radius:12px;font-weight:600;opacity:0;pointer-events:none;transition:.25s;z-index:60;max-width:90vw}
+.toast.on{opacity:1;transform:translateX(-50%)}
+.more{display:grid;gap:4px;padding:10px}
+.note{font-size:13px;color:var(--mut)}
+.listsgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.listsgrid textarea{min-height:160px;font-size:14px}
+.chk{display:flex;gap:8px;align-items:center;font-size:14px;font-weight:600;min-height:44px}
+.chk input{width:20px;height:20px}
+@media(max-width:1100px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.filters{grid-template-columns:repeat(3,minmax(0,1fr))}.filters .wide{grid-column:1/-1}.newwrap,.lettergrid{grid-template-columns:minmax(0,1fr)}.preview{position:static}.listsgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:820px){
+ .shell{display:block}.rail{display:none}
+ main{padding-bottom:96px}
+ .bnav{display:grid;grid-template-columns:repeat(5,1fr);position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--card);border-top:1px solid var(--line);padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+ .bnav a{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;font-weight:700;color:var(--mut);text-decoration:none;min-height:48px;justify-content:center;border-radius:10px}
+ .bnav a.on{color:var(--navy)}
+ :root:not([data-theme=light]) .bnav a.on{color:light-dark(var(--navy),#9db4ec)}
+ .bnav a.fab span.c{width:46px;height:46px;border-radius:50%;background:var(--red);color:#fff;display:grid;place-items:center;margin-top:-22px;box-shadow:0 6px 16px rgba(179,32,42,.4)}
+ .g2,.g3{grid-template-columns:minmax(0,1fr)}
+ .form{grid-template-columns:repeat(2,minmax(0,1fr))}.form .w2{grid-column:1/-1}
+ .top .brand span{display:none}
+}
+@media(max-width:600px){
+ .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .filters{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .listsgrid,.lvl{grid-template-columns:minmax(0,1fr)}
+ .dl{grid-template-columns:minmax(0,1fr)}.dl dt{margin-top:6px}
+ .stack thead{display:none}.stack tr{display:grid;padding:10px 12px;border-bottom:1px solid var(--line)}
+ .stack td{display:flow-root;border:0;padding:3px 0;padding-inline-start:7.5em;text-align:start;max-width:none}
+ .stack td::before{content:attr(data-l);float:inline-start;width:7em;margin-inline-start:-7.5em;color:var(--mut);font-size:12px;font-weight:600}
+ .stack td:empty{display:none}.tw{max-height:none}
+ .top select{max-width:110px;padding:6px 8px}.back{padding:8px}.back span{display:none}.brand b{font-size:15px}.top img{width:36px;height:36px}
+ #lsel{min-height:150px!important}
+}
+@media(max-width:430px){.sync{display:none}}
+</style>
+</head>
+<body>
+<header class="top">
+ <img id="logo" alt="St. James H.S. School crest" src="data:image/webp;base64,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">
+ <div class="brand"><b>UFM Record</b><span id="schoolLine">St. James H.S. School · Unfair Means Register</span></div>
+ <a class="back" href="./" title="Back to SJS App">←<span> SJS App</span></a><span class="sync" id="sync">Offline</span>
+ <select id="sessSel" aria-label="Academic session"></select>
+ <button class="uchip" id="uchip" hidden aria-label="Account"></button>
+</header>
+<div class="gate" id="gate"></div>
+<div class="shell">
+ <nav class="rail" id="rail"></nav>
+ <main>
+  <section class="view" id="v-home"></section>
+  <section class="view" id="v-record"></section>
+  <section class="view" id="v-new"></section>
+  <section class="view" id="v-students"></section>
+  <section class="view" id="v-letters"></section>
+  <section class="view" id="v-giveout"></section>
+  <section class="view" id="v-rules"></section>
+  <section class="view" id="v-lists"></section>
+ </main>
+</div>
+<nav class="bnav" id="bnav"></nav>
+<dialog id="dlg"><div id="dlgBody"></div></dialog>
+<dialog id="ask"><div class="dh"><h3 id="askT">Please confirm</h3></div><div class="db" id="askM"></div><div class="df"><button class="btn pri" id="askOk">OK</button><button class="btn" id="askNo">Cancel</button></div></dialog>
+<div class="toast" id="toast" role="status"></div>
+<input type="file" id="fileX" accept=".xlsx,.xlsm,.xls" hidden>
+<input type="file" id="fileJ" accept=".json" hidden>
+<iframe id="pf" title="print" style="position:fixed;width:0;height:0;border:0;right:0;bottom:0"></iframe>
+<script>
+/* ===================== SETUP (edit these two things) =====================
+   1. FIREBASE_CONFIG: copy the same firebaseConfig that your SJS App index.html uses
+   2. UFM_ADMINS: the Gmail of the UFM Admin (must be the same as in the Firestore rules) */
+const FIREBASE_CONFIG={
+  apiKey:"PASTE_API_KEY",
+  authDomain:"PASTE_PROJECT_ID.firebaseapp.com",
+  projectId:"PASTE_PROJECT_ID",
+  storageBucket:"PASTE_PROJECT_ID.appspot.com",
+  messagingSenderId:"PASTE_SENDER_ID",
+  appId:"PASTE_APP_ID"
+};
+const UFM_ADMINS=["your.admin.gmail@gmail.com"];
+/* ======================================================================== */
+{
+const LOGO=document.getElementById('logo').src;
+new MutationObserver(()=>{for(const c of document.querySelectorAll('.stack td:not([data-l])')){let i=0,p=c;while(p=p.previousElementSibling)i+=p.colSpan;c.dataset.l=c.closest('table').rows[0].cells[i]?.textContent||''}}).observe(document.body,{childList:true,subtree:true});
+const LISTS={"exams": ["PT-1", "HALF YEARLY", "PT-2", "ANNUAL"], "classes": ["Nursery", "LKG", "UKG", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"], "sections": ["A", "B", "C", "D", "E"], "subjects": ["ENGLISH", "MIZO", "BENGALI", "HINDI", "ENGLISH-I", "ENGLISH-II", "SCIENCE", "SOCIAL SCIENCE", "EVS", "COMPUTER", "GEOGRAPHY", "POL SCIENCE", "HISTORY", "MORAL SCIENCE", "MUSIC", "IT", "MATHEMATICS"], "remarks": ["The Student was found in possession of unauthorized written material and was observed copying from it during the examination.", "Student was found carrying a handwritten note containing subject-related information inside the examination hall.", "Student was observed referring to unauthorized written material kept beneath the examination desk.", "Student was found using a written chit concealed inside the answer script during the examination.", "Student was observed copying answers from unauthorized material kept inside the student’s pocket.", "Student was found in possession of a book or notebook containing relevant subject matter during the examination.", "Student was observed consulting a textbook or study material without permission during the examination.", "Student was found using unauthorized notes concealed inside the examination stationery.", "Student was observed copying from material written on the palm or another part of the body.", "Student was found referring to information written on the examination desk without authorization.", "Student was observed exchanging written material with another student during the examination.", "Student was found passing an unauthorized written note to another student during the examination.", "Student was observed receiving an unauthorized written note from another student during the examination.", "Student was found communicating with another student and exchanging answers during the examination.", "Student was observed showing answers to another student during the examination.", "Student was found looking at another student’s answer script and copying answers without permission.", "Student was observed allowing another student to copy answers from the student’s answer script.", "Student was found attempting to obtain answers from a nearby student during the examination.", "Student was observed repeatedly turning around and looking at another student’s answer script.", "Student was found communicating through gestures with another student for the purpose of obtaining answers.", "Student was observed using a mobile phone during the examination without authorization.", "Student was found in possession of a mobile phone inside the examination hall in violation of examination instructions.", "Student was observed viewing examination-related information on an electronic device during the examination.", "Student was found using a smartwatch or other unauthorized electronic device during the examination.", "Student was observed using an electronic device to access or refer to unauthorized information during the examination.", "Student was found attempting to conceal an electronic device after being instructed to keep all such devices away.", "Student was observed taking a photograph of the question paper or answer script during the examination.", "Student was found attempting to send or receive examination-related information through an electronic device.", "Student was observed using unauthorized written markings on the examination desk.", "Student was found in possession of a calculator or other device not permitted for the examination.", "Student was observed writing answers on a piece of paper other than the authorized answer script.", "Student was found using an additional sheet that had not been issued or authorized by the invigilator.", "Student was observed removing or concealing a written note when approached by the invigilator.", "Student was found attempting to conceal unauthorized material under the answer script.", "Student was observed referring to unauthorized material placed inside a transparent pouch or stationery box.", "Student was found carrying subject-related information written on a tissue, wrapper, or other unauthorized item.", "Student was observed attempting to use unauthorized material after the commencement of the examination.", "Student was found continuing to refer to unauthorized material after being warned by the invigilator.", "Student was observed disregarding the invigilator’s instruction to stop using unauthorized material.", "Student was found writing or receiving answers through unauthorized communication with a person outside the examination hall.", "Student was observed attempting to communicate with an individual outside the examination room during the examination.", "Student was found in possession of an answer key or other material apparently related to the examination.", "Student was observed consulting another student’s answer script during the examination.", "Student was found attempting to substitute or alter an answer script without authorization.", "Student was observed writing on or tampering with the question paper in a manner contrary to examination instructions.", "Student was found possessing an unauthorized question paper or examination-related document.", "Student was observed attempting to obtain assistance from another student after the examination had commenced.", "Student was found using coded signs or gestures to communicate answers during the examination.", "Student was observed making repeated unauthorized requests for answers from another student.", "Student was found attempting to conceal evidence of unauthorized assistance during the examination.", "Student was observed engaging in an act that appeared intended to gain an unfair advantage in the examination.", "Student was found violating the examination instructions by possessing unauthorized material.", "Student was observed attempting to gain assistance through unauthorized means during the examination.", "Student was found involved in an apparent exchange of answers with another student.", "Student was observed copying from another student’s answer script during the examination.", "Student was found attempting to copy answers from a nearby desk during the examination.", "Student was observed using unauthorized material despite the clear instructions issued before the examination.", "Student was found with examination-related content written on an unauthorized surface.", "Student was observed attempting to hide unauthorized material from the invigilator.", "Student was found engaging in conduct suspected of constituting an unfair means case during the examination."]};
+const SEED=[
+{
+"session": "2026-2027",
+"roll": "9",
+"name": "DANIEL BONGCHER",
+"father": "LALRINDIKA BONGCHER",
+"sex": "M",
+"cls": "VI",
+"sec": "B",
+"subject": "HINDI",
+"examDate": "2026-09-09",
+"exam": "HALF YEARLY",
+"remarks": "The Student was found in possession of unauthorized written material and was observed copying from it during the examination.",
+"detector": "Madam Lalbiaki",
+"stuStatus": "ACTIVE",
+"serial": 1,
+"ref": "UFM/2026-2027/0001",
+"give": {
+"date": "2026-10-01",
+"doc": "WARNING LETTER",
+"to": "",
+"remarks": ""
+}
+},
+{
+"session": "2026-2027",
+"roll": "33",
+"name": "RINMAYA MOLSOM",
+"father": "PROBAT SING MOLSOM",
+"sex": "M",
+"cls": "VI",
+"sec": "A",
+"subject": "HINDI",
+"examDate": "2026-09-09",
+"exam": "HALF YEARLY",
+"remarks": "The Student was found in possession of unauthorized written material and was observed copying from it during the examination.",
+"detector": "Sir Lalhuliana",
+"stuStatus": "ACTIVE",
+"serial": 2,
+"ref": "UFM/2026-2027/0002",
+"give": {
+"date": "2026-10-01",
+"doc": "WARNING LETTER",
+"to": "",
+"remarks": ""
+}
+},
+{
+"session": "2026-2027",
+"roll": "11",
+"name": "JOHN SENA MOLSOM",
+"father": "CHINTA MONI MOLSOM",
+"sex": "M",
+"cls": "VII",
+"sec": "B",
+"subject": "BENGALI",
+"examDate": "2026-09-10",
+"exam": "HALF YEARLY",
+"remarks": "The Student was found in possession of unauthorized written material and was observed copying from it during the examination.",
+"detector": "Sir Lalthakima",
+"stuStatus": "ACTIVE",
+"serial": 3,
+"ref": "UFM/2026-2027/0003",
+"give": {
+"date": "2026-10-01",
+"doc": "WARNING LETTER",
+"to": "",
+"remarks": ""
+}
+},
+{
+"session": "2026-2027",
+"roll": "8",
+"name": "DAMIEN MOLSOM",
+"father": "PRANAM BASHI MOLSOM",
+"sex": "M",
+"cls": "IX",
+"sec": "B",
+"subject": "MIZO",
+"examDate": "2026-09-11",
+"exam": "HALF YEARLY",
+"remarks": "The Student was found in possession of unauthorized written material and was observed copying from it during the examination.",
+"detector": "Sir Lalkunga",
+"stuStatus": "ACTIVE",
+"serial": 4,
+"ref": "UFM/2026-2027/0004",
+"give": {
+"date": "2026-10-01",
+"doc": "WARNING LETTER",
+"to": "",
+"remarks": ""
+}
+}
+];
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm=s=>String(s||'').toUpperCase().replace(/\s+/g,' ').trim();
+const uid=()=>'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const clone=o=>JSON.parse(JSON.stringify(o));
+const fd=d=>{if(!d)return'';const[y,m,dd]=String(d).split('-');return dd?`${dd}-${m}-${y}`:d};
+const today=()=>{const t=new Date();return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0')};
+const ord=n=>n+(['th','st','nd','rd'][(n%100>10&&n%100<14)?0:n%10]||'th');
+const sessions=[];for(let y=2024;y<=2035;y++)sessions.push(y+'-'+(y+1));
+const DEF={school:{name:'ST. JAMES H.S. SCHOOL',motto:'Faith And Service',address:'Gongrai, PO. Kendraicherra, Dist-Sepahijala, Tripura-799102',affil:'CBSE Affiliation No.: 2030038 | School Code: 35414 | UDISE: 16050401504',email:'stjames579@gmail.com'},
+ sessions,current:'2026-2027',exams:LISTS.exams,classes:LISTS.classes,sections:LISTS.sections,subjects:LISTS.subjects,
+ detectors:['Madam Lalbiaki','Sir Lalhuliana','Sir Lalthakima','Sir Lalkunga'],remarks:LISTS.remarks,
+ examIncharge:'LALRAMENGA MOLSOM',principal:'LALTHANZUALI HAUHNAR',docs:['WARNING LETTER','FINAL WARNING LETTER','DISCIPLINARY ACTION NOTICE','PARENT NOTICE']};
+const ACTION=o=>o<=1?'ZERO MARKS – PARTICULAR SUBJECT':o==2?'ZERO MARKS – ALL SUBJECTS':'EXPULSION FROM SCHOOL';
+const STATUS=o=>o<=1?'FIRST OCCURRENCE':o==2?'SECOND OCCURRENCE':'THIRD / REPEATED – EXPULSION';
+const LT=o=>o<=1?['WARNING LETTER – FIRST OFFENCE','Unfair Means / Examination Malpractice','WARNING LETTER']:o==2?['FINAL WARNING LETTER – SECOND OFFENCE','Repeated Unfair Means / Examination Malpractice','FINAL WARNING LETTER']:['DISCIPLINARY ACTION NOTICE – THIRD OFFENCE','Repeated Unfair Means / Examination Malpractice','DISCIPLINARY ACTION NOTICE'];
+const seal=o=>`<span class="seal s${Math.min(o,3)}" title="${esc(STATUS(o))}">${ord(o)}</span>`;
+const IC={home:'<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',record:'<path d="M5 3h11l3 3v15H5z"/><path d="M9 9h6M9 13h6M9 17h4"/>',new:'<path d="M12 5v14M5 12h14"/>',students:'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',letters:'<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>',giveout:'<path d="M9 5h10v14H9"/><path d="M4 12h11M11 8l4 4-4 4"/>',rules:'<path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/>',lists:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/>',more:'<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',print:'<path d="M6 9V3h12v6M6 18H4v-7h16v7h-2M8 14h8v7H8z"/>',xls:'<path d="M5 3h10l4 4v14H5z"/><path d="M9 11l5 6M14 11l-5 6"/>',copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/>'};
+const svg=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${IC[k]}</svg>`;
+const NAV=[['home','Dashboard'],['record','UFM Record'],['new','New Entry'],['students','Search Student'],['letters','Warning Letter'],['giveout','Give-Out Register'],['rules','UFM Rules'],['lists','Lists & Data']];
+
+const S={records:[],settings:clone(DEF),db:null,dl:null,mode:'cloud',fs:null,auth:null,user:null,role:'',isAdmin:false,access:[],unsubs:[],session:'2026-2027',view:'home',D:{},f:{q:'',exam:'',cls:'',lvl:'',give:'',stu:''},newest:true,letterId:'',editId:'',sex:'M',cloudReady:false};
+const LSK='sjs-ufm-v1',LSC='sjs-ufm-cloud-cache';
+const lsGet=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}};
+const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+const persistLocal=()=>{};
+
+/* ---------- derived values ---------- */
+const keyOf=r=>norm(r.name)+'|'+norm(r.father);
+function derive(){
+ const D={},run={},tot={};
+ const s=[...S.records].sort((a,b)=>(a.examDate||'').localeCompare(b.examDate||'')||(a.createdAt||0)-(b.createdAt||0)||(a.serial||0)-(b.serial||0));
+ s.forEach(r=>{const k=keyOf(r);tot[k]=(tot[k]||0)+1});
+ s.forEach(r=>{const k=keyOf(r);run[k]=(run[k]||0)+1;D[r.id]={occ:run[k],total:tot[k],key:k}});
+ S.D=D;
+}
+const occ=r=>S.D[r.id]?.occ||1;
+const vis=()=>S.records.filter(r=>S.session==='ALL'||r.session===S.session);
+const byRef=(a,b)=>(a.session||'').localeCompare(b.session||'')||(a.serial||0)-(b.serial||0);
+
+/* ---------- UI helpers ---------- */
+let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),2600)}
+function ask(msg,ok='OK',title='Please confirm'){return new Promise(res=>{const d=$('#ask');$('#askT').textContent=title;$('#askM').textContent=msg;$('#askOk').textContent=ok;const done=v=>{d.close();$('#askOk').onclick=$('#askNo').onclick=null;res(v)};$('#askOk').onclick=()=>done(true);$('#askNo').onclick=()=>done(false);d.showModal()})}
+const opts=(arr,sel,blank)=>(blank!==undefined?`<option value="">${esc(blank)}</option>`:'')+arr.map(v=>`<option${v===sel?' selected':''}>${esc(v)}</option>`).join('');
+function openDlg(html){$('#dlgBody').innerHTML=html;const d=$('#dlg');if(!d.open)d.showModal()}
+const closeDlg=()=>$('#dlg').close();
+
+/* ---------- storage ---------- */
+function writeErr(e){if(e&&e.code==='permission-denied')toast('Not allowed — your Gmail is not on the UFM access list');else if(e&&e.code==='resource-exhausted')toast('Firebase limit reached for today — try again tomorrow');else toast('Could not save: '+(e&&e.message||e))}
+const body=o=>{const{id,...b}=o;return JSON.parse(JSON.stringify(b))};
+async function saveRecord(r){
+ r.updatedAt=Date.now();r.updatedBy=S.user?.email||'';const i=S.records.findIndex(x=>x.id===r.id);if(i>=0)S.records[i]=r;else S.records.push(r);
+ refresh();if(S.fs)S.fs.collection('ufm_records').doc(r.id).set(body(r)).catch(writeErr);
+}
+async function deleteRecord(id){S.records=S.records.filter(r=>r.id!==id);refresh();if(S.fs)S.fs.collection('ufm_records').doc(id).delete().catch(writeErr)}
+async function saveSettings(){refresh();if(S.fs)S.fs.doc('ufm_settings/main').set(clone(S.settings)).catch(writeErr)}
+function nextSerial(sess){return Math.max(0,...S.records.filter(r=>r.session===sess).map(r=>+r.serial||0))+1}
+const mkRef=(sess,n)=>`UFM/${sess}/${String(n).padStart(4,'0')}`;
+
+/* ---------- navigation ---------- */
+function buildNav(){
+ $('#rail').innerHTML=NAV.slice(0,6).map(([k,l])=>`<a href="#${k}" data-v="${k}">${svg(k)}${l}</a>`).join('')+'<div class="cap">Reference</div>'+NAV.slice(6).map(([k,l])=>`<a href="#${k}" data-v="${k}">${svg(k)}${l}</a>`).join('');
+ const b=[['home','Home'],['record','Record'],['new','New'],['students','Search'],['more','More']];
+ $('#bnav').innerHTML=b.map(([k,l])=>k==='new'?`<a href="#new" data-v="new" class="fab"><span class="c">${svg('new')}</span>${l}</a>`:k==='more'?`<a href="#" id="moreBtn" data-v="more">${svg('more')}${l}</a>`:`<a href="#${k}" data-v="${k}">${svg(k)}${l}</a>`).join('');
+ $('#moreBtn').onclick=e=>{e.preventDefault();openDlg(`<div class="dh"><h3>More</h3><button class="x" data-close aria-label="Close">×</button></div><div class="more">${NAV.slice(4).map(([k,l])=>`<a href="#${k}" data-close>${svg(k)}${l}</a>`).join('')}</div>`)};
+}
+function go(){let v=(location.hash||'#home').slice(1);if(!NAV.some(n=>n[0]===v))v='home';if(v!=='new')S.editId='';S.view=v;$$('.view').forEach(x=>x.classList.toggle('on',x.id==='v-'+v));$$('[data-v]').forEach(a=>a.classList.toggle('on',a.dataset.v===v));render();window.scrollTo(0,0)}
+function refresh(){derive();fillSess();render()}
+function soft(){derive();fillSess();const v=S.view;if(v==='new')nprev();else if(v==='lists'){drawAccess()}else if(v==='record'&&$('#rtable'))drawTable();else if(v==='students'&&$('#sres'))drawStudents();else render()}
+function render(){({home:rHome,record:rRecord,new:rNew,students:rStudents,letters:rLetters,giveout:rGive,rules:rRules,lists:rLists})[S.view]()}
+function fillSess(){const st=S.settings;$('#sessSel').innerHTML=`<option value="ALL"${S.session==='ALL'?' selected':''}>All sessions</option>`+opts(st.sessions,S.session);$('#schoolLine').textContent=(st.school.name||'')+' · Unfair Means Register'}
+const sessLabel=()=>S.session==='ALL'?'all sessions':'Session '+S.session.replace('-','\u2011');
+
+/* ---------- dashboard ---------- */
+function bars(rows,cls){const m=Math.max(1,...rows.map(r=>r[1]));return rows.map(([l,v,c])=>`<div class="bar"><span class="bl" title="${esc(l)}">${esc(l)}</span><span class="bt"><i class="${c||cls||''}" style="width:${v/m*100}%"></i></span><b>${v}</b></div>`).join('')||'<p class="note">No cases yet.</p>'}
+const countBy=(rs,f)=>{const m=new Map();rs.forEach(r=>{const k=f(r)||'—';m.set(k,(m.get(k)||0)+1)});return m};
+function rHome(){
+ const rs=vis(),o=rs.map(occ),keys=new Set(rs.map(keyOf));
+ const n1=o.filter(x=>x===1).length,n2=o.filter(x=>x===2).length,n3=o.filter(x=>x>=3).length;
+ const pend=rs.filter(r=>!r.give?.date).length;
+ const st=S.settings;
+ const ex=countBy(rs,r=>r.exam),cl=countBy(rs,r=>r.cls),sb=countBy(rs,r=>r.subject),dt=countBy(rs,r=>r.detector);
+ const exRows=[...st.exams.map(e=>[e,ex.get(e)||0]),...[...ex].filter(([k])=>!st.exams.includes(k))];
+ const clRows=st.classes.filter(c=>cl.get(c)).map(c=>[c,cl.get(c)]).concat([...cl].filter(([k])=>!st.classes.includes(k)));
+ const sbRows=[...sb].sort((a,b)=>b[1]-a[1]).slice(0,8),dtRows=[...dt].sort((a,b)=>b[1]-a[1]).slice(0,8);
+ const repeat=[...new Set(rs.filter(r=>occ(r)>=2).map(keyOf))];
+ const recent=[...rs].sort((a,b)=>(b.examDate||'').localeCompare(a.examDate||'')||(b.createdAt||0)-(a.createdAt||0)).slice(0,6);
+ const title=rs.length?`${rs.length} UFM case${rs.length>1?'s':''} in ${sessLabel()}${n2+n3?` · ${n2+n3} repeat offence${n2+n3>1?'s':''}`:' · no repeat offences'}`:`No UFM cases recorded in ${sessLabel()}`;
+ $('#v-home').innerHTML=`${cloudBanner()}<div class="head"><div><h1>${esc(title)}</h1><p>Unfair Means / Malpractice monitoring · occurrence counted across the student's whole stay in school</p></div><div class="row"><a class="btn red" href="#new">${svg('new')}New UFM case</a><button class="btn" data-act="xls">${svg('xls')}Export Excel</button></div></div>
+ <div class="kpis"><div class="kpi hero"><b>${rs.length}</b><span>Total UFM cases</span></div><div class="kpi"><b>${keys.size}</b><span>Unique students</span></div><div class="kpi"><b>${n1}</b><span>First occurrence</span></div><div class="kpi k2"><b>${n2+n3}</b><span>Repeated cases</span></div><div class="kpi k3"><b>${n3}</b><span>Expulsion level</span></div><div class="kpi"><b>${pend}</b><span>Letters not given out</span></div></div>
+ <div class="grid g3"><div class="card"><h3>Exam-wise summary</h3>${bars(exRows)}</div><div class="card"><h3>Occurrence summary</h3>${bars([['1st',n1,'c1'],['2nd',n2,'c2'],['3rd +',n3,'c3']])}<p class="note" style="margin:10px 0 0">1st: zero marks in the subject · 2nd: zero marks in all subjects · 3rd: expulsion</p></div><div class="card"><h3>Class-wise</h3>${bars(clRows)}</div>
+ <div class="card"><h3>Subject-wise</h3>${bars(sbRows)}</div><div class="card"><h3>Case detectors (invigilators)</h3>${bars(dtRows)}</div>
+ <div class="card"><h3>Repeat-offender watchlist</h3>${repeat.length?`<div class="list">${repeat.map(k=>{const all=S.records.filter(r=>keyOf(r)===k);const r=all[all.length-1];const t=S.D[r.id].total;return`<div class="mini" data-stu="${esc(k)}">${seal(t)}<div><b>${esc(r.name)}</b><span>${esc(r.cls)}-${esc(r.sec)} · Roll ${esc(r.roll)}</span></div><span class="tag">${t} cases</span></div>`}).join('')}</div>`:'<p class="note">No student has more than one UFM case. Good.</p>'}</div></div>
+ <div class="card" style="margin-top:14px"><h3>Recent cases</h3>${recent.length?`<div class="list">${recent.map(miniCase).join('')}</div>`:emptyBox()}</div>`;
+}
+const miniCase=r=>`<div class="mini" data-id="${esc(r.id)}">${seal(occ(r))}<div><b>${esc(r.name)}</b><span>${esc(r.ref)} · ${esc(r.cls)}-${esc(r.sec)} · ${esc(r.subject)} · ${esc(r.exam)} · ${fd(r.examDate)}</span></div>${r.give?.date?'<span class="tag ok">Given</span>':'<span class="tag pend">Pending</span>'}</div>`;
+const emptyBox=()=>`<div class="empty"><b>No UFM cases yet</b>Add a case with New Entry, or bring in your old register from Lists &amp; Data → Import from Excel.<div class="row" style="justify-content:center;margin-top:14px"><a class="btn pri" href="#new">New UFM case</a><button class="btn" data-act="importx">Import from Excel</button></div></div>`;
+function cloudBanner(){if(!S.cloudReady||S.records.length)return'';const loc=lsGet(LSK);if(loc?.records?.length)return`<div class="banner"><span>${loc.records.length} UFM records are saved on this phone/computer only. Upload them to Firebase so everyone sees them.</span><button class="btn sm pri" data-act="upload">Upload to Firebase</button></div>`;return S.isAdmin?`<div class="banner"><span>The Firebase register is empty. Add the ${SEED.length} cases from your UFM_Record_2026_2027 Excel file?</span><button class="btn sm pri" data-act="seed">Add ${SEED.length} cases</button></div>`:''}
+
+/* ---------- register ---------- */
+function filtered(){
+ const f=S.f,q=norm(f.q);
+ let rs=vis().filter(r=>{const o=occ(r);
+  if(q&&!(norm(r.name).includes(q)||norm(r.father).includes(q)||String(r.roll)===f.q.trim()||norm(r.ref).includes(q)||norm(r.subject).includes(q)))return false;
+  if(f.exam&&r.exam!==f.exam)return false;if(f.cls&&r.cls!==f.cls)return false;
+  if(f.lvl&&(f.lvl==='3'?o<3:o!==+f.lvl))return false;
+  if(f.give==='given'&&!r.give?.date)return false;if(f.give==='pending'&&r.give?.date)return false;
+  if(f.stu&&(r.stuStatus||'ACTIVE')!==f.stu)return false;return true});
+ rs.sort(byRef);if(S.newest)rs.reverse();return rs;
+}
+function rRecord(){
+ const st=S.settings,f=S.f;
+ $('#v-record').innerHTML=`<div class="head"><div><h1>UFM Conduct Record</h1><p>${esc(st.school.name)} · ${esc(sessLabel())}</p></div><div class="row"><a class="btn red" href="#new">${svg('new')}New case</a><button class="btn" data-act="xls">${svg('xls')}Excel</button><button class="btn" data-act="printReg">${svg('print')}Print</button></div></div>
+ <div class="filters"><label class="f wide"><span>Search name, roll, father, ref no.</span><input class="in" id="fq" value="${esc(f.q)}" placeholder="e.g. Daniel or 9"></label>
+ <label class="f"><span>Exam</span><select class="in" id="fexam">${opts(st.exams,f.exam,'All exams')}</select></label>
+ <label class="f"><span>Class</span><select class="in" id="fcls">${opts(st.classes,f.cls,'All classes')}</select></label>
+ <label class="f"><span>Offence</span><select class="in" id="flvl"><option value="">All</option><option value="1"${f.lvl==='1'?' selected':''}>1st</option><option value="2"${f.lvl==='2'?' selected':''}>2nd</option><option value="3"${f.lvl==='3'?' selected':''}>3rd +</option></select></label>
+ <label class="f"><span>Letter</span><select class="in" id="fgive"><option value="">All</option><option value="given"${f.give==='given'?' selected':''}>Given out</option><option value="pending"${f.give==='pending'?' selected':''}>Pending</option></select></label>
+ <label class="f"><span>Student</span><select class="in" id="fstu"><option value="">All</option><option${f.stu==='ACTIVE'?' selected':''}>ACTIVE</option><option${f.stu==='LEFT'?' selected':''}>LEFT</option></select></label></div>
+ <div class="row" style="justify-content:space-between;margin-bottom:10px"><span class="note" id="rcount"></span><button class="btn sm ghost" id="sortBtn">${S.newest?'Newest first':'Oldest first'} ⇅</button></div>
+ <div id="rtable"></div>`;
+ const bind=(id,k)=>$(id).addEventListener(id==='#fq'?'input':'change',e=>{S.f[k]=e.target.value;drawTable()});
+ bind('#fq','q');bind('#fexam','exam');bind('#fcls','cls');bind('#flvl','lvl');bind('#fgive','give');bind('#fstu','stu');
+ $('#sortBtn').onclick=()=>{S.newest=!S.newest;$('#sortBtn').textContent=(S.newest?'Newest first':'Oldest first')+' ⇅';drawTable()};
+ drawTable();
+}
+function drawTable(){
+ const rs=filtered();$('#rcount').textContent=`${rs.length} of ${vis().length} cases shown`;
+ if(!S.records.length){$('#rtable').innerHTML=`<div class="card">${emptyBox()}</div>`;return}
+ if(!rs.length){$('#rtable').innerHTML='<div class="card empty"><b>No case matches</b>Clear a filter to see more.</div>';return}
+ $('#rtable').innerHTML=`<div class="tw"><table class="stack"><thead><tr><th>Ref. No.</th><th>Exam date</th><th>Exam</th><th>Roll</th><th>Name / Father</th><th>Class</th><th>Subject</th><th>Occurrence</th><th>Action / Penalty</th><th>Detector</th><th>Give out</th><th>Status</th></tr></thead><tbody>${rs.map(r=>{const o=occ(r);return`<tr data-id="${esc(r.id)}"><td class="ref">${esc(r.ref)}</td><td>${fd(r.examDate)}</td><td>${esc(r.exam)}</td><td class="num">${esc(r.roll)}</td><td><b>${esc(r.name)}</b><small>${esc(r.father)}</small></td><td>${esc(r.cls)}-${esc(r.sec)}</td><td>${esc(r.subject)}</td><td>${seal(o)}</td><td class="act">${ACTION(o)}</td><td>${esc(r.detector)}</td><td>${r.give?.date?`<span class="tag ok">${fd(r.give.date)}</span>`:'<span class="tag pend">Pending</span>'}</td><td>${(r.stuStatus||'ACTIVE')==='LEFT'?'<span class="tag left">LEFT</span>':'<span class="tag">ACTIVE</span>'}</td></tr>`}).join('')}</tbody></table></div>`;
+}
+
+/* ---------- case detail ---------- */
+function showCase(id){
+ const r=S.records.find(x=>x.id===id);if(!r)return;const o=occ(r),t=S.D[r.id].total;
+ const row=(k,v)=>v?`<dt>${k}</dt><dd>${esc(v)}</dd>`:'';
+ openDlg(`<div class="dh"><div><h3>${esc(r.name)}</h3><span class="note">${esc(r.ref)}</span></div><button class="x" data-close aria-label="Close">×</button></div>
+ <div class="db"><div class="offence o${Math.min(o,3)}" style="margin-bottom:14px"><small>Occurrence ${o} of ${t} for this student</small><div class="big">${ord(o)} offence</div><b>${ACTION(o)}</b></div>
+ <dl class="dl">${row('Academic session',r.session)}${row('Roll No.',r.roll)}${row('Admission No.',r.admNo)}${row("Father's name",r.father)}${row('Sex',r.sex==='F'?'Female':'Male')}${row('Class / Section',r.cls+' / '+r.sec)}${row('Subject',r.subject)}${row('Exam',r.exam)}${row('Exam date',fd(r.examDate))}${row('Remarks',r.remarks)}${row('Evidence found',r.evidence)}${row("Student's statement",r.statement)}${row("Principal's decision",r.decision)}${row('Final action taken',r.finalAction)}${row('Case detector',r.detector)}${row('Status',STATUS(t))}${row('Give out date',fd(r.give?.date))}${row('Document given',r.give?.date?r.give?.doc:'')}${row('Given to',r.give?.to)}${row('Student status',r.stuStatus||'ACTIVE')}</dl></div>
+ <div class="df"><button class="btn pri" data-letter="${esc(r.id)}">${svg('letters')}Warning letter</button><button class="btn" data-edit="${esc(r.id)}">Edit</button><button class="btn" data-copy="${esc(r.id)}">${svg('copy')}Copy for WhatsApp</button><button class="btn" data-left="${esc(r.id)}">Mark ${(r.stuStatus||'ACTIVE')==='LEFT'?'ACTIVE':'LEFT'}</button><button class="btn ghost" data-del="${esc(r.id)}" style="color:var(--l3)">Delete</button></div>`);
+}
+function summaryText(r){const o=occ(r);return`*${S.settings.school.name} – UFM CASE*\nRef: ${r.ref}\nName: ${r.name}\nFather: ${r.father}\nClass: ${r.cls}-${r.sec} | Roll: ${r.roll}\nExam: ${r.exam} – ${r.subject} (${fd(r.examDate)})\nOffence: ${ord(o)} → ${ACTION(o)}\nDetected by: ${r.detector||'-'}\nRemarks: ${r.remarks||'-'}`}
+async function copyText(txt){try{await navigator.clipboard.writeText(txt);toast('Copied — paste it in WhatsApp')}catch(e){openDlg(`<div class="dh"><h3>Copy this text</h3><button class="x" data-close>×</button></div><div class="db"><textarea class="in" style="min-height:220px" readonly>${esc(txt)}</textarea></div>`);setTimeout(()=>$('#dlgBody textarea')?.select(),50)}}
+
+/* ---------- new / edit ---------- */
+function rNew(){
+ const st=S.settings,e=S.records.find(x=>x.id===S.editId),r=e||{session:S.session==='ALL'?st.current:S.session,exam:st.exams[0],examDate:today(),sex:'M',stuStatus:'ACTIVE'};
+ S.sex=r.sex||'M';
+ const pastNames=[...new Map(S.records.map(x=>[keyOf(x),x])).values()];
+ $('#v-new').innerHTML=`<div class="head"><div><h1>${e?'Edit UFM case':'New UFM case'}</h1><p>${e?esc(e.ref):'Occurrence number, action/penalty, status and reference number are worked out automatically.'}</p></div></div>
+ <div class="newwrap"><form class="card" id="nf" autocomplete="off"><div class="form">
+ <label class="f"><span>Academic session</span><select class="in" id="n_session">${opts(st.sessions,r.session)}</select></label>
+ <label class="f"><span>Exam</span><select class="in" id="n_exam">${opts(st.exams,r.exam)}</select></label>
+ <label class="f"><span>Exam date</span><input class="in" type="date" id="n_examDate" value="${esc(r.examDate)}" required></label>
+ <label class="f"><span>Subject</span><select class="in" id="n_subject">${opts(st.subjects,r.subject,'Select')}</select></label>
+ <label class="f w2"><span>Student name</span><input class="in" id="n_name" list="dlNames" value="${esc(r.name)}" required placeholder="Type to find a past student"></label>
+ <label class="f w2"><span>Father's name</span><input class="in" id="n_father" value="${esc(r.father)}"></label>
+ <label class="f"><span>Class</span><select class="in" id="n_cls">${opts(st.classes,r.cls,'Select')}</select></label>
+ <label class="f"><span>Section</span><select class="in" id="n_sec">${opts(st.sections,r.sec,'Select')}</select></label>
+ <label class="f"><span>Roll No.</span><input class="in" id="n_roll" inputmode="numeric" value="${esc(r.roll)}"></label>
+ <div class="f"><label class="f"><span>Sex</span></label><div class="seg" id="n_sex"><button type="button" data-s="M" class="${S.sex==='M'?'on':''}">M</button><button type="button" data-s="F" class="${S.sex==='F'?'on':''}">F</button></div></div>
+ <label class="f w2"><span>Case detector (invigilator)</span><input class="in" id="n_detector" list="dlDet" value="${esc(r.detector)}"></label>
+ <label class="f w2"><span>Student status</span><select class="in" id="n_stu">${opts(['ACTIVE','LEFT'],r.stuStatus||'ACTIVE')}</select></label>
+ <label class="f w4"><span>Remarks – pick a standard statement</span><select class="in" id="n_tpl">${opts(st.remarks,'','Choose a UFM examination remark…')}</select></label>
+ <label class="f w4"><span>Remarks (you can edit)</span><textarea class="in" id="n_remarks">${esc(r.remarks)}</textarea></label>
+ <details class="w4"><summary style="cursor:pointer;font-weight:700;min-height:36px">More case details (optional)</summary><div class="form" style="margin-top:12px">
+ <label class="f"><span>Admission No.</span><input class="in" id="n_admNo" value="${esc(r.admNo)}"></label>
+ <label class="f w2"><span>Evidence / material found</span><input class="in" id="n_evidence" value="${esc(r.evidence)}"></label>
+ <label class="f"><span>Final action taken</span><input class="in" id="n_finalAction" value="${esc(r.finalAction)}"></label>
+ <label class="f w2"><span>Student's statement</span><textarea class="in" id="n_statement">${esc(r.statement)}</textarea></label>
+ <label class="f w2"><span>Principal's decision</span><textarea class="in" id="n_decision">${esc(r.decision)}</textarea></label></div></details>
+ <div class="w4 row"><button class="btn pri" type="submit">${e?'Save changes':'Save UFM case'}</button>${e?'<button class="btn" type="button" id="nCancel">Cancel</button>':'<button class="btn" type="reset" id="nReset">Clear</button>'}</div></div>
+ <datalist id="dlNames">${pastNames.map(x=>`<option value="${esc(x.name)}">${esc(x.father)} · ${esc(x.cls)}-${esc(x.sec)} · Roll ${esc(x.roll)}</option>`).join('')}</datalist>
+ <datalist id="dlDet">${st.detectors.map(d=>`<option value="${esc(d)}">`).join('')}</datalist></form>
+ <aside class="preview" id="nprev"></aside></div>`;
+ const f=$('#nf');
+ $('#n_sex').onclick=ev=>{const b=ev.target.closest('[data-s]');if(!b)return;S.sex=b.dataset.s;$$('#n_sex button').forEach(x=>x.classList.toggle('on',x===b))};
+ $('#n_tpl').onchange=ev=>{if(ev.target.value)$('#n_remarks').value=ev.target.value};
+ $('#n_name').addEventListener('change',()=>{const n=norm($('#n_name').value);const m=[...S.records].reverse().find(x=>norm(x.name)===n);if(m&&!e){if(!$('#n_father').value)$('#n_father').value=m.father||'';if(!$('#n_roll').value)$('#n_roll').value=m.roll||'';if(!$('#n_cls').value)$('#n_cls').value=m.cls||'';if(!$('#n_sec').value)$('#n_sec').value=m.sec||'';S.sex=m.sex||'M';$$('#n_sex button').forEach(x=>x.classList.toggle('on',x.dataset.s===S.sex))}nprev()});
+ ['n_name','n_father','n_examDate'].forEach(id=>$('#'+id).addEventListener('input',nprev));
+ if(e)$('#nCancel').onclick=()=>{S.editId='';location.hash='#record'};
+ else $('#nReset').onclick=()=>setTimeout(nprev,0);
+ f.onsubmit=async ev=>{ev.preventDefault();
+  const g=id=>$('#n_'+id).value.trim();
+  if(!g('name')){toast('Enter the student name');return}
+  if(!g('subject')||!g('cls')){toast('Choose class and subject');return}
+  const base=e?clone(e):{id:uid(),createdAt:Date.now(),give:{date:'',doc:'',to:'',remarks:''}};
+  const sess=g('session');
+  Object.assign(base,{session:sess,exam:g('exam'),examDate:g('examDate'),subject:g('subject'),name:norm(g('name')),father:norm(g('father')),cls:g('cls'),sec:g('sec'),roll:g('roll'),sex:S.sex,detector:g('detector'),stuStatus:g('stu'),remarks:g('remarks'),admNo:g('admNo'),evidence:g('evidence'),finalAction:g('finalAction'),statement:g('statement'),decision:g('decision')});
+  if(!e||e.session!==sess){base.serial=nextSerial(sess);base.ref=mkRef(sess,base.serial)}
+  const dup=!e&&S.records.find(x=>keyOf(x)===keyOf(base)&&x.examDate===base.examDate&&x.subject===base.subject);
+  if(dup&&!await ask(`${base.name} already has a case on ${fd(base.examDate)} in ${base.subject} (${dup.ref}). Save another one?`,'Save anyway'))return;
+  await saveRecord(base);S.editId='';S.letterId=base.id;S.letterDate='';
+  toast(e?'Changes saved':`Saved ${base.ref}`);
+  if(e){location.hash='#record'}else{rNew();showCase(base.id)}
+ };
+ nprev();
+}
+function nprev(){
+ const n=norm($('#n_name')?.value),fa=norm($('#n_father')?.value),box=$('#nprev');if(!box)return;
+ if(!n){box.innerHTML=`<div class="offence"><small>Offence preview</small><div class="big">—</div><span class="note">Type the student's name. Past UFM cases are found automatically, across all sessions.</span></div>`;return}
+ const prior=S.records.filter(x=>x.id!==S.editId&&norm(x.name)===n&&(!fa||norm(x.father)===fa));
+ const o=prior.length+1;
+ box.innerHTML=`<div class="offence o${Math.min(o,3)}"><small>This case will be the student's</small><div class="big">${ord(o)} offence</div><b>${ACTION(o)}</b><small style="margin-top:6px">${esc(LT(o)[0])}</small>${prior.length?`<ul class="hist">${prior.sort(byRef).map(x=>`<li><b>${esc(x.ref)}</b><br>${esc(x.exam)} · ${esc(x.subject)} · ${fd(x.examDate)} · ${esc(x.cls)}-${esc(x.sec)}</li>`).join('')}</ul>`:'<p class="note" style="margin:8px 0 0">No earlier UFM case found for this student.</p>'}</div>`;
+}
+
+/* ---------- students ---------- */
+function rStudents(){
+ $('#v-students').innerHTML=`<div class="head"><div><h1>Search student</h1><p>Find by roll number or name — the whole UFM history across every session.</p></div></div>
+ <div class="filters" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr)"><label class="f"><span>Roll No. or name</span><input class="in" id="sq" placeholder="e.g. 9 or DANIEL" value="${esc(S.sq||'')}"></label><label class="f"><span>Class</span><select class="in" id="scls">${opts(S.settings.classes,S.scls||'','Any class')}</select></label><label class="f"><span>Show</span><select class="in" id="sshow"><option value="">All students</option><option value="r"${S.sshow==='r'?' selected':''}>Repeat offenders only</option></select></label></div><div id="sres" class="grid g2"></div>`;
+ const run=()=>{S.sq=$('#sq').value;S.scls=$('#scls').value;S.sshow=$('#sshow').value;drawStudents()};
+ $('#sq').oninput=run;$('#scls').onchange=run;$('#sshow').onchange=run;drawStudents();
+}
+function drawStudents(){
+ const q=norm(S.sq),groups=new Map();
+ [...S.records].sort(byRef).forEach(r=>{const k=keyOf(r);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r)});
+ let list=[...groups.values()].filter(g=>{const l=g[g.length-1];
+  if(q&&!g.some(r=>norm(r.name).includes(q)||String(r.roll)===S.sq.trim()||norm(r.father).includes(q)))return false;
+  if(S.scls&&l.cls!==S.scls)return false;if(S.sshow==='r'&&g.length<2)return false;return true});
+ list.sort((a,b)=>b.length-a.length||norm(a[0].name).localeCompare(norm(b[0].name)));
+ $('#sres').innerHTML=list.length?list.map(g=>{const l=g[g.length-1],t=g.length;return`<article class="stu"><header><div class="av" style="background:${t>=3?'var(--red)':t==2?'#c2410c':'var(--navy)'}">${esc((l.name||'?').split(' ').map(w=>w[0]).slice(0,2).join(''))}</div><div style="flex:1"><h3>${esc(l.name)}</h3><p>${esc(l.father)} · ${esc(l.cls)}-${esc(l.sec)} · Roll ${esc(l.roll)}${(l.stuStatus||'ACTIVE')==='LEFT'?' · LEFT':''}</p></div>${seal(t)}</header><ul class="tl">${g.map(r=>`<li data-id="${esc(r.id)}">${seal(occ(r))}<div><b>${esc(r.exam)} · ${esc(r.subject)}</b><br><span class="note">${esc(r.ref)} · ${fd(r.examDate)} · ${ACTION(occ(r))}</span></div>${r.give?.date?'<span class="tag ok">Given</span>':'<span class="tag pend">Pending</span>'}</li>`).join('')}</ul></article>`}).join(''):`<div class="card empty" style="grid-column:1/-1"><b>${S.records.length?'No student found':'No UFM cases yet'}</b>${S.records.length?'Check the spelling or try the roll number.':'Cases you add will appear here.'}</div>`;
+}
+
+/* ---------- letters ---------- */
+const LETTER_CSS=`.letter{width:210mm;min-height:297mm;margin:0 auto;background:#fff;color:#111;padding:14mm 16mm 12mm;font:11.5pt/1.5 "Source Serif 4",Georgia,serif;box-shadow:0 10px 30px rgba(0,0,0,.18);display:flex;flex-direction:column}
+.letter .lh{display:grid;grid-template-columns:26mm minmax(0,1fr) 26mm;align-items:center;gap:4mm;border-bottom:3px double #1b2f5b;padding-bottom:4mm}
+.letter .lh img{width:26mm;height:26mm}
+.letter .lh div{text-align:center}.letter .lh h1{font:800 21pt/1.1 "Plus Jakarta Sans",Arial,sans-serif;color:#1b2f5b;margin:0;letter-spacing:.5px}
+.letter .lh .m{font-style:italic;color:#b3202a;font-size:11pt}.letter .lh .a{font-size:9.5pt;color:#333;line-height:1.35}
+.letter .tt{margin:6mm auto 4mm;text-align:center;border:2px solid #b3202a;border-radius:3mm;padding:3mm 6mm;max-width:150mm}
+.letter .tt b{display:block;font:800 13.5pt/1.25 "Plus Jakarta Sans",Arial,sans-serif;color:#b3202a}.letter .tt span{font-size:10.5pt}
+.letter .rd{display:flex;justify-content:space-between;font-weight:700;margin-bottom:3mm;font-size:10.5pt}
+.letter table{width:100%;border-collapse:collapse;font-size:10.5pt;margin-bottom:5mm}
+.letter td{border:1px solid #9aa3b5;padding:1.6mm 3mm;vertical-align:top;color:#111;background:#fff}.letter td:first-child{width:42mm;font-weight:700;background:#f1f4fa}
+.letter td.pen{font-weight:800;color:#b3202a}
+.letter p{margin:0 0 3mm;text-align:justify}
+.letter .sig{margin-top:auto;padding-top:16mm;display:grid;grid-template-columns:repeat(3,1fr);gap:8mm;text-align:center;font-size:10pt}
+.letter .sig div{border-top:1px solid #111;padding-top:1.5mm}.letter .sig b{display:block;font-size:9.5pt;text-transform:uppercase}
+.letter .ft{margin-top:6mm;font-size:8.5pt;color:#666;text-align:center;border-top:1px solid #ddd;padding-top:2mm}`;
+document.head.insertAdjacentHTML('beforeend',`<style>${LETTER_CSS}.paper tbody tr{cursor:auto}.paper tbody tr:hover td{background:#fff}.paper tbody tr:hover td:first-child{background:#f1f4fa}.paper th{position:static}</style>`);
+function letterHtml(r,date){
+ const st=S.settings,o=occ(r),[t1,t2]=LT(o),sc=st.school;
+ const body=o<=1?[`This is to inform you that the above-named student has been reported for using unfair means during the examination mentioned above. The matter has been recorded in the school's UFM Record / Register, and the applicable disciplinary action is indicated above.`,`Any further violation will result in the next level of disciplinary action in accordance with the school's UFM rules.`,`Therefore, you are requested to counsel the student to maintain the highest standards of honesty, discipline and conduct in all future examinations.`]
+ :o==2?[`This is to inform you that the above-named student has again been reported for using unfair means during the examination mentioned above. This is the student's second recorded UFM offence. The matter has been entered in the school's UFM Record / Register, and the disciplinary action indicated above has been applied.`,`This letter is a FINAL WARNING. Any further violation will lead to the case being referred to the Principal / School Management for major disciplinary action, which may include expulsion from the school.`,`You are requested to counsel the student seriously so that such conduct is not repeated in any future examination.`]
+ :[`This is to inform you that the above-named student has been reported for using unfair means during the examination mentioned above. This is the student's ${ord(o)} recorded UFM offence, despite earlier warnings.`,`In accordance with the school's UFM rules, the case is referred to the Principal / School Management for major disciplinary action, including possible expulsion / discontinuation from the school, subject to the school's rules, applicable requirements and due process.`,`You are requested to meet the Principal along with the student at the earliest.`];
+ const tr=(k,v,c)=>`<tr><td>${k}</td><td${c?` class="${c}"`:''}>${esc(v)}</td></tr>`;
+ return`<div class="letter"><div class="lh"><img src="${LOGO}" alt=""><div><h1>${esc(sc.name)}</h1><div class="m">Motto: ${esc(sc.motto)}</div><div class="a">${esc(sc.address)}<br>${esc(sc.affil)}<br>Email: ${esc(sc.email)}</div></div><span></span></div>
+ <div class="tt"><b>${esc(t1)}</b><span>(${esc(t2)})</span></div>
+ <div class="rd"><span>UFM ID: ${esc(r.ref)}</span><span>Date: ${fd(date)}</span></div>
+ <table>${tr('Student Name',r.name)}${tr("Father's Name",r.father)}${tr('Class / Section',r.cls+' / '+r.sec)}${tr('Roll No.',r.roll)}${tr('Subject',r.subject)}${tr('Exam Date',fd(r.examDate))}${tr('Examination',r.exam)}${tr('Occurrence No.',ord(o)+' offence')}${tr('Action / Penalty',ACTION(o),'pen')}${tr('Case Details',r.remarks)}</table>
+ <p>Dear Parent/Guardian,</p>${body.map(p=>`<p>${esc(p)}</p>`).join('')}
+ <div class="sig"><div><b>${esc(r.father||'')}</b>Parent/Guardian</div><div><b>${esc(st.examIncharge)}</b>Exam In-charge</div><div><b>${esc(st.principal)}</b>Principal</div></div>
+ <div class="ft">${esc(sc.name)} · UFM Record ${esc(r.session)} · Confidential school record</div></div>`;
+}
+function rLetters(){
+ const rs=[...vis()].sort(byRef).reverse();
+ if(!S.letterId||!S.records.some(r=>r.id===S.letterId))S.letterId=rs[0]?.id||'';
+ const r=S.records.find(x=>x.id===S.letterId);
+ const date=r?(S.letterDate&&S.letterFor===r.id?S.letterDate:(r.give?.date||today())):today();
+ $('#v-letters').innerHTML=`<div class="head"><div><h1>Warning letter</h1><p>The letter type follows the offence: 1st – Warning, 2nd – Final Warning, 3rd – Disciplinary Action Notice.</p></div></div>
+ ${rs.length?`<div class="lettergrid"><div class="card"><label class="f"><span>Select by roll no. / name</span><input class="in" id="lq" placeholder="Filter list…"></label><label class="f" style="margin-top:10px"><span>UFM case</span><select class="in" id="lsel" size="8" style="min-height:220px">${rs.map(x=>`<option value="${esc(x.id)}"${x.id===S.letterId?' selected':''}>${esc(x.ref.split('/').pop())} · ${esc(x.name)} · Roll ${esc(x.roll)} · ${esc(x.subject)}</option>`).join('')}</select></label>
+ <label class="f" style="margin-top:10px"><span>Letter date</span><input class="in" type="date" id="ldate" value="${esc(date)}"></label>
+ <div class="grid" style="margin-top:14px"><button class="btn pri" data-act="printLetter">${svg('print')}Print / Download letter</button><button class="btn" data-act="giveLetter">${svg('giveout')}${r?.give?.date?'Update give-out entry':'Mark as given out'}</button><button class="btn" data-act="batch">${svg('print')}All pending letters</button></div>
+ <p class="note">On a phone, the letter downloads as a page that prints by itself when opened.</p></div>
+ <div class="paperwrap"><div class="paper" style="width:max-content;margin:0 auto">${r?letterHtml(r,date):''}</div></div></div>`:`<div class="card">${emptyBox()}</div>`}`;
+ if(!rs.length)return;
+ $('#lsel').onchange=e=>{S.letterId=e.target.value;S.letterDate='';rLetters()};
+ $('#ldate').onchange=e=>{S.letterDate=e.target.value;S.letterFor=S.letterId;rLetters()};
+ $('#lq').oninput=e=>{const q=norm(e.target.value);[...$('#lsel').options].forEach(o=>o.hidden=q&&!norm(o.textContent).includes(q))};
+ fitPaper();
+}
+function fitPaper(){const w=$('.paperwrap'),p=$('.paper');if(!w||!p)return;p.style.zoom='';const pad=parseFloat(getComputedStyle(w).paddingLeft)||0;const s=Math.min(1,(w.clientWidth-pad*2-4)/p.scrollWidth);p.style.zoom=s<1?s:'';}
+window.addEventListener('resize',()=>{if(S.view==='letters')fitPaper()});
+function giveForm(r){
+ const st=S.settings,g=r.give||{};const o=occ(r);
+ openDlg(`<div class="dh"><div><h3>Give out – ${esc(r.ref)}</h3><span class="note">${esc(r.name)}</span></div><button class="x" data-close>×</button></div><form class="db" id="gf"><div class="form" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+ <label class="f"><span>Give out date</span><input class="in" type="date" id="g_date" value="${esc(g.date||$('#ldate')?.value||today())}"></label>
+ <label class="f"><span>Document given</span><select class="in" id="g_doc">${opts(st.docs,g.doc||LT(o)[2])}</select></label>
+ <label class="f"><span>Given to</span><input class="in" id="g_to" value="${esc(g.to||'')}" placeholder="Parent / Guardian / Student"></label>
+ <label class="f"><span>Signature / remarks</span><input class="in" id="g_rem" value="${esc(g.remarks||'')}"></label></div>
+ <div class="row" style="margin-top:14px"><button class="btn pri" type="submit">Save</button>${g.date?'<button class="btn ghost" type="button" id="g_clear">Clear entry</button>':''}</div></form>`);
+ $('#gf').onsubmit=async e=>{e.preventDefault();const n=clone(r);n.give={date:$('#g_date').value,doc:$('#g_doc').value,to:$('#g_to').value.trim(),remarks:$('#g_rem').value.trim()};closeDlg();await saveRecord(n);toast('Give-out register updated')};
+ if(g.date)$('#g_clear').onclick=async()=>{const n=clone(r);n.give={date:'',doc:'',to:'',remarks:''};closeDlg();await saveRecord(n);toast('Entry cleared')};
+}
+
+/* ---------- give-out register ---------- */
+function rGive(){
+ const st=S.settings,rs=[...vis()].sort(byRef);const pend=rs.filter(r=>!r.give?.date).length;
+ const show=S.gpend?rs.filter(r=>!r.give?.date):rs;
+ $('#v-giveout').innerHTML=`<div class="head"><div><h1>UFM give-out register</h1><p>${pend} of ${rs.length} letters still to be given · record the date and acknowledgement when the notice reaches the student or parent.</p></div><div class="row"><label class="chk"><input type="checkbox" id="gp"${S.gpend?' checked':''}> Pending only</label><button class="btn" data-act="xls">${svg('xls')}Excel</button><button class="btn" data-act="printGive">${svg('print')}Print</button></div></div>
+ ${rs.length?`<div class="tw"><table class="stack gtbl"><thead><tr><th>Reference No.</th><th>Give out date</th><th>Roll</th><th>Student name</th><th>Class / Sec</th><th>Exam</th><th>Subject</th><th>Document given</th><th>Given to</th><th>Signature / remarks</th></tr></thead><tbody>${show.map(r=>{const g=r.give||{};return`<tr data-g="${esc(r.id)}"><td class="ref">${esc(r.ref)}</td><td><input class="in" type="date" data-k="date" value="${esc(g.date||'')}" aria-label="Give out date"></td><td class="num">${esc(r.roll)}</td><td><b>${esc(r.name)}</b></td><td>${esc(r.cls)} / ${esc(r.sec)}</td><td>${esc(r.exam)}</td><td>${esc(r.subject)}</td><td><select class="in" data-k="doc" aria-label="Document given">${opts(st.docs,g.doc||LT(occ(r))[2])}</select></td><td><input class="in" data-k="to" value="${esc(g.to||'')}" placeholder="Parent" aria-label="Given to"></td><td><input class="in" data-k="remarks" value="${esc(g.remarks||'')}" aria-label="Remarks"></td></tr>`}).join('')}</tbody></table></div>`:`<div class="card">${emptyBox()}</div>`}`;
+ $('#gp').onchange=e=>{S.gpend=e.target.checked;rGive()};
+ $$('#v-giveout tr[data-g]').forEach(tr=>tr.addEventListener('change',async e=>{const k=e.target.dataset.k;if(!k)return;const r=S.records.find(x=>x.id===tr.dataset.g);if(!r)return;const n=clone(r);n.give=Object.assign({date:'',doc:'',to:'',remarks:''},n.give);n.give[k]=e.target.value.trim();if(k!=='date'&&!n.give.date)n.give.date=today();if(k==='date'&&!n.give.doc)n.give.doc=LT(occ(r))[2];await saveRecord(n);toast('Saved')}));
+}
+
+/* ---------- rules ---------- */
+function rRules(){
+ const L=(t,a)=>`<h2>${t}</h2><ul>${a.map(x=>`<li>${x}</li>`).join('')}</ul>`;
+ $('#v-rules').innerHTML=`<div class="head"><div><h1>UFM rules &amp; policy</h1><p>${esc(S.settings.school.name)} · Unfair Means &amp; Examination Malpractice Policy</p></div></div>
+ <div class="lvl"><div class="s1"><span class="seal s1">1st</span><b>Zero marks</b>in that particular subject + written warning</div><div class="s2"><span class="seal s2">2nd</span><b>Zero marks</b>in all subjects of that examination + final warning</div><div class="s3"><span class="seal s3">3rd</span><b>Expulsion</b>from the school, subject to school rules and due process</div></div>
+ <div class="card rules" style="margin-top:14px"><p><b>Record-keeping.</b> UFM incidents are recorded across academic sessions to identify repeated misconduct during the student's entire stay in the school. <b>Academic session:</b> 1 April to 31 March (e.g., 2026–2027).</p>
+ <h2>1. Purpose</h2><p>The purpose of this policy is to maintain fairness, academic integrity, discipline and equal opportunity for every student during all school examinations. The School expects every student to complete examinations honestly and independently. Any act intended to obtain or provide an unfair advantage may be treated as Unfair Means (UFM) / Examination Malpractice.</p>
+ ${L('2. Scope – this policy applies to',['Periodic Test–I (PT-1)','Half-Yearly Examination','Periodic Test–II (PT-2)','Annual Examination','Re-examinations',"Any other examination or assessment conducted under the School's authority"])}
+ ${L('3. What constitutes UFM / examination malpractice?',['Possession or use of written notes, slips, books or other unauthorized material.',"Copying or attempting to copy from another student's answer script.",'Showing answers to another student or helping another student to copy.','Communicating, signaling or attempting to communicate with another candidate during the examination without permission.','Possession or use of mobile phones, smart watches, earphones or other unauthorized electronic/digital devices.','Writing answers or information relevant to the examination on the body, desk, stationery or any unauthorized surface/material.','Exchange of answer scripts, question papers, stationery or other materials for the purpose of obtaining or providing an unfair advantage.',"Impersonation or permitting another person to write an examination on one's behalf.",'Tampering with, damaging, removing or tearing pages of an answer script.','Taking an answer script, question paper or other examination material outside the examination hall without authorization.','Refusal to comply with reasonable instructions given by the invigilator or examination authority.','Attempting to obtain assistance or an unfair advantage by any unauthorized means.','Any other act, whether deliberate or attempted, that compromises the fairness, confidentiality or integrity of the examination.'])}
+ ${L('4. Procedure for dealing with a UFM case',['<b>Step 1 – Detection:</b> The invigilator/examination staff shall identify and record the suspected incident.','<b>Step 2 – Securing evidence:</b> Any unauthorized material or other relevant evidence may be secured and preserved for examination by the appropriate school authority.','<b>Step 3 – Incident report:</b> The invigilator shall prepare a written UFM Incident Report containing the relevant details of the incident.',"<b>Step 4 – Student's statement:</b> The student shall be given an opportunity to provide a written explanation or statement regarding the incident.",'<b>Step 5 – Review:</b> The case shall be reviewed by the Principal / Examination In-charge / designated UFM Committee, as applicable.',"<b>Step 6 – Decision:</b> After considering the available evidence and the student's explanation, the appropriate disciplinary action shall be determined.","<b>Step 7 – Record:</b> The final decision shall be entered in the School's UFM Register and communicated to the student and parent/guardian where appropriate."])}
+ <h2>5. Progressive disciplinary action</h2><div class="scroll"><table style="cursor:auto"><thead><tr><th>Offence level</th><th>Classification</th><th>Disciplinary action</th></tr></thead><tbody style="cursor:auto"><tr><td>First offence</td><td>UFM – First Offence</td><td>Zero marks in the concerned subject + Written Warning</td></tr><tr><td>Second offence</td><td>UFM – Second Offence</td><td>Zero marks in all subjects of the examination concerned + Final Warning</td></tr><tr><td>Third offence</td><td>UFM – Third Offence</td><td>Recommendation for expulsion/discontinuation from the School, subject to the School's rules, applicable requirements and due process</td></tr></tbody></table></div>
+ ${L('5.1 First offence – the student may receive',['Zero (0) marks in the concerned subject.','A formal Written Warning Letter.',"Entry in the School's UFM Register.",'Parent/Guardian notification, where considered appropriate.'])}
+ ${L('5.2 Second offence – the student may receive',['Zero (0) marks in all subjects of the examination concerned.','A Final Warning Letter.','Entry/update in the UFM Register.','Parent/Guardian notification and counselling, where appropriate.'])}
+ <h2>5.3 Third offence</h2><p>For a third confirmed UFM offence, the case may be referred to the Principal/School Management for major disciplinary action, including possible expulsion or discontinuation from the School, subject to the School's rules, applicable requirements and due process. A third offence should therefore be treated as a Disciplinary Action Notice, rather than merely another warning letter.</p>
+ ${L('6. Serious UFM cases',['Impersonation.','Organized or deliberate cheating.','Possession or use of electronic communication devices for cheating.','Deliberate destruction or alteration of examination records.','Threatening, intimidating or obstructing examination staff.','Leakage, unauthorized possession or distribution of confidential examination material.','Any other conduct that seriously compromises examination integrity.'])}<p>The School may consider a serious first or subsequent offence separately where the nature of the misconduct warrants enhanced disciplinary action. The disciplinary action in such cases shall be determined by the competent school authority after considering the circumstances and applicable rules.</p>
+ ${L('7. Important principles',['Every UFM case is properly documented.','Evidence relating to the incident is preserved wherever practicable.','The student is given an opportunity to explain the alleged misconduct.','Disciplinary action is based on the facts and circumstances of the case.','Repeated offences are recorded and considered when determining subsequent action.','Parents/Guardians are informed where appropriate.','Confidentiality of UFM records is maintained.','UFM records are retained by the School for future reference in accordance with its record-retention practices.'])}
+ ${L('8. Official classification of UFM letters',['<b>First offence:</b> WARNING LETTER – FIRST OFFENCE (Unfair Means / Examination Malpractice)','<b>Second offence:</b> FINAL WARNING LETTER – SECOND OFFENCE (Repeated Unfair Means / Examination Malpractice)','<b>Third offence:</b> DISCIPLINARY ACTION NOTICE – THIRD OFFENCE (Repeated Unfair Means / Examination Malpractice)'])}
+ <h2>9. UFM record</h2><p>UFM Reference No. · Student Name · Admission No. · Roll No. · Class &amp; Section · Examination · Subject · Examination Date · Nature of UFM · Evidence/Material Found · Invigilator's Report · Student's Statement · Previous UFM Count · Current Offence Level · Recommended Action · Principal's Decision · Warning/Disciplinary Letter No. · Letter Issue Date · Parent/Guardian Acknowledgement · Final Action Taken · Remarks — all kept in this app.</p>
+ <h2>10. Policy authority</h2><p>This policy shall be implemented under the authority of the Principal and School Management and may be reviewed or amended from time to time to remain consistent with applicable CBSE requirements, School rules and other applicable regulations.</p></div>`;
+}
+
+/* ---------- lists & data ---------- */
+function rLists(){
+ const st=S.settings,sc=st.school;
+ const ta=(k,l)=>`<label class="f"><span>${l} <span class="note">(${st[k].length}, one per line)</span></span><textarea class="in" id="l_${k}">${esc(st[k].join('\n'))}</textarea></label>`;
+ $('#v-lists').innerHTML=`<div class="head"><div><h1>Lists &amp; data</h1><p>Edit the drop-down lists, school details and signatures. Keep a backup after every exam.</p></div><button class="btn pri" id="lsave">Save lists</button></div>
+ <div class="grid g2"><div class="card"><h3>School &amp; letter details</h3><div class="form" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+ <label class="f w2"><span>School name</span><input class="in" id="s_name" value="${esc(sc.name)}"></label>
+ <label class="f"><span>Motto</span><input class="in" id="s_motto" value="${esc(sc.motto)}"></label><label class="f"><span>Email</span><input class="in" id="s_email" value="${esc(sc.email)}"></label>
+ <label class="f w2"><span>Address</span><input class="in" id="s_address" value="${esc(sc.address)}"></label>
+ <label class="f w2"><span>Affiliation line</span><input class="in" id="s_affil" value="${esc(sc.affil)}"></label>
+ <label class="f"><span>Exam In-charge</span><input class="in" id="s_examIncharge" value="${esc(st.examIncharge)}"></label><label class="f"><span>Principal</span><input class="in" id="s_principal" value="${esc(st.principal)}"></label>
+ <label class="f w2"><span>Current academic session</span><select class="in" id="s_current">${opts(st.sessions,st.current)}</select></label></div></div>
+ <div class="card"><h3>Data &amp; backup</h3><p class="note" style="margin-top:0">Saved in your Firebase project (Firestore). Everyone on the access list sees the same records on any phone or computer; it also works offline and syncs when the internet returns.</p>
+ <div class="grid g2"><button class="btn" data-act="importx">${svg('xls')}Import from Excel</button><button class="btn" data-act="xls">${svg('xls')}Export to Excel</button><button class="btn" data-act="backup">Backup (.json)</button><button class="btn" data-act="restore">Restore backup</button></div>
+ <p class="note">Import reads the <b>UMS RECORD</b> and <b>LISTS</b> sheets of your old UFM_Record .xlsm file. Cases already in the app are skipped.</p>
+ <p class="note">${S.records.length} cases stored · ${new Set(S.records.map(r=>r.session)).size} session(s)</p>
+ ${S.isAdmin?'<button class="btn ghost" data-act="wipe" style="color:var(--l3)">Delete all records…</button>':''}</div></div>
+ <div class="card" style="margin-top:14px" id="accCard"></div>
+ <div class="listsgrid" style="margin-top:14px">${ta('exams','Exams')}${ta('classes','Classes')}${ta('sections','Sections')}${ta('subjects','Subjects')}${ta('detectors','Case detectors / invigilators')}${ta('sessions','Academic sessions')}${ta('docs','Documents given')}</div>
+ <div class="card" style="margin-top:14px"><label class="f"><span>UFM examination remarks <span class="note">(${st.remarks.length} standard statements, one per line)</span></span><textarea class="in" id="l_remarks" style="min-height:260px;font-size:14px">${esc(st.remarks.join('\n'))}</textarea></label></div>`;
+ $('#lsave').onclick=async()=>{const n=clone(S.settings);['name','motto','email','address','affil'].forEach(k=>n.school[k]=$('#s_'+k).value.trim());n.examIncharge=$('#s_examIncharge').value.trim();n.principal=$('#s_principal').value.trim();
+  ['exams','classes','sections','subjects','detectors','sessions','docs','remarks'].forEach(k=>{const v=$('#l_'+k).value.split('\n').map(x=>x.trim()).filter(Boolean);if(v.length)n[k]=[...new Set(v)]});
+  n.current=$('#s_current').value;if(!n.sessions.includes(n.current))n.current=n.sessions[0];S.settings=n;await saveSettings();toast('Lists saved')};
+ drawAccess();
+}
+function drawAccess(){
+ const c=$('#accCard');if(!c)return;
+ const rows=[...UFM_ADMINS.map(e=>({id:e.toLowerCase(),name:'UFM Admin',role:'Admin',fixed:true})),...S.access];
+ c.innerHTML=`<h3>Who can open UFM Record</h3><p class="note" style="margin-top:0">UFM records are confidential. Only these Gmail accounts can see or add cases. Everyone else who signs in to SJS App is refused.</p>
+ <div class="list">${rows.map(a=>`<div class="mini" style="cursor:default"><span class="tag">${esc(a.role)}</span><div><b>${esc(a.name||a.id)}</b><span>${esc(a.id)}</span></div>${S.isAdmin&&!a.fixed?`<button class="btn sm ghost" data-unacc="${esc(a.id)}" style="color:var(--l3)">Remove</button>`:'<span></span>'}</div>`).join('')}</div>
+ ${S.isAdmin?`<form id="accf" class="form" style="margin-top:14px"><label class="f w2"><span>Gmail address</span><input class="in" id="a_email" type="email" required placeholder="name@gmail.com"></label><label class="f"><span>Name</span><input class="in" id="a_name" placeholder="e.g. Principal"></label><label class="f"><span>Role</span><select class="in" id="a_role">${opts(['Principal','Exam In-charge','Teacher'],'Principal')}</select></label><div class="w4"><button class="btn pri" type="submit">Give access</button></div></form>`:'<p class="note">Only the Admin can change this list.</p>'}`;
+ c.querySelectorAll('[data-unacc]').forEach(b=>b.onclick=async()=>{if(await ask(`Remove ${b.dataset.unacc} from UFM Record?`,'Remove'))S.fs.doc('ufm_access/'+b.dataset.unacc).delete().then(()=>toast('Access removed')).catch(writeErr)});
+ const f=$('#accf');if(f)f.onsubmit=e=>{e.preventDefault();const em=$('#a_email').value.trim().toLowerCase();if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){toast('Enter a valid Gmail address');return}
+  S.fs.doc('ufm_access/'+em).set({name:$('#a_name').value.trim(),role:$('#a_role').value,addedBy:S.user.email,addedAt:Date.now()}).then(()=>toast('Access given to '+em)).catch(writeErr);f.reset()};
+}
+
+
+/* ---------- printing & files ---------- */
+const framed=(()=>{try{return window.self!==window.top}catch(e){return true}})();
+async function saveFile(name,data){
+ if(S.dl){try{await S.dl.save({filename:name,data});toast('Saved '+name);return true}catch(e){if(e?.code==='declined'||e?.code==='rate_limited')return false;if(e?.code==='host_unavailable'){toast('Open this app in a browser to save files');return false}}}
+ try{const b=data instanceof Blob?data:new Blob([data]);const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);return true}catch(e){toast('Saving files is not possible here');return false}
+}
+function docHtml(title,inner,landscape){return`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title)}</title><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,700&display=swap" rel="stylesheet"><style>@page{size:A4 ${landscape?'landscape':'portrait'};margin:${landscape?'10mm':'0'}}body{margin:0;background:#e5e8ef;font-family:"Plus Jakarta Sans",Arial,sans-serif;color:#111}${LETTER_CSS}.letter{margin:10mm auto;page-break-after:always}.letter:last-child{page-break-after:auto}@media print{body{background:#fff}.letter{margin:0;box-shadow:none}}
+.reg{background:#fff;padding:8mm}.reg h1{font-size:16pt;margin:0;color:#1b2f5b;text-align:center}.reg h2{font-size:11pt;margin:2mm 0 4mm;text-align:center;font-weight:600}.reg table{width:100%;border-collapse:collapse;font-size:8.5pt}.reg th,.reg td{border:1px solid #888;padding:1.5mm 2mm;text-align:left;vertical-align:top}.reg th{background:#1b2f5b;color:#fff}.reg tr:nth-child(even) td{background:#f3f5fa}.reg .sg{display:flex;justify-content:space-between;margin-top:18mm;font-size:10pt}.reg .sg span{border-top:1px solid #111;padding-top:1mm;min-width:50mm;text-align:center}@media print{.reg{padding:0}.reg th{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>${inner}<script>window.onload=function(){setTimeout(function(){window.print()},600)}<\/script></body></html>`}
+async function printOut(title,inner,landscape){
+ const html=docHtml(title,inner,landscape);
+ if(!framed){try{const u=URL.createObjectURL(new Blob([html],{type:'text/html'}));const w=window.open(u,'_blank');if(w){setTimeout(()=>URL.revokeObjectURL(u),60000);return}}catch(e){}}
+ if(framed){if(await saveFile(title.replace(/[^\w\- ]+/g,'_')+'.html',html))toast('Open the downloaded page — it prints automatically');return}
+ const f=$('#pf');f.srcdoc=html.replace(/<script>window\.onload[\s\S]*?<\/script>/,'');f.onload=()=>{setTimeout(()=>{try{f.contentWindow.focus();f.contentWindow.print()}catch(e){saveFile(title+'.html',html)}},500)};
+}
+function regTable(rs){return`<table><thead><tr><th>Sl</th><th>Ref. No.</th><th>Roll</th><th>Name</th><th>Father's name</th><th>Sex</th><th>Class</th><th>Sec</th><th>Subject</th><th>Exam date</th><th>Exam</th><th>Occ.</th><th>Action / Penalty</th><th>Remarks</th><th>Detector</th><th>Give out</th><th>Status</th></tr></thead><tbody>${rs.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.ref)}</td><td>${esc(r.roll)}</td><td>${esc(r.name)}</td><td>${esc(r.father)}</td><td>${esc(r.sex)}</td><td>${esc(r.cls)}</td><td>${esc(r.sec)}</td><td>${esc(r.subject)}</td><td>${fd(r.examDate)}</td><td>${esc(r.exam)}</td><td>${occ(r)}</td><td>${ACTION(occ(r))}</td><td>${esc(r.remarks)}</td><td>${esc(r.detector)}</td><td>${fd(r.give?.date)}</td><td>${esc(r.stuStatus||'ACTIVE')}</td></tr>`).join('')}</tbody></table>`}
+const regHead=t=>`<h1>${esc(S.settings.school.name)}</h1><h2>${t} – ${esc(S.session==='ALL'?'All Sessions':'Academic Session '+S.session)}</h2>`;
+const sigs=()=>`<div class="sg"><span>${esc(S.settings.examIncharge)}<br>Exam In-charge</span><span>${esc(S.settings.principal)}<br>Principal</span></div>`;
+function exportXls(){
+ if(!window.XLSX){toast('Excel tool is still loading — check the internet connection');return}
+ const rs=[...vis()].sort(byRef),wb=XLSX.utils.book_new();
+ const A=[['Sl.No','Reference No.','Academic Session','Roll No.','Admission No.','Name',"Father's Name",'Sex','Class','Sec','Subject','Exam Date','Exam','Occurrence No.','Action / Penalty','Remarks','Case Detector','Total UFM Count (Student)','Status','Evidence','Student Statement',"Principal's Decision",'Final Action','Give Out Date','Document Given','Given To','Signature / Remarks','Student Status']];
+ rs.forEach((r,i)=>{const o=occ(r),t=S.D[r.id].total,g=r.give||{};A.push([i+1,r.ref,r.session,r.roll,r.admNo||'',r.name,r.father,r.sex,r.cls,r.sec,r.subject,fd(r.examDate),r.exam,o,ACTION(o),r.remarks,r.detector,t,STATUS(t),r.evidence||'',r.statement||'',r.decision||'',r.finalAction||'',fd(g.date),g.date?g.doc:'',g.to||'',g.remarks||'',r.stuStatus||'ACTIVE'])});
+ const w1=XLSX.utils.aoa_to_sheet(A);w1['!cols']=A[0].map((h,i)=>({wch:[5,22,11,7,10,24,24,5,8,5,14,11,12,8,30,50,18,8,26][i]||16}));XLSX.utils.book_append_sheet(wb,w1,'UFM Record');
+ const G=[['Reference No.','Give Out Date','Roll No.','Student Name','Class / Sec','Exam','Subject','Document Given','Given To','Signature / Remarks']];rs.forEach(r=>{const g=r.give||{};G.push([r.ref,fd(g.date),r.roll,r.name,r.cls+' / '+r.sec,r.exam,r.subject,g.date?g.doc:'',g.to||'',g.remarks||''])});
+ const w2=XLSX.utils.aoa_to_sheet(G);w2['!cols']=[22,12,7,24,10,12,14,24,18,24].map(w=>({wch:w}));XLSX.utils.book_append_sheet(wb,w2,'Give Out Register');
+ const m=new Map();S.records.forEach(r=>{const k=keyOf(r);if(!m.has(k))m.set(k,[]);m.get(k).push(r)});
+ const T=[['Name',"Father's Name",'Class','Sec','Roll No.','Total UFM Count','Status','Cases (Ref – Exam – Subject)']];[...m.values()].forEach(g=>{const l=g[g.length-1];T.push([l.name,l.father,l.cls,l.sec,l.roll,g.length,STATUS(g.length),g.map(r=>`${r.ref} – ${r.exam} – ${r.subject}`).join('; ')])});
+ const w3=XLSX.utils.aoa_to_sheet(T);w3['!cols']=[24,24,7,5,7,10,26,80].map(w=>({wch:w}));XLSX.utils.book_append_sheet(wb,w3,'Student Summary (all)');
+ const o=rs.map(occ);const st=S.settings;const Dsh=[[st.school.name+' — UFM Dashboard'],[sessLabel()],[],['Total UFM cases',rs.length],['Unique students',new Set(rs.map(keyOf)).size],['First occurrence',o.filter(x=>x===1).length],['Repeated cases',o.filter(x=>x>=2).length],[],['Exam','Cases'],...st.exams.map(e=>[e,rs.filter(r=>r.exam===e).length]),[],['Occurrence','Cases'],['1st',o.filter(x=>x===1).length],['2nd',o.filter(x=>x===2).length],['3rd+',o.filter(x=>x>=3).length]];
+ const w4=XLSX.utils.aoa_to_sheet(Dsh);w4['!cols']=[{wch:28},{wch:10}];XLSX.utils.book_append_sheet(wb,w4,'Dashboard');
+ const out=XLSX.write(wb,{bookType:'xlsx',type:'array'});saveFile(`SJS_UFM_Record_${S.session==='ALL'?'All':S.session}.xlsx`,new Uint8Array(out));
+}
+const xdate=v=>{if(v===''||v==null)return'';if(typeof v==='number'){const d=new Date(Math.round((v-25569)*864e5));return d.toISOString().slice(0,10)}const s=String(v).trim();let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;m=s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})/);if(m)return`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;return''};
+async function importExcel(file){
+ if(!window.XLSX){toast('Excel tool is still loading — check the internet connection');return}
+ let wb;try{wb=XLSX.read(await file.arrayBuffer(),{type:'array'})}catch(e){toast('Could not read that file');return}
+ const name=wb.SheetNames.find(n=>/^ums record$/i.test(n.trim()))||wb.SheetNames.find(n=>/ufm|ums|record/i.test(n))||wb.SheetNames[0];
+ const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:true,defval:''});
+ const hi=rows.findIndex(r=>r.some(c=>String(c).trim().toLowerCase()==='name'));
+ if(hi<0){toast('No "Name" column found in '+name);return}
+ const H=rows[hi].map(c=>String(c).trim().toLowerCase());const c=(...n)=>{for(const x of n){const i=H.indexOf(x);if(i>=0)return i}return-1};
+ const ix={session:c('academic session','session'),roll:c('roll no.','roll no','roll'),name:c('name'),father:c("father's name",'father name','father'),sex:c('sex'),cls:c('class'),sec:c('sec','section'),subject:c('subject'),date:c('exam date','date'),exam:c('exam'),remarks:c('remarks'),det:c('case detector','detector'),give:c('give out date'),stu:H.lastIndexOf('status')};
+ const st=S.settings;let added=0,skipped=0;const fresh=[];
+ for(const r of rows.slice(hi+1)){const nm=norm(r[ix.name]);if(!nm)continue;
+  const sess=String(r[ix.session]||st.current).trim();const rec={id:uid(),createdAt:Date.now()+added,session:sess,roll:String(r[ix.roll]??'').trim(),name:nm,father:norm(r[ix.father]),sex:String(r[ix.sex]||'M').trim().toUpperCase().startsWith('F')?'F':'M',cls:String(r[ix.cls]||'').trim(),sec:String(r[ix.sec]||'').trim(),subject:String(r[ix.subject]||'').trim(),examDate:xdate(r[ix.date]),exam:String(r[ix.exam]||'').trim(),remarks:String(r[ix.remarks]||'').trim(),detector:String(ix.det>=0?r[ix.det]:'').trim(),stuStatus:/left/i.test(String(ix.stu>=0?r[ix.stu]:''))?'LEFT':'ACTIVE',give:{date:ix.give>=0?xdate(r[ix.give]):'',doc:'',to:'',remarks:''}};
+  if(rec.give.date)rec.give.doc='WARNING LETTER';
+  if([...S.records,...fresh].some(x=>keyOf(x)===keyOf(rec)&&x.examDate===rec.examDate&&x.subject===rec.subject&&x.exam===rec.exam)){skipped++;continue}
+  rec.serial=Math.max(nextSerial(sess),...fresh.filter(x=>x.session===sess).map(x=>x.serial+1));rec.ref=mkRef(sess,rec.serial);fresh.push(rec);added++}
+ const ls=wb.SheetNames.find(n=>/^lists$/i.test(n.trim()));let listsMsg='';
+ if(ls){const L=XLSX.utils.sheet_to_json(wb.Sheets[ls],{header:1,defval:''});const hd=(L[0]||[]).map(x=>String(x).trim().toLowerCase());const col=k=>{const i=hd.findIndex(h=>h.startsWith(k));return i<0?[]:[...new Set(L.slice(1).map(r=>String(r[i]).trim()).filter(Boolean))]};
+  const n=clone(st);const ex=col('exam');if(ex.length&&!/incharge/i.test(hd.find(h=>h.startsWith('exam'))||''))n.exams=ex;[['class','classes'],['section','sections'],['suj','subjects'],['subj','subjects'],['ufm examination remarks','remarks']].forEach(([k,f])=>{const v=col(k);if(v.length)n[f]=v});
+  const ei=col('exam incharge'),pr=col('principal');if(ei[0])n.examIncharge=ei[0];if(pr[0])n.principal=pr[0];S.settings=n;await saveSettings();listsMsg=' · lists updated'}
+ if(!added){toast(`Nothing new to import (${skipped} already in the app)${listsMsg}`);return}
+ if(!await ask(`Add ${added} UFM case${added>1?'s':''} from "${name}"? ${skipped?skipped+' already in the app will be skipped.':''}`,'Import'))return;
+ for(const r of fresh)await saveRecord(r);toast(`Imported ${added} case${added>1?'s':''}${listsMsg}`);
+}
+async function restoreJson(file){
+ let d;try{d=JSON.parse(await file.text())}catch(e){toast('That is not a valid backup file');return}
+ if(!Array.isArray(d.records)){toast('That is not a SJS UFM backup');return}
+ if(!await ask(`Restore ${d.records.length} cases from this backup? Cases with the same ID are replaced; others are kept.`,'Restore'))return;
+ if(d.settings){S.settings=Object.assign(clone(DEF),d.settings);await saveSettings()}
+ for(const r of d.records){if(r&&r.id&&r.name)await saveRecord(r)}toast('Backup restored');
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click',async e=>{
+ const t=e.target.closest('[data-close],[data-id],[data-stu],[data-act],[data-letter],[data-edit],[data-copy],[data-left],[data-del]');if(!t)return;
+ if(t.dataset.close!==undefined){closeDlg();return}
+ if(t.dataset.letter){closeDlg();S.letterId=t.dataset.letter;S.letterDate='';location.hash='#letters';if(S.view==='letters')rLetters();return}
+ if(t.dataset.edit){closeDlg();S.editId=t.dataset.edit;if(S.view==='new')rNew();else location.hash='#new';return}
+ if(t.dataset.copy){const r=S.records.find(x=>x.id===t.dataset.copy);if(r)copyText(summaryText(r));return}
+ if(t.dataset.left){const r=S.records.find(x=>x.id===t.dataset.left);if(!r)return;const n=clone(r);n.stuStatus=(r.stuStatus||'ACTIVE')==='LEFT'?'ACTIVE':'LEFT';await saveRecord(n);showCase(n.id);toast('Student marked '+n.stuStatus);return}
+ if(t.dataset.del){const r=S.records.find(x=>x.id===t.dataset.del);closeDlg();if(r&&await ask(`Delete ${r.ref} (${r.name})? This cannot be undone.`,'Delete','Delete UFM case')){await deleteRecord(r.id);toast('Case deleted')}return}
+ if(t.dataset.stu){S.sq=t.dataset.stu.split('|')[0];S.scls='';S.sshow='';location.hash='#students';return}
+ if(t.dataset.id){showCase(t.dataset.id);return}
+ const a=t.dataset.act;
+ if(a==='xls')exportXls();
+ else if(a==='importx')$('#fileX').click();
+ else if(a==='restore')$('#fileJ').click();
+ else if(a==='backup')saveFile(`SJS_UFM_Backup_${today()}.json`,JSON.stringify({app:'SJS-UFM',version:1,exported:new Date().toISOString(),settings:S.settings,records:S.records},null,1));
+ else if(a==='printReg'){const rs=filtered().sort(byRef);printOut('UFM Record '+S.session,`<div class="reg">${regHead('Unfair Means (UFM) Conduct Record')}${regTable(rs)}${sigs()}</div>`,true)}
+ else if(a==='printGive'){const rs=[...vis()].sort(byRef);printOut('UFM Give Out Register '+S.session,`<div class="reg">${regHead('UFM Give Out Register')}<table><thead><tr><th>Reference No.</th><th>Give out date</th><th>Roll</th><th>Student name</th><th>Class / Sec</th><th>Exam</th><th>Subject</th><th>Document given</th><th>Given to</th><th>Signature / remarks</th></tr></thead><tbody>${rs.map(r=>{const g=r.give||{};return`<tr><td>${esc(r.ref)}</td><td>${fd(g.date)}</td><td>${esc(r.roll)}</td><td>${esc(r.name)}</td><td>${esc(r.cls)} / ${esc(r.sec)}</td><td>${esc(r.exam)}</td><td>${esc(r.subject)}</td><td>${g.date?esc(g.doc):''}</td><td>${esc(g.to)}</td><td style="min-width:35mm">${esc(g.remarks)}</td></tr>`}).join('')}</tbody></table>${sigs()}</div>`,true)}
+ else if(a==='printLetter'){const r=S.records.find(x=>x.id===S.letterId);if(r)printOut(`UFM Letter ${r.ref.split('/').pop()} ${r.name}`,letterHtml(r,$('#ldate').value||today()))}
+ else if(a==='giveLetter'){const r=S.records.find(x=>x.id===S.letterId);if(r)giveForm(r)}
+ else if(a==='batch'){const rs=[...vis()].filter(r=>!r.give?.date).sort(byRef);if(!rs.length){toast('Every letter has been given out');return}const d=$('#ldate')?.value||today();printOut(`UFM Pending Letters ${S.session}`,rs.map(r=>letterHtml(r,d)).join(''))}
+ else if(a==='seed'){for(const [i,r] of SEED.entries())await saveRecord(Object.assign({id:'seed'+(i+1),createdAt:i+1},clone(r)));toast('4 cases added')}
+ else if(a==='upload'){const loc=lsGet(LSK);if(!loc?.records?.length)return;if(loc.settings)S.settings=Object.assign(clone(DEF),loc.settings);await saveSettings();for(const r of loc.records)await saveRecord(r);toast(`Uploaded ${loc.records.length} records`)}
+ else if(a==='wipe'){if(await ask(`Delete all ${S.records.length} UFM cases? Make a backup first — this cannot be undone.`,'Delete all','Delete all records')){const ids=S.records.map(r=>r.id);for(const id of ids)await deleteRecord(id);toast('All records deleted')}}
+});
+$('#fileX').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)importExcel(f)};
+$('#fileJ').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)restoreJson(f)};
+$('#sessSel').onchange=e=>{S.session=e.target.value;lsSet('sjs-ufm-sess',S.session);render()};
+$('#dlg').addEventListener('click',e=>{if(e.target.id==='dlg')closeDlg()});
+window.addEventListener('hashchange',go);
+
+/* ---------- start ---------- */
+function setSync(t,on){const s=$('#sync');s.textContent=t;s.classList.toggle('on',!!on)}
+function gate(kind,extra){
+ const g=$('#gate');if(kind==='ok'){g.hidden=true;return}g.hidden=false;
+ const head=`<img src="${LOGO}" alt=""><h2>UFM Record</h2>`;
+ const G='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.3-.4-3.5z"/></svg>';
+ const M={
+  setup:`${head}<p>Firebase is not set up in this page yet.</p><ol><li>Open <b>ufm.html</b> in GitHub (pencil ✎ to edit).</li><li>Paste your SJS App's <b>firebaseConfig</b> into <b>FIREBASE_CONFIG</b> at the top of the script.</li><li>Put the Admin Gmail in <b>UFM_ADMINS</b>.</li><li>Commit, wait a minute, and reload.</li></ol>`,
+  nosdk:`${head}<p>Firebase could not load. Check the internet connection and reload.</p><button class="btn pri" onclick="location.reload()">Reload</button>`,
+  login:`${head}<p>Confidential register of St. James H.S. School. Sign in with the same Gmail you use for SJS App.</p><button class="gbtn" id="gsign">${G}Sign in with Google</button>${extra?`<p class="note" style="margin-top:14px;color:var(--l3)">${esc(extra)}</p>`:''}`,
+  wait:`${head}<p>Checking your access…</p>`,
+  denied:`${head}<p><b>${esc(S.user?.email||'')}</b> is not on the UFM access list.</p><p>Ask the Admin to add your Gmail in UFM Record → Lists &amp; Data.</p><div class="row" style="justify-content:center"><a class="btn" href="./">← Back to SJS App</a><button class="btn" id="gout">Use another Gmail</button></div>`,
+  error:`${head}<p>Something went wrong: ${esc(extra||'')}</p><button class="btn pri" onclick="location.reload()">Reload</button>`};
+ g.innerHTML=`<div class="gbox">${M[kind]}</div>`;
+ $('#gsign')&&($('#gsign').onclick=signIn);$('#gout')&&($('#gout').onclick=()=>S.auth.signOut());
+}
+async function signIn(){
+ const p=new firebase.auth.GoogleAuthProvider();p.setCustomParameters({prompt:'select_account'});
+ try{await S.auth.signInWithPopup(p)}catch(e){
+  if(['auth/popup-blocked','auth/operation-not-supported-in-this-environment','auth/cancelled-popup-request','auth/web-storage-unsupported'].includes(e.code)){try{await S.auth.signInWithRedirect(p)}catch(x){gate('login',x.message)}}
+  else if(e.code==='auth/unauthorized-domain')gate('login','This web address is not allowed in Firebase. Add it in Firebase → Authentication → Settings → Authorized domains.');
+  else if(e.code!=='auth/popup-closed-by-user')gate('login',e.message)}
+}
+function stopSubs(){S.unsubs.forEach(u=>{try{u()}catch(e){}});S.unsubs=[];S.records=[];S.access=[];S.cloudReady=false}
+function startSubs(){
+ const fs=S.fs;setSync('Connecting…');
+ S.unsubs.push(fs.collection('ufm_records').onSnapshot({includeMetadataChanges:true},snap=>{
+  S.records=snap.docs.map(d=>Object.assign({},d.data(),{id:d.id}));const m=snap.metadata;if(!m.fromCache)S.cloudReady=true;
+  setSync(m.hasPendingWrites?'Saving…':m.fromCache?'Offline · will sync':'Online · saved',!m.fromCache&&!m.hasPendingWrites);soft()},
+  e=>{setSync('Error');if(e.code==='permission-denied')gate('denied');else toast('Firebase: '+e.message)}));
+ S.unsubs.push(fs.doc('ufm_settings/main').onSnapshot(d=>{if(d.exists){S.settings=Object.assign(clone(DEF),d.data());soft()}},()=>{}));
+ S.unsubs.push(fs.collection('ufm_access').onSnapshot(snap=>{S.access=snap.docs.map(d=>Object.assign({},d.data(),{id:d.id}));if(S.view==='lists')drawAccess()},()=>{}));
+}
+function boot(){
+ S.session=lsGet('sjs-ufm-sess')||S.settings.current;
+ buildNav();derive();fillSess();go();setSync('Signing in…');
+ if(typeof firebase==='undefined'){gate('nosdk');return}
+ if(String(FIREBASE_CONFIG.apiKey).startsWith('PASTE')){gate('setup');return}
+ try{firebase.apps.length||firebase.initializeApp(FIREBASE_CONFIG)}catch(e){gate('error',e.message);return}
+ S.auth=firebase.auth();S.fs=firebase.firestore();
+ S.fs.enablePersistence({synchronizeTabs:true}).catch(()=>{});
+ gate('wait');
+ S.auth.getRedirectResult().catch(e=>gate('login',e.message));
+ $('#uchip').onclick=()=>openDlg(`<div class="dh"><h3>Signed in</h3><button class="x" data-close>×</button></div><div class="db"><dl class="dl"><dt>Gmail</dt><dd>${esc(S.user?.email)}</dd><dt>Name</dt><dd>${esc(S.user?.displayName||'')}</dd><dt>UFM role</dt><dd>${esc(S.role)}</dd></dl></div><div class="df"><a class="btn" href="./">← Back to SJS App</a><button class="btn red" id="soBtn">Sign out</button></div>`)||($('#soBtn').onclick=()=>{closeDlg();S.auth.signOut()});
+ S.auth.onAuthStateChanged(async u=>{
+  stopSubs();$('#uchip').hidden=!u;
+  if(!u){S.user=null;gate('login');setSync('Signed out');refresh();return}
+  S.user=u;const em=(u.email||'').toLowerCase();$('#uchip').textContent=(u.displayName||em||'?').trim()[0].toUpperCase();
+  S.isAdmin=UFM_ADMINS.map(x=>x.trim().toLowerCase()).includes(em);S.role=S.isAdmin?'Admin':'';
+  if(!S.isAdmin){gate('wait');try{const d=await S.fs.doc('ufm_access/'+em).get();if(d.exists)S.role=d.data().role||'Staff'}catch(e){if(e.code!=='permission-denied'&&e.code!=='unavailable'){gate('error',e.message);return}}}
+  if(!S.role){gate('denied');return}
+  gate('ok');startSubs();refresh();
+ });
+}
+boot();
+}
+</script>
+</body>
+</html>
