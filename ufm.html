@@ -3,13 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>UFM Record · SJS App</title>
+<title>UFM Record – SJS App</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="sjs-nav.js"></script>
 <style>
 /* VOICE: the Exam In-charge's office register — formal, exact, calm, never alarming
    IDEA: a bound UFM register of numbered case slips, each stamped with an offence seal
@@ -37,13 +38,21 @@ h1,h2,h3{margin:0;line-height:1.15;text-wrap:balance}
 .sync{font-size:11px;padding:4px 9px;border-radius:99px;background:rgba(255,255,255,.14);white-space:nowrap}
 .sync.on{background:#1f7a4f}
 .back{color:#fff;text-decoration:none;font-weight:700;font-size:13px;padding:8px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.3);white-space:nowrap}
-.uchip{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:99px;width:40px;height:40px;font-weight:800;cursor:pointer;flex:none}
-.gate{position:fixed;inset:61px 0 0 0;z-index:40;background:var(--bg);display:grid;place-items:center;padding:20px}
+.gate{position:fixed;inset:61px 0 0 0;z-index:31;background:var(--bg);display:grid;place-items:center;padding:20px}
 .gate[hidden]{display:none}
 .gbox{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:28px;max-width:460px;width:100%;text-align:center}
 .gbox img{width:96px;height:96px}.gbox h2{font-size:24px;margin:12px 0 6px}.gbox p{color:var(--mut);margin:0 0 16px}
-.gbox ol{text-align:left;color:var(--mut);font-size:14px;padding-left:20px}
-.gbtn{display:inline-flex;align-items:center;gap:10px;min-height:48px;padding:0 20px;border-radius:12px;border:1px solid var(--line);background:#fff;color:#1f1f1f;font-weight:700;cursor:pointer}
+#ufmChips,.ufmtool{display:none}
+body.in-sjs .top,body.in-sjs .rail,body.in-sjs .bnav{display:none!important}
+body.in-sjs .shell{display:block;min-height:0}
+body.in-sjs main{margin:0 auto}
+body.in-sjs #ufmChips{display:block}
+body.in-sjs .ufmtool{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:flex-end;margin-bottom:6px}
+.ufmtool .sync{background:var(--soft);color:var(--mut);font-weight:700}.ufmtool .sync.on{background:var(--okb);color:var(--ok)}
+.ufmtool select{min-height:40px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font-weight:700}
+body.in-sjs .gate{inset:calc(56px + env(safe-area-inset-top,0px)) 0 0 0}
+@media(min-width:1100px){body.in-sjs .gate{left:272px}}
+@media(max-width:820px){body.in-sjs main{padding-bottom:24px}}
 .shell{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:calc(100vh - 61px)}
 .rail{background:var(--card);border-right:1px solid var(--line);padding:14px 10px;position:sticky;top:61px;height:calc(100vh - 61px);overflow:auto}
 .rail a,.more a{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:10px;color:var(--ink);text-decoration:none;font-weight:600;min-height:44px}
@@ -194,12 +203,13 @@ dialog::backdrop{background:rgba(10,18,40,.55)}
  <div class="brand"><b>UFM Record</b><span id="schoolLine">St. James H.S. School · Unfair Means Register</span></div>
  <a class="back" href="./" title="Back to SJS App">←<span> SJS App</span></a><span class="sync" id="sync">Offline</span>
  <select id="sessSel" aria-label="Academic session"></select>
- <button class="uchip" id="uchip" hidden aria-label="Account"></button>
 </header>
+<nav class="sjs-chips" id="ufmChips" aria-label="UFM sections"><div class="wrap"></div></nav>
 <div class="gate" id="gate"></div>
 <div class="shell">
  <nav class="rail" id="rail"></nav>
  <main>
+  <div class="ufmtool" id="ufmTool"></div>
   <section class="view" id="v-home"></section>
   <section class="view" id="v-record"></section>
   <section class="view" id="v-new"></section>
@@ -218,19 +228,10 @@ dialog::backdrop{background:rgba(10,18,40,.55)}
 <input type="file" id="fileJ" accept=".json" hidden>
 <iframe id="pf" title="print" style="position:fixed;width:0;height:0;border:0;right:0;bottom:0"></iframe>
 <script>
-/* ===================== SETUP (edit these two things) =====================
-   1. FIREBASE_CONFIG: copy the same firebaseConfig that your SJS App index.html uses
-   2. UFM_ADMINS: the Gmail of the UFM Admin (must be the same as in the Firestore rules) */
-const FIREBASE_CONFIG={
-  apiKey:"PASTE_API_KEY",
-  authDomain:"PASTE_PROJECT_ID.firebaseapp.com",
-  projectId:"PASTE_PROJECT_ID",
-  storageBucket:"PASTE_PROJECT_ID.appspot.com",
-  messagingSenderId:"PASTE_SENDER_ID",
-  appId:"PASTE_APP_ID"
-};
-const UFM_ADMINS=["your.admin.gmail@gmail.com"];
-/* ======================================================================== */
+/* UFM Record – part of SJS App (St. James H.S. School).
+   Uses the SJS App's own Firebase project and sign-in. The Firebase settings are found
+   automatically from the other SJS App pages. Only if that ever fails, paste them here: */
+const UFM_FIREBASE_OVERRIDE=null; /* e.g. {apiKey:"...",authDomain:"...",projectId:"...",appId:"..."} */
 {
 const LOGO=document.getElementById('logo').src;
 new MutationObserver(()=>{for(const c of document.querySelectorAll('.stack td:not([data-l])')){let i=0,p=c;while(p=p.previousElementSibling)i+=p.colSpan;c.dataset.l=c.closest('table').rows[0].cells[i]?.textContent||''}}).observe(document.body,{childList:true,subtree:true});
@@ -347,10 +348,10 @@ const STATUS=o=>o<=1?'FIRST OCCURRENCE':o==2?'SECOND OCCURRENCE':'THIRD / REPEAT
 const LT=o=>o<=1?['WARNING LETTER – FIRST OFFENCE','Unfair Means / Examination Malpractice','WARNING LETTER']:o==2?['FINAL WARNING LETTER – SECOND OFFENCE','Repeated Unfair Means / Examination Malpractice','FINAL WARNING LETTER']:['DISCIPLINARY ACTION NOTICE – THIRD OFFENCE','Repeated Unfair Means / Examination Malpractice','DISCIPLINARY ACTION NOTICE'];
 const seal=o=>`<span class="seal s${Math.min(o,3)}" title="${esc(STATUS(o))}">${ord(o)}</span>`;
 const IC={home:'<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',record:'<path d="M5 3h11l3 3v15H5z"/><path d="M9 9h6M9 13h6M9 17h4"/>',new:'<path d="M12 5v14M5 12h14"/>',students:'<circle cx="11" cy="11" r="6"/><path d="M20 20l-4.5-4.5"/>',letters:'<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>',giveout:'<path d="M9 5h10v14H9"/><path d="M4 12h11M11 8l4 4-4 4"/>',rules:'<path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/>',lists:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/>',more:'<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>',print:'<path d="M6 9V3h12v6M6 18H4v-7h16v7h-2M8 14h8v7H8z"/>',xls:'<path d="M5 3h10l4 4v14H5z"/><path d="M9 11l5 6M14 11l-5 6"/>',copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/>'};
-const svg=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${IC[k]}</svg>`;
+const svg=k=>`<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k]}</svg>`;
 const NAV=[['home','Dashboard'],['record','UFM Record'],['new','New Entry'],['students','Search Student'],['letters','Warning Letter'],['giveout','Give-Out Register'],['rules','UFM Rules'],['lists','Lists & Data']];
 
-const S={records:[],settings:clone(DEF),db:null,dl:null,mode:'cloud',fs:null,auth:null,user:null,role:'',isAdmin:false,access:[],unsubs:[],session:'2026-2027',view:'home',D:{},f:{q:'',exam:'',cls:'',lvl:'',give:'',stu:''},newest:true,letterId:'',editId:'',sex:'M',cloudReady:false};
+const S={records:[],settings:clone(DEF),db:null,dl:null,mode:'cloud',fs:null,user:null,role:'',isAdmin:false,unsubs:[],session:'2026-2027',view:'home',D:{},f:{q:'',exam:'',cls:'',lvl:'',give:'',stu:''},newest:true,letterId:'',editId:'',sex:'M',cloudReady:false};
 const LSK='sjs-ufm-v1',LSC='sjs-ufm-cloud-cache';
 const lsGet=k=>{try{return JSON.parse(localStorage.getItem(k)||'null')}catch(e){return null}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
@@ -377,7 +378,7 @@ function openDlg(html){$('#dlgBody').innerHTML=html;const d=$('#dlg');if(!d.open
 const closeDlg=()=>$('#dlg').close();
 
 /* ---------- storage ---------- */
-function writeErr(e){if(e&&e.code==='permission-denied')toast('Not allowed — your Gmail is not on the UFM access list');else if(e&&e.code==='resource-exhausted')toast('Firebase limit reached for today — try again tomorrow');else toast('Could not save: '+(e&&e.message||e))}
+function writeErr(e){if(e&&e.code==='permission-denied')toast('Not saved – the Admin must add the UFM part to the Firestore rules');else if(e&&e.code==='resource-exhausted')toast('Firebase daily limit reached – try again tomorrow');else toast('Could not save: '+(e&&e.message||e))}
 const body=o=>{const{id,...b}=o;return JSON.parse(JSON.stringify(b))};
 async function saveRecord(r){
  r.updatedAt=Date.now();r.updatedBy=S.user?.email||'';const i=S.records.findIndex(x=>x.id===r.id);if(i>=0)S.records[i]=r;else S.records.push(r);
@@ -393,11 +394,13 @@ function buildNav(){
  $('#rail').innerHTML=NAV.slice(0,6).map(([k,l])=>`<a href="#${k}" data-v="${k}">${svg(k)}${l}</a>`).join('')+'<div class="cap">Reference</div>'+NAV.slice(6).map(([k,l])=>`<a href="#${k}" data-v="${k}">${svg(k)}${l}</a>`).join('');
  const b=[['home','Home'],['record','Record'],['new','New'],['students','Search'],['more','More']];
  $('#bnav').innerHTML=b.map(([k,l])=>k==='new'?`<a href="#new" data-v="new" class="fab"><span class="c">${svg('new')}</span>${l}</a>`:k==='more'?`<a href="#" id="moreBtn" data-v="more">${svg('more')}${l}</a>`:`<a href="#${k}" data-v="${k}">${svg(k)}${l}</a>`).join('');
+ $('#ufmChips .wrap').innerHTML=NAV.map(([k,l])=>`<button type="button" data-chip="${k}">${svg(k)}${l}</button>`).join('');
+ $$('#ufmChips [data-chip]').forEach(b=>b.onclick=()=>{location.hash='#'+b.dataset.chip});
  $('#moreBtn').onclick=e=>{e.preventDefault();openDlg(`<div class="dh"><h3>More</h3><button class="x" data-close aria-label="Close">×</button></div><div class="more">${NAV.slice(4).map(([k,l])=>`<a href="#${k}" data-close>${svg(k)}${l}</a>`).join('')}</div>`)};
 }
-function go(){let v=(location.hash||'#home').slice(1);if(!NAV.some(n=>n[0]===v))v='home';if(v!=='new')S.editId='';S.view=v;$$('.view').forEach(x=>x.classList.toggle('on',x.id==='v-'+v));$$('[data-v]').forEach(a=>a.classList.toggle('on',a.dataset.v===v));render();window.scrollTo(0,0)}
+function go(){let v=(location.hash||'#home').slice(1);if(!NAV.some(n=>n[0]===v))v='home';if(v!=='new')S.editId='';S.view=v;$$('.view').forEach(x=>x.classList.toggle('on',x.id==='v-'+v));$$('[data-v]').forEach(a=>a.classList.toggle('on',a.dataset.v===v));$$('#ufmChips [data-chip]').forEach(b=>{const on=b.dataset.chip===v;b.classList.toggle('on',on);if(on){b.setAttribute('aria-current','page');try{b.scrollIntoView({block:'nearest',inline:'center'})}catch(e){}}else b.removeAttribute('aria-current')});render();window.scrollTo(0,0)}
 function refresh(){derive();fillSess();render()}
-function soft(){derive();fillSess();const v=S.view;if(v==='new')nprev();else if(v==='lists'){drawAccess()}else if(v==='record'&&$('#rtable'))drawTable();else if(v==='students'&&$('#sres'))drawStudents();else render()}
+function soft(){derive();fillSess();const v=S.view;if(v==='new')nprev();else if(v==='lists'){}else if(v==='record'&&$('#rtable'))drawTable();else if(v==='students'&&$('#sres'))drawStudents();else render()}
 function render(){({home:rHome,record:rRecord,new:rNew,students:rStudents,letters:rLetters,giveout:rGive,rules:rRules,lists:rLists})[S.view]()}
 function fillSess(){const st=S.settings;$('#sessSel').innerHTML=`<option value="ALL"${S.session==='ALL'?' selected':''}>All sessions</option>`+opts(st.sessions,S.session);$('#schoolLine').textContent=(st.school.name||'')+' · Unfair Means Register'}
 const sessLabel=()=>S.session==='ALL'?'all sessions':'Session '+S.session.replace('-','\u2011');
@@ -426,7 +429,7 @@ function rHome(){
 }
 const miniCase=r=>`<div class="mini" data-id="${esc(r.id)}">${seal(occ(r))}<div><b>${esc(r.name)}</b><span>${esc(r.ref)} · ${esc(r.cls)}-${esc(r.sec)} · ${esc(r.subject)} · ${esc(r.exam)} · ${fd(r.examDate)}</span></div>${r.give?.date?'<span class="tag ok">Given</span>':'<span class="tag pend">Pending</span>'}</div>`;
 const emptyBox=()=>`<div class="empty"><b>No UFM cases yet</b>Add a case with New Entry, or bring in your old register from Lists &amp; Data → Import from Excel.<div class="row" style="justify-content:center;margin-top:14px"><a class="btn pri" href="#new">New UFM case</a><button class="btn" data-act="importx">Import from Excel</button></div></div>`;
-function cloudBanner(){if(!S.cloudReady||S.records.length)return'';const loc=lsGet(LSK);if(loc?.records?.length)return`<div class="banner"><span>${loc.records.length} UFM records are saved on this phone/computer only. Upload them to Firebase so everyone sees them.</span><button class="btn sm pri" data-act="upload">Upload to Firebase</button></div>`;return S.isAdmin?`<div class="banner"><span>The Firebase register is empty. Add the ${SEED.length} cases from your UFM_Record_2026_2027 Excel file?</span><button class="btn sm pri" data-act="seed">Add ${SEED.length} cases</button></div>`:''}
+function cloudBanner(){if(!S.cloudReady||S.records.length)return'';const loc=lsGet(LSK);if(loc?.records?.length)return`<div class="banner"><span>${loc.records.length} UFM records are saved on this phone/computer only. Upload them to Firebase so everyone sees them.</span><button class="btn sm pri" data-act="upload">Upload to Firebase</button></div>`;return`<div class="banner"><span>The UFM register is empty. Add the ${SEED.length} cases from your UFM_Record_2026_2027 Excel file?</span><button class="btn sm pri" data-act="seed">Add ${SEED.length} cases</button></div>`}
 
 /* ---------- register ---------- */
 function filtered(){
@@ -658,30 +661,18 @@ function rLists(){
  <label class="f w2"><span>Affiliation line</span><input class="in" id="s_affil" value="${esc(sc.affil)}"></label>
  <label class="f"><span>Exam In-charge</span><input class="in" id="s_examIncharge" value="${esc(st.examIncharge)}"></label><label class="f"><span>Principal</span><input class="in" id="s_principal" value="${esc(st.principal)}"></label>
  <label class="f w2"><span>Current academic session</span><select class="in" id="s_current">${opts(st.sessions,st.current)}</select></label></div></div>
- <div class="card"><h3>Data &amp; backup</h3><p class="note" style="margin-top:0">Saved in your Firebase project (Firestore). Everyone on the access list sees the same records on any phone or computer; it also works offline and syncs when the internet returns.</p>
+ <div class="card"><h3>Data &amp; backup</h3><p class="note" style="margin-top:0">Saved in the SJS App's Firebase. Admin, Principal and Exam In-Charge see the same records on any phone or computer. It also works without internet and saves when the internet returns.</p>
  <div class="grid g2"><button class="btn" data-act="importx">${svg('xls')}Import from Excel</button><button class="btn" data-act="xls">${svg('xls')}Export to Excel</button><button class="btn" data-act="backup">Backup (.json)</button><button class="btn" data-act="restore">Restore backup</button></div>
  <p class="note">Import reads the <b>UMS RECORD</b> and <b>LISTS</b> sheets of your old UFM_Record .xlsm file. Cases already in the app are skipped.</p>
  <p class="note">${S.records.length} cases stored · ${new Set(S.records.map(r=>r.session)).size} session(s)</p>
  ${S.isAdmin?'<button class="btn ghost" data-act="wipe" style="color:var(--l3)">Delete all records…</button>':''}</div></div>
- <div class="card" style="margin-top:14px" id="accCard"></div>
+ <div class="card" style="margin-top:14px"><h3>Who can open UFM Record</h3><p class="note" style="margin:0">UFM records are confidential. They open only for the <b>Admin</b>, the <b>Principal</b> and the <b>Exam In-Charge</b> – the roles set in SJS App → Teachers. Other teachers do not see UFM Record in the menu and cannot open it. You are signed in as <b>${esc(S.role)}</b>.</p></div>
  <div class="listsgrid" style="margin-top:14px">${ta('exams','Exams')}${ta('classes','Classes')}${ta('sections','Sections')}${ta('subjects','Subjects')}${ta('detectors','Case detectors / invigilators')}${ta('sessions','Academic sessions')}${ta('docs','Documents given')}</div>
  <div class="card" style="margin-top:14px"><label class="f"><span>UFM examination remarks <span class="note">(${st.remarks.length} standard statements, one per line)</span></span><textarea class="in" id="l_remarks" style="min-height:260px;font-size:14px">${esc(st.remarks.join('\n'))}</textarea></label></div>`;
  $('#lsave').onclick=async()=>{const n=clone(S.settings);['name','motto','email','address','affil'].forEach(k=>n.school[k]=$('#s_'+k).value.trim());n.examIncharge=$('#s_examIncharge').value.trim();n.principal=$('#s_principal').value.trim();
   ['exams','classes','sections','subjects','detectors','sessions','docs','remarks'].forEach(k=>{const v=$('#l_'+k).value.split('\n').map(x=>x.trim()).filter(Boolean);if(v.length)n[k]=[...new Set(v)]});
   n.current=$('#s_current').value;if(!n.sessions.includes(n.current))n.current=n.sessions[0];S.settings=n;await saveSettings();toast('Lists saved')};
- drawAccess();
 }
-function drawAccess(){
- const c=$('#accCard');if(!c)return;
- const rows=[...UFM_ADMINS.map(e=>({id:e.toLowerCase(),name:'UFM Admin',role:'Admin',fixed:true})),...S.access];
- c.innerHTML=`<h3>Who can open UFM Record</h3><p class="note" style="margin-top:0">UFM records are confidential. Only these Gmail accounts can see or add cases. Everyone else who signs in to SJS App is refused.</p>
- <div class="list">${rows.map(a=>`<div class="mini" style="cursor:default"><span class="tag">${esc(a.role)}</span><div><b>${esc(a.name||a.id)}</b><span>${esc(a.id)}</span></div>${S.isAdmin&&!a.fixed?`<button class="btn sm ghost" data-unacc="${esc(a.id)}" style="color:var(--l3)">Remove</button>`:'<span></span>'}</div>`).join('')}</div>
- ${S.isAdmin?`<form id="accf" class="form" style="margin-top:14px"><label class="f w2"><span>Gmail address</span><input class="in" id="a_email" type="email" required placeholder="name@gmail.com"></label><label class="f"><span>Name</span><input class="in" id="a_name" placeholder="e.g. Principal"></label><label class="f"><span>Role</span><select class="in" id="a_role">${opts(['Principal','Exam In-charge','Teacher'],'Principal')}</select></label><div class="w4"><button class="btn pri" type="submit">Give access</button></div></form>`:'<p class="note">Only the Admin can change this list.</p>'}`;
- c.querySelectorAll('[data-unacc]').forEach(b=>b.onclick=async()=>{if(await ask(`Remove ${b.dataset.unacc} from UFM Record?`,'Remove'))S.fs.doc('ufm_access/'+b.dataset.unacc).delete().then(()=>toast('Access removed')).catch(writeErr)});
- const f=$('#accf');if(f)f.onsubmit=e=>{e.preventDefault();const em=$('#a_email').value.trim().toLowerCase();if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){toast('Enter a valid Gmail address');return}
-  S.fs.doc('ufm_access/'+em).set({name:$('#a_name').value.trim(),role:$('#a_role').value,addedBy:S.user.email,addedAt:Date.now()}).then(()=>toast('Access given to '+em)).catch(writeErr);f.reset()};
-}
-
 
 /* ---------- printing & files ---------- */
 const framed=(()=>{try{return window.self!==window.top}catch(e){return true}})();
@@ -768,7 +759,7 @@ document.addEventListener('click',async e=>{
  else if(a==='printLetter'){const r=S.records.find(x=>x.id===S.letterId);if(r)printOut(`UFM Letter ${r.ref.split('/').pop()} ${r.name}`,letterHtml(r,$('#ldate').value||today()))}
  else if(a==='giveLetter'){const r=S.records.find(x=>x.id===S.letterId);if(r)giveForm(r)}
  else if(a==='batch'){const rs=[...vis()].filter(r=>!r.give?.date).sort(byRef);if(!rs.length){toast('Every letter has been given out');return}const d=$('#ldate')?.value||today();printOut(`UFM Pending Letters ${S.session}`,rs.map(r=>letterHtml(r,d)).join(''))}
- else if(a==='seed'){for(const [i,r] of SEED.entries())await saveRecord(Object.assign({id:'seed'+(i+1),createdAt:i+1},clone(r)));toast('4 cases added')}
+ else if(a==='seed'){for(const [i,r] of SEED.entries())await saveRecord(Object.assign({id:'seed'+(i+1),createdAt:i+1},clone(r)));toast(SEED.length+' cases added')}
  else if(a==='upload'){const loc=lsGet(LSK);if(!loc?.records?.length)return;if(loc.settings)S.settings=Object.assign(clone(DEF),loc.settings);await saveSettings();for(const r of loc.records)await saveRecord(r);toast(`Uploaded ${loc.records.length} records`)}
  else if(a==='wipe'){if(await ask(`Delete all ${S.records.length} UFM cases? Make a backup first — this cannot be undone.`,'Delete all','Delete all records')){const ids=S.records.map(r=>r.id);for(const id of ids)await deleteRecord(id);toast('All records deleted')}}
 });
@@ -783,52 +774,59 @@ function setSync(t,on){const s=$('#sync');s.textContent=t;s.classList.toggle('on
 function gate(kind,extra){
  const g=$('#gate');if(kind==='ok'){g.hidden=true;return}g.hidden=false;
  const head=`<img src="${LOGO}" alt=""><h2>UFM Record</h2>`;
- const G='<svg width="20" height="20" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.3-.4-3.5z"/></svg>';
  const M={
-  setup:`${head}<p>Firebase is not set up in this page yet.</p><ol><li>Open <b>ufm.html</b> in GitHub (pencil ✎ to edit).</li><li>Paste your SJS App's <b>firebaseConfig</b> into <b>FIREBASE_CONFIG</b> at the top of the script.</li><li>Put the Admin Gmail in <b>UFM_ADMINS</b>.</li><li>Commit, wait a minute, and reload.</li></ol>`,
-  nosdk:`${head}<p>Firebase could not load. Check the internet connection and reload.</p><button class="btn pri" onclick="location.reload()">Reload</button>`,
-  login:`${head}<p>Confidential register of St. James H.S. School. Sign in with the same Gmail you use for SJS App.</p><button class="gbtn" id="gsign">${G}Sign in with Google</button>${extra?`<p class="note" style="margin-top:14px;color:var(--l3)">${esc(extra)}</p>`:''}`,
+  nosdk:`${head}<p>Could not load. Check the internet connection and open again.</p><button class="btn pri" id="grl">Reload</button>`,
+  nocfg:`${head}<p>The SJS App's Firebase settings could not be found from this page.</p><p class="note">Keep <b>ufm.html</b> in the same GitHub repository as the SJS App (next to marks.html), then reload.</p><button class="btn pri" id="grl">Reload</button>`,
+  signin:`${head}<p>Please sign in on the SJS App Home screen first.</p><a class="btn pri" href="./">Go to SJS Home</a>`,
   wait:`${head}<p>Checking your access…</p>`,
-  denied:`${head}<p><b>${esc(S.user?.email||'')}</b> is not on the UFM access list.</p><p>Ask the Admin to add your Gmail in UFM Record → Lists &amp; Data.</p><div class="row" style="justify-content:center"><a class="btn" href="./">← Back to SJS App</a><button class="btn" id="gout">Use another Gmail</button></div>`,
-  error:`${head}<p>Something went wrong: ${esc(extra||'')}</p><button class="btn pri" onclick="location.reload()">Reload</button>`};
- g.innerHTML=`<div class="gbox">${M[kind]}</div>`;
- $('#gsign')&&($('#gsign').onclick=signIn);$('#gout')&&($('#gout').onclick=()=>S.auth.signOut());
+  denied:`${head}<p>UFM Record is confidential. It opens only for the <b>Admin</b>, <b>Principal</b> and <b>Exam In-Charge</b>.</p><a class="btn" href="./">← Back to SJS Home</a>`,
+  error:`${head}<p>Something went wrong: ${esc(extra||'')}</p><button class="btn pri" id="grl">Reload</button>`};
+ g.innerHTML=`<div class="gbox">${M[kind]}</div>`;const rl=$('#grl');if(rl)rl.onclick=()=>location.reload();
 }
-async function signIn(){
- const p=new firebase.auth.GoogleAuthProvider();p.setCustomParameters({prompt:'select_account'});
- try{await S.auth.signInWithPopup(p)}catch(e){
-  if(['auth/popup-blocked','auth/operation-not-supported-in-this-environment','auth/cancelled-popup-request','auth/web-storage-unsupported'].includes(e.code)){try{await S.auth.signInWithRedirect(p)}catch(x){gate('login',x.message)}}
-  else if(e.code==='auth/unauthorized-domain')gate('login','This web address is not allowed in Firebase. Add it in Firebase → Authentication → Settings → Authorized domains.');
-  else if(e.code!=='auth/popup-closed-by-user')gate('login',e.message)}
+async function findConfig(){
+ if(UFM_FIREBASE_OVERRIDE&&UFM_FIREBASE_OVERRIDE.apiKey)return UFM_FIREBASE_OVERRIDE;
+ if(window.SJS_FIREBASE&&window.SJS_FIREBASE.apiKey)return window.SJS_FIREBASE;
+ const K='sjs-ufm-fbcfg',keys=['apiKey','authDomain','projectId','storageBucket','messagingSenderId','appId','measurementId'];
+ const grab=t=>{const o={};keys.forEach(k=>{const m=t.match(new RegExp('["\']?'+k+'["\']?\\s*:\\s*["\']([^"\']+)["\']'));if(m)o[k]=m[1]});return o.apiKey&&o.projectId?o:null};
+ const queue=['marks.html','school.html','attendance.html','index.html','timetable.html'],seen=new Set();
+ while(queue.length&&seen.size<16){const u=queue.shift();if(seen.has(u))continue;seen.add(u);let t='';
+  try{const r=await fetch(u,{cache:'no-cache'});if(!r.ok)continue;t=await r.text()}catch(e){continue}
+  const c=grab(t);if(c){lsSet(K,c);return c}
+  if(/\.html$/.test(u))[...t.matchAll(/<script[^>]+src=["']([^"':?#]+\.js)/gi)].forEach(m=>{const f=m[1].replace(/^\.\//,'');if(!/sjs-nav|sjs-common|(^|\/)sw\.js/.test(f)&&!seen.has(f))queue.push(f)})}
+ return lsGet(K);
 }
-function stopSubs(){S.unsubs.forEach(u=>{try{u()}catch(e){}});S.unsubs=[];S.records=[];S.access=[];S.cloudReady=false}
+async function checkRole(u){
+ const RK='sjs-role-'+u.uid,saved=lsGet(RK);let isAdmin=false,role='teacher';
+ if(!navigator.onLine&&saved){isAdmin=!!saved.a;role=saved.r||'teacher'}
+ else{try{await S.fs.collection('att_links').limit(1).get({source:'server'});isAdmin=true}catch(e){isAdmin=false;if(saved&&!(e&&e.code==='permission-denied'))isAdmin=!!saved.a}
+  try{const d=await S.fs.doc('att_staff/'+u.uid).get();if(d.exists&&d.data().role)role=d.data().role}catch(e){if(saved)role=saved.r||role}}
+ return{isAdmin,role:isAdmin?'admin':role};
+}
+function stopSubs(){S.unsubs.forEach(u=>{try{u()}catch(e){}});S.unsubs=[];S.records=[];S.cloudReady=false}
 function startSubs(){
  const fs=S.fs;setSync('Connecting…');
  S.unsubs.push(fs.collection('ufm_records').onSnapshot({includeMetadataChanges:true},snap=>{
   S.records=snap.docs.map(d=>Object.assign({},d.data(),{id:d.id}));const m=snap.metadata;if(!m.fromCache)S.cloudReady=true;
-  setSync(m.hasPendingWrites?'Saving…':m.fromCache?'Offline · will sync':'Online · saved',!m.fromCache&&!m.hasPendingWrites);soft()},
-  e=>{setSync('Error');if(e.code==='permission-denied')gate('denied');else toast('Firebase: '+e.message)}));
+  setSync(m.hasPendingWrites?'Saving…':m.fromCache?'Offline · will save':'Online · saved',!m.fromCache&&!m.hasPendingWrites);soft()},
+  e=>{setSync('Not connected');if(e.code==='permission-denied'){gate('error','Firebase refused to open the UFM records. The Admin must add the UFM part to the Firestore rules (UFM_firestore_rules.txt).')}else toast('Firebase: '+e.message)}));
  S.unsubs.push(fs.doc('ufm_settings/main').onSnapshot(d=>{if(d.exists){S.settings=Object.assign(clone(DEF),d.data());soft()}},()=>{}));
- S.unsubs.push(fs.collection('ufm_access').onSnapshot(snap=>{S.access=snap.docs.map(d=>Object.assign({},d.data(),{id:d.id}));if(S.view==='lists')drawAccess()},()=>{}));
 }
-function boot(){
+async function boot(){
+ if(window.SJSNav){document.body.classList.add('in-sjs');const t=$('#ufmTool');t.append($('#sync'),$('#sessSel'))}
  S.session=lsGet('sjs-ufm-sess')||S.settings.current;
- buildNav();derive();fillSess();go();setSync('Signing in…');
+ buildNav();derive();fillSess();go();setSync('Connecting…');
  if(typeof firebase==='undefined'){gate('nosdk');return}
- if(String(FIREBASE_CONFIG.apiKey).startsWith('PASTE')){gate('setup');return}
- try{firebase.apps.length||firebase.initializeApp(FIREBASE_CONFIG)}catch(e){gate('error',e.message);return}
- S.auth=firebase.auth();S.fs=firebase.firestore();
- S.fs.enablePersistence({synchronizeTabs:true}).catch(()=>{});
  gate('wait');
- S.auth.getRedirectResult().catch(e=>gate('login',e.message));
- $('#uchip').onclick=()=>openDlg(`<div class="dh"><h3>Signed in</h3><button class="x" data-close>×</button></div><div class="db"><dl class="dl"><dt>Gmail</dt><dd>${esc(S.user?.email)}</dd><dt>Name</dt><dd>${esc(S.user?.displayName||'')}</dd><dt>UFM role</dt><dd>${esc(S.role)}</dd></dl></div><div class="df"><a class="btn" href="./">← Back to SJS App</a><button class="btn red" id="soBtn">Sign out</button></div>`)||($('#soBtn').onclick=()=>{closeDlg();S.auth.signOut()});
- S.auth.onAuthStateChanged(async u=>{
-  stopSubs();$('#uchip').hidden=!u;
-  if(!u){S.user=null;gate('login');setSync('Signed out');refresh();return}
-  S.user=u;const em=(u.email||'').toLowerCase();$('#uchip').textContent=(u.displayName||em||'?').trim()[0].toUpperCase();
-  S.isAdmin=UFM_ADMINS.map(x=>x.trim().toLowerCase()).includes(em);S.role=S.isAdmin?'Admin':'';
-  if(!S.isAdmin){gate('wait');try{const d=await S.fs.doc('ufm_access/'+em).get();if(d.exists)S.role=d.data().role||'Staff'}catch(e){if(e.code!=='permission-denied'&&e.code!=='unavailable'){gate('error',e.message);return}}}
-  if(!S.role){gate('denied');return}
+ const cfg=await findConfig();if(!cfg){gate('nocfg');return}
+ try{if(!firebase.apps.length)firebase.initializeApp(cfg)}catch(e){gate('error',e.message);return}
+ S.fs=firebase.firestore();try{await S.fs.enablePersistence({synchronizeTabs:true})}catch(e){}
+ firebase.auth().onAuthStateChanged(async u=>{
+  stopSubs();
+  if(!u){S.user=null;gate('signin');setSync('Not signed in');refresh();return}
+  S.user=u;gate('wait');
+  const r=await checkRole(u);S.isAdmin=r.isAdmin;
+  if(!(r.isAdmin||r.role==='principal'||r.role==='exam')){gate('denied');return}
+  S.role=r.isAdmin?'Admin':r.role==='principal'?'Principal':'Exam In-Charge';
   gate('ok');startSubs();refresh();
  });
 }

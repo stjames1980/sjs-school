@@ -1,4 +1,4 @@
-/* SJS App – shared navigation for every page (version 2, Nov 2026).
+/* SJS App – shared navigation for every page (version 2, Nov 2026; UFM Record added 28 Nov 2026).
    One look on every page:
    - Header bar: menu button (phone), logo, page title, your initials (account menu: name, role, refresh, sign out).
    - Phone / tablet: bottom bar with the 4 most-used places + More (opens the full menu).
@@ -37,7 +37,8 @@ var IC={
  x:'<path d="M18 6 6 18M6 6l12 12"/>',
  ext:'<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
  down:'<path d="m6 9 6 6 6-6"/>',
- login:'<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5M15 12H3"/>'
+ login:'<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5M15 12H3"/>',
+ shield:'<path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M12 8v5M12 16h.01"/>'
 };
 function svg(k,s){return '<svg viewBox="0 0 24 24" width="'+(s||20)+'" height="'+(s||20)+'" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(IC[k]||'')+'</svg>'}
 
@@ -169,7 +170,7 @@ function initials(r){var n=String(r.name||r.user||'').replace(/@.*/,'').trim();i
   if(w.length>1)return (w[0][0]+w[w.length-1][0]).toUpperCase();if(w.length===1&&/^[a-z]/i.test(w[0])&&!/\d/.test(w[0]))return w[0][0].toUpperCase();return n.slice(0,2).toUpperCase()}
 function items(){var r=role(),staff=r.staff!==false,cv=!!r.canView,ad=!!r.isAdmin,L=[];
   L.push({h:'Main'},{u:'index.html#home',t:'Home',i:'home'},{u:'index.html#me',t:'Teacher Attendance',i:'me'},{u:'index.html#notices',t:'Notices',i:'notice'});
-  L.push({h:'Academics'});if(staff)L.push({u:'attendance.html',t:'Student Attendance',i:'students'});L.push({u:'timetable.html',t:'Time Table',i:'tt'});if(staff)L.push({u:'marks.html',t:'Exams and Results',i:'marks',sub:1});
+  L.push({h:'Academics'});if(staff)L.push({u:'attendance.html',t:'Student Attendance',i:'students'});L.push({u:'timetable.html',t:'Time Table',i:'tt'});if(staff)L.push({u:'marks.html',t:'Exams and Results',i:'marks',sub:1});if(cv||ad)L.push({u:'ufm.html',t:'UFM Record',i:'shield'});
   if(staff)L.push({h:'School Diary'},{u:'school.html#hw',t:'Homework',i:'book'},{u:'school.html#exam',t:'Exams',i:'pen'},{u:'school.html#cal',t:'Calendar',i:'cal'},{u:'school.html#fees',t:'Fee Status',i:'fee'});
   L.push({h:'Events'},{u:'https://stjames1980.github.io/sjs-sports/',t:'Sports Meet',i:'trophy',ext:1});
   if(staff)L.push({u:'https://stjames1980.github.io/sjs-entrance/',t:'Entrance Test',i:'cap',ext:1});
@@ -180,7 +181,7 @@ function tabsFor(){var r=role(),staff=r.staff!==false;
   return[{u:'index.html#home',t:'Home',i:'home'},{u:'attendance.html',t:'Attendance',i:'students'},{u:'timetable.html',t:'Time Table',i:'tt'},{u:'marks.html',t:(r.canView||r.isAdmin)?'Results':'Marks',i:'marks'}]}
 function isAct(u){var f=u.split('#')[0],h=u.split('#')[1]||'',p=page();if(f!==p)return false;if(!h)return true;var cur=location.hash.slice(1).split('&')[0];
   if(p==='index.html')return h===(cur||'home');if(p==='school.html')return h===(cur||'hw');return h===cur}
-var TITLE={'attendance.html':'Student Attendance','timetable.html':'Time Table','marks.html':'Exams and Results','school.html':'School Diary','index.html':'Home'};
+var TITLE={'ufm.html':'UFM Record','attendance.html':'Student Attendance','timetable.html':'Time Table','marks.html':'Exams and Results','school.html':'School Diary','index.html':'Home'};
 function title(){var p=page(),t=TITLE[p]||'SJS App';if(p==='index.html'||p==='school.html'){items().forEach(function(x){if(x.u&&isAct(x.u))t=x.t})}return t}
 
 /* ---------- build ---------- */
